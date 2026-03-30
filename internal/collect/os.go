@@ -1,0 +1,71 @@
+//go:build linux
+
+package collect
+
+import (
+	"log/slog"
+	"strings"
+
+	"github.com/shirou/gopsutil/v4/host"
+
+	"ghostpsy/agent-linux/internal/payload"
+)
+
+// CollectOSInfo sends pretty/kernel, raw /etc/os-release fields, and gopsutil host.Info.
+// The API derives distro_id / distro_version_id / distro_name for EOL (see backend os_normalize).
+func CollectOSInfo() payload.OSInfo {
+	rel := parseOSRelease()
+	hi, err := host.Info()
+	if err != nil {
+		slog.Warn("gopsutil host.Info failed", "error", err)
+	}
+
+	var kernel string
+	if hi != nil {
+		kernel = strings.TrimSpace(hi.KernelVersion)
+	}
+	if kernel == "" && err == nil {
+		slog.Warn("kernel version empty from gopsutil host.Info")
+	}
+
+	pretty := strings.TrimSpace(rel.PrettyName)
+	if pretty == "" && hi != nil {
+		pretty = platformPrettyFromHost(hi)
+	}
+	if pretty == "" {
+		pretty = "Linux"
+	}
+
+	out := payload.OSInfo{
+		Pretty:               truncateRunes(pretty, 512),
+		Kernel:               truncateRunes(kernel, 512),
+		OSReleaseID:          strings.TrimSpace(rel.ID),
+		OSReleaseVersionID:   strings.TrimSpace(rel.VersionID),
+		OSReleaseVersion:   strings.TrimSpace(rel.Version),
+		OSReleaseName:      strings.TrimSpace(rel.Name),
+	}
+	if hi != nil {
+		out.Platform = strings.TrimSpace(hi.Platform)
+		out.PlatformFamily = strings.TrimSpace(hi.PlatformFamily)
+		out.PlatformVersion = strings.TrimSpace(hi.PlatformVersion)
+		if ka := strings.TrimSpace(hi.KernelArch); ka != "" {
+			out.KernelArch = truncateRunes(ka, 64)
+		}
+	}
+	return out
+}
+
+func platformPrettyFromHost(hi *host.InfoStat) string {
+	if hi == nil {
+		return ""
+	}
+	pl := strings.TrimSpace(hi.Platform)
+	ver := strings.TrimSpace(hi.PlatformVersion)
+	if pl == "" {
+		return ""
+	}
+	if ver != "" {
+		return pl + " " + ver
+	}
+	return pl
+}

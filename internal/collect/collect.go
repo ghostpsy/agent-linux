@@ -2,12 +2,14 @@
 
 package collect
 
-import "ghostpsy/agent-linux/internal/payload"
+import (
+	"ghostpsy/agent-linux/internal/collect/firewall"
+	"ghostpsy/agent-linux/internal/payload"
+)
 
-// Stub builds a v1 payload (collectors fill listeners / iptables; other blocks optional).
+// Stub builds a v1 payload (listeners include firewall_rule; other blocks optional).
 func Stub(machineUUID string, scanSeq int) payload.V1 {
 	hn, hnErr := CollectHostNetwork()
-	iptLines, iptErr := CollectIptables()
 	hd, hdErr := CollectHostDisk()
 	hus, husErr := CollectHostUsersSummary()
 	pu, puErr := CollectPackagesUpdates()
@@ -15,11 +17,6 @@ func Stub(machineUUID string, scanSeq int) payload.V1 {
 
 	if svItems == nil {
 		svItems = []payload.ServiceEntry{}
-	}
-
-	iptBlock := payload.IptablesBlock{Items: iptLines}
-	if iptErr != "" {
-		iptBlock.Error = iptErr
 	}
 
 	servicesBlock := payload.ServicesBlock{Items: svItems}
@@ -45,19 +42,20 @@ func Stub(machineUUID string, scanSeq int) payload.V1 {
 	}
 
 	osInfo := CollectOSInfo()
+	fw := firewall.CollectFirewall()
+	listeners := firewall.ApplyFirewallRuleToListeners(CollectListeners(hn), fw)
 	return payload.V1{
 		SchemaVersion:    1,
 		MachineUUID:      machineUUID,
 		ScanSeq:          scanSeq,
 		OS:               osInfo,
-		Listeners:        CollectListeners(hn),
-		Iptables:         iptBlock,
+		Listeners:        listeners,
 		HostDisk:         hd,
 		HostNetwork:      hn,
 		HostUsersSummary: hus,
 		PackagesUpdates:  pu,
 		HostTime:         CollectHostTime(),
-		Firewall:         CollectFirewall(),
+		Firewall:         fw,
 		Services:         servicesBlock,
 	}
 }

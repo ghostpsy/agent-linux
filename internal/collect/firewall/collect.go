@@ -1,8 +1,17 @@
 //go:build linux
 
-package collect
+package firewall
 
 import "ghostpsy/agent-linux/internal/payload"
+
+const collectionNoInfoPrefix = "No information extracted."
+
+func collectionNote(detail string) string {
+	if len(detail) > 400 {
+		detail = detail[:400]
+	}
+	return collectionNoInfoPrefix + " " + detail
+}
 
 const (
 	fwIptables     = "iptables"

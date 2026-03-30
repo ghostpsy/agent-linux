@@ -1,4 +1,4 @@
-// Package payload defines the v1 ingest envelope (mirrors ingest.v1.schema.json at repo root).
+// Package payload defines the v1 ingest envelope (mirrors ingest.v1.schema.json at repo root). There is no iptables block; use listeners[].firewall_rule.
 package payload
 
 import "time"
@@ -10,7 +10,6 @@ type V1 struct {
 	ScanSeq          int               `json:"scan_seq"`
 	OS               OSInfo            `json:"os"`
 	Listeners        []Listener        `json:"listeners"`
-	Iptables         IptablesBlock     `json:"iptables"`
 	HostTime         *HostTime         `json:"host_time"`
 	HostSSH          *HostSSH          `json:"host_ssh,omitempty"`
 	HostDisk         *HostDisk         `json:"host_disk,omitempty"`
@@ -20,12 +19,6 @@ type V1 struct {
 	Firewall         *Firewall         `json:"firewall,omitempty"`
 	Services         ServicesBlock     `json:"services"`
 	AuditSections   []AuditSection   `json:"audit_sections,omitempty"`
-}
-
-type IptablesBlock struct {
-	Items []string `json:"items"`
-	// Error is set when iptables-save could not be collected.
-	Error string `json:"error,omitempty"`
 }
 
 type ServicesBlock struct {
@@ -51,12 +44,25 @@ type OSInfo struct {
 	PlatformVersion    string `json:"platform_version,omitempty"`
 }
 
+// Listener firewall_rule values: best-effort INPUT chain classification for this TCP port.
+const (
+	FirewallRuleFiltered   = "filtered"
+	FirewallRuleUnfiltered = "unfiltered"
+	FirewallRuleBlocked    = "blocked"
+	FirewallRuleUnknown    = "unknown"
+)
+
 type Listener struct {
-	Port         int    `json:"port"`
-	Bind         string `json:"bind"`
-	Process      string `json:"process"`
-	BindScope    string `json:"bind_scope,omitempty"`
-	ExposureRisk string `json:"exposure_risk,omitempty"`
+	Port          int    `json:"port"`
+	Bind          string `json:"bind"`
+	Process       string `json:"process"`
+	BindScope     string `json:"bind_scope,omitempty"`
+	ExposureRisk  string `json:"exposure_risk,omitempty"`
+	FirewallRule  string `json:"firewall_rule,omitempty"`
+	// LanFirewallRule is a best-effort INPUT classification for TCP reachability from LAN clients.
+	LanFirewallRule string `json:"lan_firewall_rule,omitempty"`
+	// WanFirewallRule is a best-effort INPUT classification for TCP reachability from WAN clients.
+	WanFirewallRule string `json:"wan_firewall_rule,omitempty"`
 }
 
 type HostTime struct {

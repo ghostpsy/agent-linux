@@ -1,6 +1,6 @@
 //go:build linux
 
-package collect
+package firewall
 
 import (
 	"strings"
@@ -41,18 +41,26 @@ func collectIptablesMetrics() (firewallMetrics, int, error) {
 	}, len(chains), nil
 }
 
-// filterDefaultPoliciesFromIptables reads default policies from per-chain List output (iptables -S <chain>).
-// go-iptables does not expose GetPolicy; List includes -P lines for that chain.
+// filterDefaultPoliciesFromIptables reads default policies from a full filter table dump when possible.
+// Per-chain List output can omit -P lines on some iptables-nft builds.
 func filterDefaultPoliciesFromIptables(ipt *iptables.IPTables) (in, out string, err error) {
-	inLines, err := ipt.List("filter", "INPUT")
-	if err != nil {
-		return "", "", err
+	inLines, errIn := ipt.List("filter", "INPUT")
+	if errIn != nil {
+		return "", "", errIn
 	}
-	outLines, err := ipt.List("filter", "OUTPUT")
-	if err != nil {
-		return "", "", err
+	outLines, errOut := ipt.List("filter", "OUTPUT")
+	if errOut != nil {
+		return "", "", errOut
 	}
-	return policyFromIptablesSOutputLines(inLines, "INPUT"), policyFromIptablesSOutputLines(outLines, "OUTPUT"), nil
+	inPol := policyFromFilterTableLines(inLines, "INPUT")
+	outPol := policyFromFilterTableLines(outLines, "OUTPUT")
+	if inPol == "" {
+		inPol = policyFromIptablesSOutputLines(inLines, "INPUT")
+	}
+	if outPol == "" {
+		outPol = policyFromIptablesSOutputLines(outLines, "OUTPUT")
+	}
+	return inPol, outPol, nil
 }
 
 func policyFromIptablesSOutputLines(lines []string, chainName string) string {
@@ -60,7 +68,7 @@ func policyFromIptablesSOutputLines(lines []string, chainName string) string {
 		line = strings.TrimSpace(line)
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && fields[0] == "-P" && fields[1] == chainName {
-			return fields[2]
+			return strings.ToUpper(fields[2])
 		}
 	}
 	return ""

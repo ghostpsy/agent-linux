@@ -1,13 +1,13 @@
 //go:build linux
 
-package collect
+package firewall
 
 import (
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
 )
 
-// nftFilterTableName matches iptables -t filter (not nat/mangle/raw, not bridge netdev tables).
+// isIptablesParityFilterTable matches iptables -t filter (not nat/mangle/raw, not bridge netdev tables).
 func isIptablesParityFilterTable(t *nftables.Table) bool {
 	if t == nil || t.Name != "filter" {
 		return false

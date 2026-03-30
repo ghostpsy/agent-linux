@@ -1,11 +1,10 @@
 //go:build linux
 
-package collect
+package firewall
 
 import "testing"
 
 func TestCountIptablesFilterRuleLinesIgnoresPolicyOnlyLines(t *testing.T) {
-	// Per-chain `iptables -S INPUT` on an empty chain often prints only `-P INPUT ACCEPT`.
 	lines := []string{"-P INPUT ACCEPT"}
 	if countIptablesFilterRuleLines(lines) != 0 {
 		t.Fatalf("policy line must not count as a rule")

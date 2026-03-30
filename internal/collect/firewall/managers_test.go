@@ -1,6 +1,6 @@
 //go:build linux
 
-package collect
+package firewall
 
 import "testing"
 

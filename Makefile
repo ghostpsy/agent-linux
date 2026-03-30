@@ -4,6 +4,9 @@
 .PHONY: help tidy build install clean test vet fmt run-help scan-dry scan
 
 GO       ?= go
+# Default off: links a static binary so builds on newer glibc (e.g. GitHub ubuntu-latest) still run on older distros.
+CGO_ENABLED ?= 0
+export CGO_ENABLED
 CMD      := ./cmd/ghostpsy
 BIN_DIR  := bin
 BINARY   := $(BIN_DIR)/ghostpsy
@@ -13,7 +16,7 @@ help:
 	@echo ""
 	@echo "Targets (run from this directory):"
 	@echo "  make tidy        go mod tidy && go mod verify"
-	@echo "  make build       build $(BINARY)"
+	@echo "  make build       build $(BINARY) (CGO_ENABLED=0 static binary by default)"
 	@echo "  make install     go install $(CMD)  (uses GOBIN or GOPATH/bin)"
 	@echo "  make run-help    go run $(CMD) help"
 	@echo "  make scan-dry    go run $(CMD) scan -dry-run"

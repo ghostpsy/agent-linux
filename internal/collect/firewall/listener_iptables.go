@@ -135,11 +135,14 @@ func classifyFromIptablesInputLinesLanWan(defaultPolicy string, lines []string, 
 	}
 	policy = strings.ToUpper(policy)
 
-	defaultRule := payload.FirewallRuleUnfiltered
-	if policy == payload.FirewallRuleUnknown {
+	var defaultRule string
+	switch policy {
+	case payload.FirewallRuleUnknown:
 		defaultRule = payload.FirewallRuleUnknown
-	} else if policy == "DROP" {
+	case "DROP":
 		defaultRule = payload.FirewallRuleBlocked
+	default:
+		defaultRule = payload.FirewallRuleUnfiltered
 	}
 
 	return classifyFromIptablesInputLinesSourceScope(lines, port, bindLoopback, sourceScopeLAN, defaultRule),
@@ -190,7 +193,6 @@ func iptablesRuleHasSourceSelector(line string) (hasSource bool, sourceIsAny boo
 		if fields[i] != "-s" && fields[i] != "--source" {
 			continue
 		}
-		hasSource = true
 		src := fields[i+1]
 		prefix, err := netip.ParsePrefix(src)
 		if err == nil {

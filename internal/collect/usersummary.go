@@ -44,7 +44,7 @@ func CollectHostUsersSummary() (*payload.HostUsersSummary, string) {
 	if err != nil {
 		return nil, collectionNote("/etc/passwd could not be read.")
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var ents []passwdEnt
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {

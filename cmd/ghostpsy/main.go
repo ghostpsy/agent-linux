@@ -116,7 +116,7 @@ func runScan() {
 		fmt.Fprintf(os.Stderr, "post: %v\n", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, _ := io.ReadAll(resp.Body)
 	fmt.Println("Response:", resp.Status, string(respBody))
 	if resp.StatusCode >= 400 {

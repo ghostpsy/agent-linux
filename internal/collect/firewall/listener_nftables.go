@@ -240,10 +240,7 @@ func nftRuleHasRestrictedSourceIPv6(r *nftables.Rule) bool {
 					break
 				}
 			}
-			if allZero {
-				return false
-			}
-			return true
+			return !allZero
 		}
 	}
 	return false

@@ -16,6 +16,7 @@ type V1 struct {
 	HostUsersSummary *HostUsersSummary `json:"host_users_summary,omitempty"`
 	HostNetwork      *HostNetwork      `json:"host_network,omitempty"`
 	PackagesUpdates  *PackagesUpdates  `json:"packages_updates,omitempty"`
+	HostBackup       *HostBackup       `json:"host_backup,omitempty"`
 	Firewall         *Firewall         `json:"firewall,omitempty"`
 	Services         ServicesBlock     `json:"services"`
 	AuditSections   []AuditSection   `json:"audit_sections,omitempty"`
@@ -145,6 +146,20 @@ type PackagesUpdates struct {
 	// SecurityUpdatesSample is a capped list of package names that have security updates only.
 	SecurityUpdatesSample []string `json:"security_updates_sample,omitempty"`
 	// Error is set when no package manager could be used or output could not be collected.
+	Error string `json:"error,omitempty"`
+}
+
+// HostBackup summarizes whether we detect backup tooling/automation on the host.
+// backup_status intentionally uses "on" or "unknown" (no "off") to avoid false negatives.
+type HostBackup struct {
+	BackupStatus string `json:"backup_status"` // on | unknown
+	// LatestBackupUTC is RFC3339 UTC when detected, otherwise "unknown".
+	LatestBackupUTC string `json:"latest_backup_utc"`
+	// ToolsDetected are known backup tool binaries found on the host.
+	ToolsDetected []string `json:"tools_detected,omitempty"`
+	// HasPeriodicCron is true when cron hints suggest periodic backups.
+	HasPeriodicCron *bool `json:"has_periodic_cron,omitempty"`
+	// Error is set when collection failed hard.
 	Error string `json:"error,omitempty"`
 }
 

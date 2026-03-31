@@ -13,6 +13,7 @@ func Stub(machineUUID string, scanSeq int) payload.V1 {
 	hd, hdErr := CollectHostDisk()
 	hus, husErr := CollectHostUsersSummary()
 	pu, puErr := CollectPackagesUpdates()
+	hb := CollectHostBackup()
 	svItems, svErr := CollectServices()
 
 	if svItems == nil {
@@ -54,6 +55,7 @@ func Stub(machineUUID string, scanSeq int) payload.V1 {
 		HostNetwork:      hn,
 		HostUsersSummary: hus,
 		PackagesUpdates:  pu,
+		HostBackup:       hb,
 		HostTime:         CollectHostTime(),
 		Firewall:         fw,
 		Services:         servicesBlock,

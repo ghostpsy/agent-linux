@@ -4,6 +4,7 @@ package collect
 
 import (
 	"bufio"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -68,6 +69,10 @@ func CollectHostUsersSummary() (*payload.HostUsersSummary, string) {
 			uid:   uid,
 			gid:   gid,
 		})
+	}
+	if err := sc.Err(); err != nil {
+		slog.Warn("failed to read /etc/passwd completely", "error", err)
+		return nil, collectionNote("/etc/passwd could not be fully read.")
 	}
 	if len(ents) == 0 {
 		return nil, collectionNote("no valid user entries were found in /etc/passwd.")

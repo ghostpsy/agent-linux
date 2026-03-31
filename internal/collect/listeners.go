@@ -98,18 +98,22 @@ func listenerWorkToPayload(work []listenerWork, hn *payload.HostNetwork) []paylo
 // processNameFromPID uses gopsutil process.Name (comm / process title).
 func processNameFromPID(pid int32) string {
 	if pid <= 0 {
+		slog.Debug("listener pid is not positive", "pid", pid)
 		return "unknown"
 	}
 	p, err := gopsutilproc.NewProcess(pid)
 	if err != nil {
+		slog.Debug("cannot create process handle for listener pid", "pid", pid, "error", err)
 		return "unknown"
 	}
 	name, err := p.Name()
 	if err != nil {
+		slog.Debug("cannot resolve process name for listener pid", "pid", pid, "error", err)
 		return "unknown"
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
+		slog.Debug("resolved empty process name for listener pid", "pid", pid)
 		return "unknown"
 	}
 	return name

@@ -3,6 +3,7 @@
 package collect
 
 import (
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
@@ -30,10 +31,16 @@ func CollectHostTime() *payload.HostTime {
 		ht.NtpActive = &f
 	}
 	resp, err := ntp.QueryWithOptions(ntpPoolServer, ntp.QueryOptions{Timeout: 4 * time.Second})
-	if err != nil || resp == nil {
+	if err != nil {
+		slog.Warn("ntp query failed", "server", ntpPoolServer, "error", err)
+		return ht
+	}
+	if resp == nil {
+		slog.Warn("ntp query returned nil response", "server", ntpPoolServer)
 		return ht
 	}
 	if err := resp.Validate(); err != nil {
+		slog.Warn("ntp response validation failed", "server", ntpPoolServer, "error", err)
 		return ht
 	}
 	// Local clock vs NTP pool at scan time. The API may still set host_time.skew_vs_server_seconds

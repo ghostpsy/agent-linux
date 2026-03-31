@@ -3,6 +3,7 @@
 package collect
 
 import (
+	"log/slog"
 	"net"
 	"regexp"
 	"strings"
@@ -46,6 +47,9 @@ func CollectHostDisk() (*payload.HostDisk, string) {
 		seen[mp] = struct{}{}
 		u, err := disk.Usage(mp)
 		if err != nil || u == nil {
+			if err != nil {
+				slog.Debug("disk usage collection failed", "mountpoint", mp, "error", err)
+			}
 			continue
 		}
 		if u.Total == 0 {

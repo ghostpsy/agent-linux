@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	classificationLocalRead   = "local-read-only"
-	classificationLocalModify = "local-modifying"
+	classificationLocalRead    = "local-read-only"
+	classificationLocalModify  = "local-modifying"
 	classificationExternalSend = "external-send"
-	classificationCompute     = "local-compute"
+	classificationCompute      = "local-compute"
 )
 
 type Summary struct {
@@ -30,6 +30,14 @@ type Logger struct {
 	enabled bool
 	out     io.Writer
 	summary Summary
+}
+
+func writeF(w io.Writer, format string, a ...any) {
+	_, _ = fmt.Fprintf(w, format, a...)
+}
+
+func writeLine(w io.Writer, a ...any) {
+	_, _ = fmt.Fprintln(w, a...)
 }
 
 func New(enabled bool, out io.Writer) *Logger {
@@ -52,14 +60,14 @@ func (l *Logger) Step(classification, target, message string, fields map[string]
 		return
 	}
 	l.track(classification, target)
-	fmt.Fprintf(l.out, "%s%s%s%s\n", colorFor(classification), iconFor(classification), message, colorReset+formatFields(fields))
+	writeF(l.out, "%s%s%s%s\n", colorFor(classification), iconFor(classification), message, colorReset+formatFields(fields))
 }
 
 func (l *Logger) Note(message string, fields map[string]string) {
 	if !l.Enabled() {
 		return
 	}
-	fmt.Fprintf(l.out, "%s• %s%s%s\n", colorBlue, message, colorReset, formatFields(fields))
+	writeF(l.out, "%s• %s%s%s\n", colorBlue, message, colorReset, formatFields(fields))
 }
 
 func (l *Logger) PrintSummary() {
@@ -71,13 +79,13 @@ func (l *Logger) PrintSummary() {
 		domains = append(domains, domain)
 	}
 	sort.Strings(domains)
-	fmt.Fprintln(l.out, "--- Verbose action summary ---")
-	fmt.Fprintf(l.out, "files_read_count=%d\n", l.summary.FilesReadCount)
-	fmt.Fprintf(l.out, "external_requests_count=%d\n", l.summary.ExternalRequestsCount)
-	fmt.Fprintf(l.out, "external_domains=%s\n", strings.Join(domains, ","))
-	fmt.Fprintf(l.out, "write_modify_actions_count=%d\n", l.summary.WriteModifyCount)
-	fmt.Fprintf(l.out, "system_changing_actions_count=%d\n", l.summary.SystemChangingCount)
-	fmt.Fprintln(l.out, "--- End verbose action summary ---")
+	writeLine(l.out, "--- Verbose action summary ---")
+	writeF(l.out, "files_read_count=%d\n", l.summary.FilesReadCount)
+	writeF(l.out, "external_requests_count=%d\n", l.summary.ExternalRequestsCount)
+	writeF(l.out, "external_domains=%s\n", strings.Join(domains, ","))
+	writeF(l.out, "write_modify_actions_count=%d\n", l.summary.WriteModifyCount)
+	writeF(l.out, "system_changing_actions_count=%d\n", l.summary.SystemChangingCount)
+	writeLine(l.out, "--- End verbose action summary ---")
 }
 
 func (l *Logger) track(classification, target string) {

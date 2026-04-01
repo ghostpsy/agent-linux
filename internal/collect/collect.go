@@ -43,6 +43,9 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	notifyStart("collect_host_users_summary")
 	hus, husErr := CollectHostUsersSummary()
 	notifyDone("collect_host_users_summary", len(hostUsersSample(hus)), husErr)
+	notifyStart("collect_host_ssh")
+	hs, hsErr := CollectHostSSH()
+	notifyDone("collect_host_ssh", hostSSHListenCount(hs), hsErr)
 	notifyStart("collect_packages_updates")
 	pu, puErr := CollectPackagesUpdates()
 	notifyDone("collect_packages_updates", packagesPendingUpdatesCount(pu), puErr)
@@ -74,6 +77,10 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 		hus = &payload.HostUsersSummary{}
 		hus.Error = husErr
 	}
+	if hs == nil && hsErr != "" {
+		hs = &payload.HostSSH{}
+		hs.Error = hsErr
+	}
 	if pu == nil && puErr != "" {
 		pu = &payload.PackagesUpdates{}
 		pu.Error = puErr
@@ -97,6 +104,7 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 		HostDisk:         hd,
 		HostNetwork:      hn,
 		HostUsersSummary: hus,
+		HostSSH:          hs,
 		PackagesUpdates:  pu,
 		HostBackup:       hb,
 		HostTime:         CollectHostTime(),
@@ -124,6 +132,13 @@ func hostUsersSample(hus *payload.HostUsersSummary) []payload.UserSample {
 		return nil
 	}
 	return hus.Sample
+}
+
+func hostSSHListenCount(hs *payload.HostSSH) int {
+	if hs == nil {
+		return 0
+	}
+	return len(hs.ListenAddresses)
 }
 
 func packagesPendingUpdatesCount(pu *payload.PackagesUpdates) int {

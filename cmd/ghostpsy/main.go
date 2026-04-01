@@ -185,6 +185,8 @@ func humanMessageForCollectionAction(action string) string {
 		return "Extracting mount points and disk usage from local filesystem metadata"
 	case "collect_host_users_summary":
 		return "Extracting user names, shell, UID and GID from /etc/passwd"
+	case "collect_host_ssh":
+		return "Extracting OpenSSH hardening settings from sshd configuration files"
 	case "collect_packages_updates":
 		return "Extracting available package updates from the system package manager"
 	case "collect_host_backup":
@@ -214,6 +216,8 @@ func humanDoneMessage(action string, items int) string {
 		return fmt.Sprintf("Done: extracted %d service entries.", items)
 	case "collect_packages_updates":
 		return fmt.Sprintf("Done: found %d pending package updates.", items)
+	case "collect_host_ssh":
+		return fmt.Sprintf("Done: extracted %d SSH listen address entries.", items)
 	case "collect_listeners":
 		return fmt.Sprintf("Done: extracted %d listening port entries.", items)
 	case "collect_firewall":

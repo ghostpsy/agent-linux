@@ -78,9 +78,13 @@ type HostTime struct {
 type HostSSH struct {
 	PermitRootLogin        string   `json:"permit_root_login,omitempty"`
 	PasswordAuthentication string   `json:"password_authentication,omitempty"`
-	KexAlgorithmsSample    string   `json:"kex_algorithms_sample,omitempty"`
-	CiphersSample          string   `json:"ciphers_sample,omitempty"`
+	ChallengeResponseAuth  string   `json:"challenge_response_auth,omitempty"`
+	KexAlgorithmsSample    []string `json:"kex_algorithms_sample,omitempty"`
+	CiphersSample          []string `json:"ciphers_sample,omitempty"`
 	ListenAddresses        []string `json:"listen_addresses,omitempty"`
+	MaxAuthTriesRecommended int     `json:"max_auth_tries_recommended,omitempty"`
+	// Error is set when sshd effective configuration could not be read.
+	Error string `json:"error,omitempty"`
 }
 
 type HostDisk struct {

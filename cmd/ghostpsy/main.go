@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"ghostpsy/agent-linux/internal/actionlog"
 	"ghostpsy/agent-linux/internal/collect"
 	"ghostpsy/agent-linux/internal/state"
 )
@@ -43,6 +44,10 @@ func usage() {
 Commands:
   scan       Register this host if needed, build payload, print JSON for review, optionally POST to API.
 
+Scan options:
+  --verbose  Print action-by-action runtime logs and a safety summary.
+  --dry-run  Build and print payload only (never POST).
+
 Environment:
   GHOSTPSY_API_URL   Base URL for ingest (default https://localhost:8000)
   GHOSTPSY_INGEST_TOKEN   Bearer token issued after claim bind (required to send)
@@ -50,7 +55,7 @@ Environment:
 `)
 }
 
-func ensureState() *state.AgentState {
+func ensureState(logger *actionlog.Logger) *state.AgentState {
 	st, err := state.Load()
 	if err == nil {
 		return st
@@ -62,6 +67,7 @@ func ensureState() *state.AgentState {
 		ClaimCode:   claim,
 		ScanSeq:     0,
 	}
+	logger.Step("local-modifying", "~/.config/ghostpsy/agent.json", "Initializing local agent identity file in ~/.config/ghostpsy/agent.json", nil)
 	if err := state.Save(s); err != nil {
 		fmt.Fprintf(os.Stderr, "save state: %v\n", err)
 		os.Exit(1)
@@ -77,12 +83,31 @@ func runScan() {
 	fs := flag.NewFlagSet("scan", flag.ExitOnError)
 	apiURL := fs.String("api", envOr("GHOSTPSY_API_URL", "http://127.0.0.1:8000"), "API base URL")
 	dry := fs.Bool("dry-run", false, "only print payload, do not POST")
+	verbose := fs.Bool("verbose", false, "print action-by-action runtime logs with safety summary")
 	_ = fs.Parse(os.Args[2:])
+	logger := actionlog.New(*verbose, os.Stdout)
+	defer logger.PrintSummary()
 
-	st := ensureState()
+	logger.Step("local-read-only", "~/.config/ghostpsy/agent.json", "Reading local agent state from ~/.config/ghostpsy/agent.json", nil)
+	st := ensureState(logger)
 	nextSeq := st.ScanSeq + 1
-	p := collect.Stub(st.MachineUUID, nextSeq)
+	logger.Step("local-compute", "payload.v1", "Building allowlisted inventory payload from local system data", map[string]string{"scan_seq": fmt.Sprintf("%d", nextSeq)})
+	p := collect.StubWithObserver(st.MachineUUID, nextSeq, func(event collect.ActionEvent) {
+		if event.Phase == "start" {
+			logger.Step("local-read-only", event.Action, humanMessageForCollectionAction(event.Action), nil)
+			return
+		}
+		if event.Error != "" {
+			logger.Note(humanDoneWarningMessage(event.Action, event.Items, event.Error), nil)
+			return
+		}
+		logger.Note(humanDoneMessage(event.Action, event.Items), nil)
+	})
+	logger.Step("local-compute", "payload.v1", "Preparing JSON payload preview before any network send", nil)
 	body, err := json.MarshalIndent(p, "", "  ")
+	if err == nil {
+		logger.Note("Payload prepared successfully", map[string]string{"payload_bytes": fmt.Sprintf("%d", len(body))})
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
 		os.Exit(1)
@@ -93,6 +118,7 @@ func runScan() {
 	fmt.Println("--- End payload ---")
 
 	if *dry {
+		logger.Note("Dry-run enabled: payload is NOT sent to the API", map[string]string{"external_send": "false"})
 		fmt.Println("(dry-run: not sending; scan_seq unchanged on disk)")
 		return
 	}
@@ -111,6 +137,7 @@ func runScan() {
 		os.Exit(1)
 	}
 
+	logger.Step("external-send", strings.TrimSuffix(*apiURL, "/")+"/v1/ingest", "Sending allowlisted payload to the ingest API endpoint", map[string]string{"authorization": "Bearer token", "content_type": "application/json"})
 	resp, err := postIngest(*apiURL, token, body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "post: %v\n", err)
@@ -123,6 +150,7 @@ func runScan() {
 		os.Exit(1)
 	}
 	st.ScanSeq = nextSeq
+	logger.Step("local-modifying", "~/.config/ghostpsy/agent.json", "Persisting updated scan sequence to local state file", map[string]string{"scan_seq": fmt.Sprintf("%d", st.ScanSeq)})
 	if err := state.Save(st); err != nil {
 		fmt.Fprintf(os.Stderr, "save state: %v\n", err)
 		os.Exit(1)
@@ -147,4 +175,66 @@ func postIngest(apiBaseURL, token string, body []byte) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	client := &http.Client{Timeout: 60 * time.Second}
 	return client.Do(req)
+}
+
+func humanMessageForCollectionAction(action string) string {
+	switch action {
+	case "collect_host_network":
+		return "Extracting network interfaces and public IP candidates from local network stack"
+	case "collect_host_disk":
+		return "Extracting mount points and disk usage from local filesystem metadata"
+	case "collect_host_users_summary":
+		return "Extracting user names, shell, UID and GID from /etc/passwd"
+	case "collect_packages_updates":
+		return "Extracting available package updates from the system package manager"
+	case "collect_host_backup":
+		return "Extracting backup schedule and status from local backup configuration"
+	case "collect_services":
+		return "Extracting enabled/active service states from systemd and init services"
+	case "collect_os_info":
+		return "Extracting operating system name, version and kernel information"
+	case "collect_firewall":
+		return "Extracting firewall rules and default policies from nftables/iptables"
+	case "collect_listeners":
+		return "Extracting listening ports and processes from local socket tables"
+	default:
+		return "Extracting allowlisted local system data"
+	}
+}
+
+func humanDoneMessage(action string, items int) string {
+	switch action {
+	case "collect_host_users_summary":
+		return fmt.Sprintf("Done: extracted %d user entries from /etc/passwd.", items)
+	case "collect_host_disk":
+		return fmt.Sprintf("Done: extracted %d filesystem usage entries.", items)
+	case "collect_host_network":
+		return fmt.Sprintf("Done: extracted %d network interface entries.", items)
+	case "collect_services":
+		return fmt.Sprintf("Done: extracted %d service entries.", items)
+	case "collect_packages_updates":
+		return fmt.Sprintf("Done: found %d pending package updates.", items)
+	case "collect_listeners":
+		return fmt.Sprintf("Done: extracted %d listening port entries.", items)
+	case "collect_firewall":
+		return fmt.Sprintf("Done: extracted %d firewall rule metrics.", items)
+	case "collect_host_backup":
+		if items == 0 {
+			return "Done: no backup tool detected on this host."
+		}
+		return fmt.Sprintf("Done: detected %d backup tools.", items)
+	case "collect_os_info":
+		return "Done: extracted operating system and kernel information."
+	default:
+		return fmt.Sprintf("Done: extracted %d entries.", items)
+	}
+}
+
+func humanDoneWarningMessage(action string, items int, errText string) string {
+	switch action {
+	case "collect_host_backup":
+		return fmt.Sprintf("Done with warning: no backup evidence detected (%s).", errText)
+	default:
+		return fmt.Sprintf("Done with warning: extracted %d entries, but encountered an issue (%s).", items, errText)
+	}
 }

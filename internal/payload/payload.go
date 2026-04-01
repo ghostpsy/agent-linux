@@ -19,7 +19,7 @@ type V1 struct {
 	HostBackup       *HostBackup       `json:"host_backup,omitempty"`
 	Firewall         *Firewall         `json:"firewall,omitempty"`
 	Services         ServicesBlock     `json:"services"`
-	AuditSections   []AuditSection   `json:"audit_sections,omitempty"`
+	AuditSections    []AuditSection    `json:"audit_sections,omitempty"`
 }
 
 type ServicesBlock struct {
@@ -54,12 +54,12 @@ const (
 )
 
 type Listener struct {
-	Port          int    `json:"port"`
-	Bind          string `json:"bind"`
-	Process       string `json:"process"`
-	BindScope     string `json:"bind_scope,omitempty"`
-	ExposureRisk  string `json:"exposure_risk,omitempty"`
-	FirewallRule  string `json:"firewall_rule,omitempty"`
+	Port         int    `json:"port"`
+	Bind         string `json:"bind"`
+	Process      string `json:"process"`
+	BindScope    string `json:"bind_scope,omitempty"`
+	ExposureRisk string `json:"exposure_risk,omitempty"`
+	FirewallRule string `json:"firewall_rule,omitempty"`
 	// LanFirewallRule is a best-effort INPUT classification for TCP reachability from LAN clients.
 	LanFirewallRule string `json:"lan_firewall_rule,omitempty"`
 	// WanFirewallRule is a best-effort INPUT classification for TCP reachability from WAN clients.
@@ -76,13 +76,13 @@ type HostTime struct {
 }
 
 type HostSSH struct {
-	PermitRootLogin        string   `json:"permit_root_login,omitempty"`
-	PasswordAuthentication string   `json:"password_authentication,omitempty"`
-	ChallengeResponseAuth  string   `json:"challenge_response_auth,omitempty"`
-	KexAlgorithmsSample    []string `json:"kex_algorithms_sample,omitempty"`
-	CiphersSample          []string `json:"ciphers_sample,omitempty"`
-	ListenAddresses        []string `json:"listen_addresses,omitempty"`
-	MaxAuthTriesRecommended int     `json:"max_auth_tries_recommended,omitempty"`
+	PermitRootLogin         string   `json:"permit_root_login,omitempty"`
+	PasswordAuthentication  string   `json:"password_authentication,omitempty"`
+	ChallengeResponseAuth   string   `json:"challenge_response_auth,omitempty"`
+	KexAlgorithmsSample     []string `json:"kex_algorithms_sample,omitempty"`
+	CiphersSample           []string `json:"ciphers_sample,omitempty"`
+	ListenAddresses         []string `json:"listen_addresses,omitempty"`
+	MaxAuthTriesRecommended int      `json:"max_auth_tries_recommended,omitempty"`
 	// Error is set when sshd effective configuration could not be read.
 	Error string `json:"error,omitempty"`
 }

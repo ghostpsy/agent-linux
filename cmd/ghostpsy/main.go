@@ -47,6 +47,7 @@ Commands:
 Scan options:
   --verbose  Print action-by-action runtime logs and a safety summary.
   --dry-run  Build and print payload only (never POST).
+  --save-payload <path>  Save the exact outbound JSON payload to a local file before optional POST.
 
 Environment:
   GHOSTPSY_API_URL   Base URL for ingest (default https://localhost:8000)
@@ -83,39 +84,25 @@ func runScan() {
 	fs := flag.NewFlagSet("scan", flag.ExitOnError)
 	apiURL := fs.String("api", envOr("GHOSTPSY_API_URL", "http://127.0.0.1:8000"), "API base URL")
 	dry := fs.Bool("dry-run", false, "only print payload, do not POST")
+	savePayloadPath := fs.String("save-payload", "", "write outbound payload JSON to this path before optional POST")
 	verbose := fs.Bool("verbose", false, "print action-by-action runtime logs with safety summary")
 	_ = fs.Parse(os.Args[2:])
 	logger := actionlog.New(*verbose, os.Stdout)
 	defer logger.PrintSummary()
 
-	logger.Step("local-read-only", "~/.config/ghostpsy/agent.json", "Reading local agent state from ~/.config/ghostpsy/agent.json", nil)
-	st := ensureState(logger)
-	nextSeq := st.ScanSeq + 1
-	logger.Step("local-compute", "payload.v1", "Building allowlisted inventory payload from local system data", map[string]string{"scan_seq": fmt.Sprintf("%d", nextSeq)})
-	p := collect.StubWithObserver(st.MachineUUID, nextSeq, func(event collect.ActionEvent) {
-		if event.Phase == "start" {
-			logger.Step("local-read-only", event.Action, humanMessageForCollectionAction(event.Action), nil)
-			return
-		}
-		if event.Error != "" {
-			logger.Note(humanDoneWarningMessage(event.Action, event.Items, event.Error), nil)
-			return
-		}
-		logger.Note(humanDoneMessage(event.Action, event.Items), nil)
-	})
-	logger.Step("local-compute", "payload.v1", "Preparing JSON payload preview before any network send", nil)
-	body, err := json.MarshalIndent(p, "", "  ")
-	if err == nil {
-		logger.Note("Payload prepared successfully", map[string]string{"payload_bytes": fmt.Sprintf("%d", len(body))})
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
-		os.Exit(1)
-	}
+	st, nextSeq, body := buildScanPayload(logger)
 
 	fmt.Println("--- Outbound payload (review before any send) ---")
 	fmt.Println(string(body))
 	fmt.Println("--- End payload ---")
+	if *savePayloadPath != "" {
+		if err := os.WriteFile(*savePayloadPath, body, 0o600); err != nil {
+			fmt.Fprintf(os.Stderr, "write payload: %v\n", err)
+			os.Exit(1)
+		}
+		logger.Note("Payload written to local file", map[string]string{"path": *savePayloadPath, "payload_bytes": fmt.Sprintf("%d", len(body)), "external_send": "false"})
+		fmt.Println("Saved outbound payload to:", *savePayloadPath)
+	}
 
 	if *dry {
 		logger.Note("Dry-run enabled: payload is NOT sent to the API", map[string]string{"external_send": "false"})
@@ -155,6 +142,34 @@ func runScan() {
 		fmt.Fprintf(os.Stderr, "save state: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func buildScanPayload(logger *actionlog.Logger) (*state.AgentState, int, []byte) {
+	logger.Step("local-read-only", "~/.config/ghostpsy/agent.json", "Reading local agent state from ~/.config/ghostpsy/agent.json", nil)
+	st := ensureState(logger)
+	nextSeq := st.ScanSeq + 1
+	logger.Step("local-compute", "payload.v1", "Building allowlisted inventory payload from local system data", map[string]string{"scan_seq": fmt.Sprintf("%d", nextSeq)})
+	p := collect.StubWithObserver(st.MachineUUID, nextSeq, func(event collect.ActionEvent) {
+		if event.Phase == "start" {
+			logger.Step("local-read-only", event.Action, humanMessageForCollectionAction(event.Action), nil)
+			return
+		}
+		if event.Error != "" {
+			logger.Note(humanDoneWarningMessage(event.Action, event.Items, event.Error), nil)
+			return
+		}
+		logger.Note(humanDoneMessage(event.Action, event.Items), nil)
+	})
+	logger.Step("local-compute", "payload.v1", "Preparing JSON payload preview before any network send", nil)
+	body, err := json.MarshalIndent(p, "", "  ")
+	if err == nil {
+		logger.Note("Payload prepared successfully", map[string]string{"payload_bytes": fmt.Sprintf("%d", len(body))})
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
+		os.Exit(1)
+	}
+	return st, nextSeq, body
 }
 
 func envOr(k, def string) string {

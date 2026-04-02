@@ -36,7 +36,7 @@ func isNologinShell(sh string) bool {
 
 type passwdEnt struct {
 	name, shell, home string
-	uid, gid           int
+	uid, gid          int
 }
 
 // CollectHostUsersSummary parses /etc/passwd for counts and a capped sample (no password material).

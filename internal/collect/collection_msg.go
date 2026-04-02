@@ -11,4 +11,3 @@ func collectionNote(detail string) string {
 	}
 	return collectionNoInfoPrefix + " " + detail
 }
-

@@ -70,9 +70,9 @@ func CollectHostBackup() *payload.HostBackup {
 		latestUTC = latest.UTC().Format(time.RFC3339)
 	}
 	result := &payload.HostBackup{
-		BackupStatus:   status,
+		BackupStatus:    status,
 		LatestBackupUTC: latestUTC,
-		ToolsDetected:  tools,
+		ToolsDetected:   tools,
 	}
 	if len(tools) == 0 {
 		result.ToolsDetected = nil

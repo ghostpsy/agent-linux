@@ -37,10 +37,10 @@ func CollectOSInfo() payload.OSInfo {
 	}
 
 	out := payload.OSInfo{
-		Pretty:               truncateRunes(pretty, 512),
-		Kernel:               truncateRunes(kernel, 512),
-		OSReleaseID:          strings.TrimSpace(rel.ID),
-		OSReleaseVersionID:   strings.TrimSpace(rel.VersionID),
+		Pretty:             truncateRunes(pretty, 512),
+		Kernel:             truncateRunes(kernel, 512),
+		OSReleaseID:        strings.TrimSpace(rel.ID),
+		OSReleaseVersionID: strings.TrimSpace(rel.VersionID),
 		OSReleaseVersion:   strings.TrimSpace(rel.Version),
 		OSReleaseName:      strings.TrimSpace(rel.Name),
 	}

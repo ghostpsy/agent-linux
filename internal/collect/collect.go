@@ -92,6 +92,18 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	notifyStart("collect_firewall")
 	fw := firewall.CollectFirewall()
 	notifyDone("collect_firewall", firewallRuleCount(fw), firewallError(fw))
+	notifyStart("collect_host_path")
+	hp := CollectHostPath()
+	notifyDone("collect_host_path", len(hp.Entries), hp.Error)
+	notifyStart("collect_host_suid")
+	hsuid := CollectHostSuid()
+	notifyDone("collect_host_suid", len(hsuid.Items), hsuid.Error)
+	notifyStart("collect_host_process")
+	hproc := CollectHostProcess()
+	notifyDone("collect_host_process", len(hproc.Top), hproc.Error)
+	notifyStart("collect_host_runtimes")
+	hr := CollectHostRuntimes()
+	notifyDone("collect_host_runtimes", len(hr.Items), hr.Error)
 	notifyStart("collect_listeners")
 	listeners := firewall.ApplyFirewallRuleToListeners(CollectListeners(hn), fw)
 	notifyDone("collect_listeners", len(listeners), "")
@@ -109,6 +121,10 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 		HostBackup:       hb,
 		HostTime:         CollectHostTime(),
 		Firewall:         fw,
+		HostPath:         hp,
+		HostSuid:         hsuid,
+		HostProcess:      hproc,
+		HostRuntimes:     hr,
 		Services:         servicesBlock,
 	}
 }

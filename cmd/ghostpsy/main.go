@@ -212,6 +212,14 @@ func humanMessageForCollectionAction(action string) string {
 		return "Extracting operating system name, version and kernel information"
 	case "collect_firewall":
 		return "Extracting firewall rules and default policies from nftables/iptables"
+	case "collect_host_path":
+		return "Extracting PATH directory entries and world-writable flags"
+	case "collect_host_suid":
+		return "Extracting a capped setuid binary inventory from standard locations"
+	case "collect_host_process":
+		return "Extracting top CPU and memory processes plus interpreter counts"
+	case "collect_host_runtimes":
+		return "Detecting installed language runtimes on PATH"
 	case "collect_listeners":
 		return "Extracting listening ports and processes from local socket tables"
 	default:
@@ -237,6 +245,14 @@ func humanDoneMessage(action string, items int) string {
 		return fmt.Sprintf("Done: extracted %d listening port entries.", items)
 	case "collect_firewall":
 		return fmt.Sprintf("Done: extracted %d firewall rule metrics.", items)
+	case "collect_host_path":
+		return fmt.Sprintf("Done: extracted %d PATH directory entries.", items)
+	case "collect_host_suid":
+		return fmt.Sprintf("Done: extracted %d setuid file entries.", items)
+	case "collect_host_process":
+		return fmt.Sprintf("Done: extracted %d top process entries.", items)
+	case "collect_host_runtimes":
+		return fmt.Sprintf("Done: detected %d language runtimes.", items)
 	case "collect_host_backup":
 		if items == 0 {
 			return "Done: no backup tool detected on this host."

@@ -18,6 +18,10 @@ type V1 struct {
 	PackagesUpdates  *PackagesUpdates  `json:"packages_updates,omitempty"`
 	HostBackup       *HostBackup       `json:"host_backup,omitempty"`
 	Firewall         *Firewall         `json:"firewall,omitempty"`
+	HostPath         *HostPath         `json:"host_path,omitempty"`
+	HostSuid         *HostSuid         `json:"host_suid,omitempty"`
+	HostProcess      *HostProcess      `json:"host_process,omitempty"`
+	HostRuntimes     *HostRuntimes     `json:"host_runtimes,omitempty"`
 	Services         ServicesBlock     `json:"services"`
 	AuditSections    []AuditSection    `json:"audit_sections,omitempty"`
 }
@@ -185,6 +189,71 @@ type FirewallManager struct {
 	Name      string `json:"name"`
 	Installed bool   `json:"installed"`
 	Active    bool   `json:"active"`
+}
+
+// HostPath lists PATH components with existence and world-writable flags (M1).
+type HostPath struct {
+	Entries []PathEntry `json:"entries"`
+	Error   string      `json:"error,omitempty"`
+}
+
+// PathEntry is one directory from $PATH (user-home entries are skipped).
+type PathEntry struct {
+	Path          string `json:"path"`
+	Exists        bool   `json:"exists"`
+	WorldWritable bool   `json:"world_writable"`
+}
+
+// HostSuid is a capped list of setuid binaries (M1).
+type HostSuid struct {
+	Items []SuidItem `json:"items"`
+	Error string     `json:"error,omitempty"`
+}
+
+// SuidItem is one setuid file with owner and permission bits (octal string).
+type SuidItem struct {
+	Path  string `json:"path"`
+	Owner string `json:"owner"`
+	Mode  string `json:"mode"`
+}
+
+// HostProcess is top processes plus interpreter / heuristic signals (M1).
+type HostProcess struct {
+	Top     []ProcessTopEntry `json:"top"`
+	Signals *ProcessSignals   `json:"signals,omitempty"`
+	Error   string            `json:"error,omitempty"`
+}
+
+// ProcessTopEntry is one process snapshot for top-CPU / top-RSS merge.
+type ProcessTopEntry struct {
+	Pid              int32   `json:"pid"`
+	Name             string  `json:"name"`
+	User             string  `json:"user"`
+	CpuPct           float64 `json:"cpu_pct"`
+	RssMb            float64 `json:"rss_mb"`
+	CmdlineTruncated string  `json:"cmdline_truncated"`
+}
+
+// ProcessSignals counts interpreter processes and heuristic “suspicious worker” hints.
+type ProcessSignals struct {
+	InterpreterPython  int `json:"interpreter_python,omitempty"`
+	InterpreterNode    int `json:"interpreter_node,omitempty"`
+	InterpreterJava    int `json:"interpreter_java,omitempty"`
+	UnknownHashWorkers int `json:"unknown_hash_workers,omitempty"`
+}
+
+// HostRuntimes lists detected language runtimes (capped, M1).
+type HostRuntimes struct {
+	Items []RuntimeEntry `json:"items"`
+	Error string         `json:"error,omitempty"`
+}
+
+// RuntimeEntry is one resolved interpreter runtime on PATH.
+type RuntimeEntry struct {
+	Kind       string `json:"kind"`
+	Version    string `json:"version"`
+	BinaryPath string `json:"binary_path"`
+	ManagedBy  string `json:"managed_by"`
 }
 
 // ServiceEntry is a single unit from the init system (systemd or sysvinit on Linux).

@@ -12,7 +12,7 @@ import (
 )
 
 // CollectOSInfo sends pretty/kernel, raw /etc/os-release fields, and gopsutil host.Info.
-// The API derives distro_id / distro_version_id / distro_name for EOL (see backend os_normalize).
+// The API derives distro_id / distro_version_id / distro_name for EOL (see backend src/ingest/os_normalize).
 func CollectOSInfo() payload.OSInfo {
 	rel := parseOSRelease()
 	hi, err := host.Info()

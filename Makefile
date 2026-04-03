@@ -1,7 +1,7 @@
 # Ghost Server Autopsy — Linux-only Go agent (module ghostpsy/agent-linux)
 # Run from this directory: make help
 
-.PHONY: help tidy build install clean test vet fmt run-help scan-dry scan
+.PHONY: help tidy build install clean test vet lint fmt run-help scan-dry scan
 
 GO       ?= go
 # Default off: links a static binary so builds on newer glibc (e.g. GitHub ubuntu-latest) still run on older distros.
@@ -23,6 +23,7 @@ help:
 	@echo "  make scan        go run $(CMD) scan (auto-registers on first run; needs token to POST)"
 	@echo "  make test        go test ./..."
 	@echo "  make vet         go vet ./..."
+	@echo "  make lint        golangci-lint run ./...  (install: https://golangci-lint.run/welcome/install/)"
 	@echo "  make fmt         go fmt ./..."
 	@echo "  make clean       rm -rf $(BIN_DIR)"
 
@@ -47,6 +48,9 @@ test:
 
 vet:
 	$(GO) vet ./...
+
+lint:
+	golangci-lint run ./...
 
 fmt:
 	$(GO) fmt ./...

@@ -178,8 +178,5 @@ func isJavaInterpreter(nameLower, cmdLower string) bool {
 		return true
 	}
 	t := strings.TrimSpace(cmdLower)
-	if strings.HasPrefix(t, "java ") {
-		return true
-	}
-	return false
+	return strings.HasPrefix(t, "java ")
 }

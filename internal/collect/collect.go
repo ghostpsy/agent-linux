@@ -87,7 +87,7 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	}
 
 	notifyStart("collect_os_info")
-	osInfo := CollectOSInfo()
+	osInfo, hostname := CollectOSInfo()
 	notifyDone("collect_os_info", nonEmptyOSInfoFields(osInfo), "")
 	notifyStart("collect_firewall")
 	fw := firewall.CollectFirewall()
@@ -111,6 +111,7 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 		SchemaVersion:    1,
 		MachineUUID:      machineUUID,
 		ScanSeq:          scanSeq,
+		Hostname:         hostname,
 		OS:               osInfo,
 		Listeners:        listeners,
 		HostDisk:         hd,

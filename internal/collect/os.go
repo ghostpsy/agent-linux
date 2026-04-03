@@ -11,9 +11,12 @@ import (
 	"ghostpsy/agent-linux/internal/payload"
 )
 
+const maxHostnameRunes = 253
+
 // CollectOSInfo sends pretty/kernel, raw /etc/os-release fields, and gopsutil host.Info.
 // The API derives distro_id / distro_version_id / distro_name for EOL (see backend src/ingest/os_normalize).
-func CollectOSInfo() payload.OSInfo {
+// The second return is the host name from host.Info (for dashboard titles), or "" if unavailable.
+func CollectOSInfo() (payload.OSInfo, string) {
 	rel := parseOSRelease()
 	hi, err := host.Info()
 	if err != nil {
@@ -21,8 +24,12 @@ func CollectOSInfo() payload.OSInfo {
 	}
 
 	var kernel string
+	var hostname string
 	if hi != nil {
 		kernel = strings.TrimSpace(hi.KernelVersion)
+		if h := strings.TrimSpace(hi.Hostname); h != "" {
+			hostname = truncateRunes(h, maxHostnameRunes)
+		}
 	}
 	if kernel == "" && err == nil {
 		slog.Warn("kernel version empty from gopsutil host.Info")
@@ -52,7 +59,7 @@ func CollectOSInfo() payload.OSInfo {
 			out.KernelArch = truncateRunes(ka, 64)
 		}
 	}
-	return out
+	return out, hostname
 }
 
 func platformPrettyFromHost(hi *host.InfoStat) string {

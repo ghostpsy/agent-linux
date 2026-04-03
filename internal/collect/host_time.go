@@ -55,6 +55,7 @@ func detectTimesyncDaemon() string {
 		unit, label string
 	}{
 		{"chronyd", "chrony"},
+		{"chrony", "chrony"},
 		{"systemd-timesyncd", "systemd-timesyncd"},
 		{"ntp", "ntp"},
 		{"ntpd", "ntp"},

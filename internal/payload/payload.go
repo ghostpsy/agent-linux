@@ -1,4 +1,4 @@
-// Package payload defines the v1 ingest envelope (mirrors ingest.v1.schema.json at repo root). There is no iptables block; use listeners[].firewall_rule.
+// Package payload defines the v1 ingest envelope (mirrors backend/ingest.v1.schema.json). There is no iptables block; use listeners[].firewall_rule.
 package payload
 
 import "time"
@@ -149,8 +149,9 @@ type PackagesUpdates struct {
 	Manager string `json:"manager,omitempty"`
 	// LastPackageIndexRefreshUTC is RFC3339 UTC: best-effort time package lists were last refreshed (e.g. apt) or RPM cache metadata.
 	LastPackageIndexRefreshUTC string `json:"last_package_index_refresh_utc,omitempty"`
-	PendingUpdatesCount        int    `json:"pending_updates_count,omitempty"`
-	SecurityUpdatesCount       int    `json:"security_updates_count,omitempty"`
+	// Counts are always JSON-encoded (including 0) so consumers can tell "none pending" from "unknown".
+	PendingUpdatesCount  int `json:"pending_updates_count"`
+	SecurityUpdatesCount int `json:"security_updates_count"`
 	// SecurityUpdatesSample is a capped list of package names that have security updates only.
 	SecurityUpdatesSample []string `json:"security_updates_sample,omitempty"`
 	// Error is set when no package manager could be used or output could not be collected.

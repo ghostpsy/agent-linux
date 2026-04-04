@@ -51,8 +51,8 @@ Scan options:
   --save-payload <path>  Save the exact outbound JSON payload to a local file before optional POST.
 
 Environment:
-  GHOSTPSY_API_URL   Base URL for ingest (default https://api.ghostpsy.com; override for local dev)
-  GHOSTPSY_INGEST_TOKEN   Bearer token issued after claim bind (required to send)
+  GHOSTPSY_API_URL   Base URL for Ghostpsy Cloud API (default https://api.ghostpsy.com; override for local dev)
+  GHOSTPSY_INGEST_TOKEN   Token from https://app.ghostpsy.com (required to send after you confirm)
 
 `)
 }

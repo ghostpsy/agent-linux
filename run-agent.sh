@@ -17,7 +17,7 @@ map_arch() {
   case "$(uname -m)" in
     x86_64) echo amd64 ;;
     aarch64 | arm64) echo arm64 ;;
-    i386 | i686) echo 386 ;;
+    i386 | i686) echo i386 ;;
     *)
       die "Unsupported CPU: $(uname -m). Supported: x86_64, aarch64/arm64, i386/i686."
       ;;
@@ -36,17 +36,14 @@ if ! curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: $UA" \
   -o "$release_json" \
   "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"; then
   echo >&2
-  echo "No GitHub Release found yet (or GitHub API unreachable)." >&2
-  echo "Download a binary from a successful workflow run instead:" >&2
-  echo "  https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/build.yml" >&2
-  echo "Open the latest run → Artifacts → ghostpsy-linux-${goarch} (and SHA256SUMS)." >&2
+  echo "Could not load the latest GitHub Release (none published yet or GitHub API unreachable)." >&2
+  echo "See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases for binaries and SHA256SUMS." >&2
   exit 1
 fi
 
-# Join response lines: GitHub returns minified JSON; macOS awk match() on dynamic ERE is unreliable — use bash [[ =~ ]].
 release_blob="$(tr -d '\n\r' < "$release_json")"
 if [[ "$release_blob" == *'"message"'*'rate_limit'* ]] || [[ "$release_blob" == *"API rate limit"* ]]; then
-  die "GitHub API rate limit — wait and retry, or download binaries from Actions: https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/build.yml"
+  die "GitHub API rate limit — wait and retry, or download from https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
 fi
 re_bin="https://github\\.com/${REPO_OWNER}/${REPO_NAME}/releases/download/[^\"]+/ghostpsy_[^\"]+_linux_${goarch}\""
 re_sums="https://github\\.com/${REPO_OWNER}/${REPO_NAME}/releases/download/[^\"]+/SHA256SUMS\""
@@ -54,6 +51,12 @@ bin_url=""
 sums_url=""
 if [[ "$release_blob" =~ $re_bin ]]; then
   bin_url="${BASH_REMATCH[0]%\"}"
+fi
+if [[ -z "$bin_url" && "$goarch" == "i386" ]]; then
+  re_legacy="https://github\\.com/${REPO_OWNER}/${REPO_NAME}/releases/download/[^\"]+/ghostpsy_[^\"]+_linux_386\""
+  if [[ "$release_blob" =~ $re_legacy ]]; then
+    bin_url="${BASH_REMATCH[0]%\"}"
+  fi
 fi
 if [[ "$release_blob" =~ $re_sums ]]; then
   sums_url="${BASH_REMATCH[0]%\"}"
@@ -64,7 +67,11 @@ fi
 bin_path="$tmpdir/ghostpsy"
 curl -fsSL -H "User-Agent: $UA" -o "$bin_path" "$bin_url"
 curl -fsSL -H "User-Agent: $UA" -o "$tmpdir/SHA256SUMS" "$sums_url"
-sum_line="$(grep "_linux_${goarch}" "$tmpdir/SHA256SUMS" | head -n 1 || true)"
+if [[ "$goarch" == "i386" ]]; then
+  sum_line="$(grep -E "_linux_(i386|386)" "$tmpdir/SHA256SUMS" | head -n 1 || true)"
+else
+  sum_line="$(grep "_linux_${goarch}" "$tmpdir/SHA256SUMS" | head -n 1 || true)"
+fi
 [[ -n "$sum_line" ]] || die "Could not find checksum line for linux/${goarch} in SHA256SUMS"
 read -r expected_hash expected_file <<<"$sum_line"
 if command -v sha256sum >/dev/null 2>&1; then
@@ -79,18 +86,53 @@ chmod +x "$bin_path"
 
 export GHOSTPSY_API_URL="https://api.ghostpsy.com"
 
+had_token_at_start=0
+[[ -n "${GHOSTPSY_INGEST_TOKEN-}" ]] && had_token_at_start=1
+
 if [[ -z "${GHOSTPSY_INGEST_TOKEN-}" ]]; then
   echo "" >&2
-  echo "Ingest token — get one from the Ghostpsy web app: sign in, then use **New ingest token**" >&2
-  echo "in the header. Copy it when shown; each token is valid for **one** successful upload." >&2
+  echo "Get a token: open https://app.ghostpsy.com in a browser, sign in, then create a token from the app header." >&2
+  echo "After you enter the token, this machine will be scanned and a JSON report will be shown. Nothing is sent to Ghostpsy Cloud until you confirm at the end; you can review the payload before that." >&2
   echo "" >&2
   if [[ ! -r /dev/tty ]]; then
-    die "Set GHOSTPSY_INGEST_TOKEN in the environment (stdin is not a TTY — e.g. curl|bash cannot prompt)."
+    die "Set GHOSTPSY_INGEST_TOKEN in the environment (no TTY to prompt — e.g. some piped or automated runs)."
   fi
-  read -r -s -p "Paste ingest token: " GHOSTPSY_INGEST_TOKEN </dev/tty || die "Could not read token from terminal."
+  read -r -s -p "Paste token: " GHOSTPSY_INGEST_TOKEN </dev/tty || die "Could not read token from terminal."
   echo "" >&2
-  [[ -n "${GHOSTPSY_INGEST_TOKEN// }" ]] || die "Ingest token is required."
+  [[ -n "${GHOSTPSY_INGEST_TOKEN// }" ]] || die "Token is required."
+fi
+
+# Verbose: on by default when the script prompts for the token ([Y/n] defaults to yes);
+# off by default when GHOSTPSY_INGEST_TOKEN was already set (set GHOSTPSY_VERBOSE=1 to enable).
+scan_args=(scan)
+if ((had_token_at_start)); then
+  case "${GHOSTPSY_VERBOSE:-}" in
+    1 | true | TRUE | yes | Yes | YES) scan_args+=(--verbose) ;;
+  esac
+else
+  if [[ "${GHOSTPSY_VERBOSE+x}" != x ]]; then
+    echo "" >&2
+    read -r -p "Enable verbose logging (step-by-step actions)? [Y/n]: " vline </dev/tty || vline=""
+    v="$(printf '%s' "$vline" | tr '[:upper:]' '[:lower:]')"
+    if [[ -z "${v// }" || "$v" == y* ]]; then
+      scan_args+=(--verbose)
+    fi
+  else
+    case "${GHOSTPSY_VERBOSE}" in
+      1 | true | TRUE | yes | Yes | YES | y | Y) scan_args+=(--verbose) ;;
+      0 | false | FALSE | no | No | NO | n | N) ;;
+      "")
+        echo "" >&2
+        read -r -p "Enable verbose logging (step-by-step actions)? [Y/n]: " vline </dev/tty || vline=""
+        v="$(printf '%s' "$vline" | tr '[:upper:]' '[:lower:]')"
+        if [[ -z "${v// }" || "$v" == y* ]]; then
+          scan_args+=(--verbose)
+        fi
+        ;;
+      *) die "Invalid GHOSTPSY_VERBOSE (use 1/true/yes or 0/false/no)." ;;
+    esac
+  fi
 fi
 
 export GHOSTPSY_INGEST_TOKEN
-exec "$bin_path" scan
+exec "$bin_path" "${scan_args[@]}"

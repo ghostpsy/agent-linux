@@ -14,7 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        goarch: [amd64, arm64, "386"]
+        include:
+          - goarch: amd64
+            out_suffix: amd64
+          - goarch: arm64
+            out_suffix: arm64
+          - goarch: "386"
+            out_suffix: i386
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: actions/setup-go@v6.4.0
@@ -31,11 +37,11 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           mkdir -p dist
-          OUT="dist/ghostpsy_${{ steps.meta.outputs.version }}_linux_${{ matrix.goarch }}"
+          OUT="dist/ghostpsy_${{ steps.meta.outputs.version }}_linux_${{ matrix.out_suffix }}"
           go build -trimpath -ldflags="-s -w" -o "$OUT" ./cmd/ghostpsy
       - uses: actions/upload-artifact@v7.0.0
         with:
-          name: ghostpsy-linux-${{ matrix.goarch }}
+          name: ghostpsy-linux-${{ matrix.out_suffix }}
           path: dist/ghostpsy_*
 
   release:

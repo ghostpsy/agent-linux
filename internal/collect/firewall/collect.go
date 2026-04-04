@@ -34,7 +34,7 @@ func CollectFirewall() *payload.Firewall {
 	fw := &payload.Firewall{Managers: collectFirewallManagers()}
 	if firewalldRunning() {
 		fw.Family = fwFirewalld
-		if m, _, err := collectIptablesMetrics(); err == nil {
+		if m, _, _, err := collectIptablesMetrics(); err == nil {
 			applyMetrics(fw, m)
 			return fw
 		}
@@ -45,9 +45,9 @@ func CollectFirewall() *payload.Firewall {
 		fw.Error = collectionNote("Firewall metrics could not be read (nftables and iptables).")
 		return fw
 	}
-	if ufwStatusActive() {
+	if ufwStatusActive() || ufwPersistedEnabled() {
 		fw.Family = fwUfw
-		if m, _, err := collectIptablesMetrics(); err == nil {
+		if m, _, _, err := collectIptablesMetrics(); err == nil {
 			applyMetrics(fw, m)
 			return fw
 		}
@@ -55,9 +55,13 @@ func CollectFirewall() *payload.Firewall {
 		return fw
 	}
 	// Prefer iptables when the CLI works: metrics match `iptables` / iptables-nft; pure nft-only hosts still use netlink below.
-	mIpt, iptChainCount, errIpt := collectIptablesMetrics()
+	mIpt, iptChainCount, iptablesIndicatesUfwBackend, errIpt := collectIptablesMetrics()
 	if errIpt == nil && (iptChainCount > 0 || mIpt.RuleCount > 0) {
-		fw.Family = fwIptables
+		if iptablesIndicatesUfwBackend {
+			fw.Family = fwUfw
+		} else {
+			fw.Family = fwIptables
+		}
 		applyMetrics(fw, mIpt)
 		return fw
 	}

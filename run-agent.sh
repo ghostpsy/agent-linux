@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download the latest GitHub Release binary for this machine, then run `ghostpsy scan`.
-# Requires: bash, curl, jq, sha256sum or shasum.
+# Requires: bash, curl, awk (POSIX), sha256sum or shasum.
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ map_arch() {
 }
 
 goarch="$(map_arch)"
-command -v jq >/dev/null 2>&1 || die "This script needs jq. Install: apt install jq, dnf install jq, brew install jq — https://jqlang.org/download/"
+command -v awk >/dev/null 2>&1 || die "awk is required (POSIX systems include it)."
 tmpdir="$(mktemp -d)"
 cleanup() {
   rm -rf "$tmpdir"
@@ -44,14 +44,34 @@ if ! curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: $UA" \
   exit 1
 fi
 
-bin_url="$(jq -r --arg arch "$goarch" '
-  .assets[]
-  | select((.name | startswith("ghostpsy_")) and (.name | endswith("_linux_" + $arch)))
-  | .browser_download_url
-  ' "$release_json" | head -n 1)"
-sums_url="$(jq -r '.assets[] | select(.name == "SHA256SUMS") | .browser_download_url' "$release_json" | head -n 1)"
-[[ -n "$bin_url" && "$bin_url" != "null" ]] || die "No binary asset for linux/${goarch} in latest release. See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
-[[ -n "$sums_url" && "$sums_url" != "null" ]] || die "SHA256SUMS missing in latest release."
+bin_url="$(awk -v arch="$goarch" '
+  grabbing && /^      "name": "/ { grabbing = 0 }
+  index($0, "\"name\": \"ghostpsy_") > 0 && index($0, "_linux_" arch "\"") > 0 {
+    grabbing = 1
+    next
+  }
+  grabbing && /"browser_download_url": "/ {
+    sub(/^.*"browser_download_url": "/, "")
+    sub(/".*$/, "")
+    print
+    exit
+  }
+' "$release_json")"
+sums_url="$(awk '
+  grabbing && /^      "name": "/ { grabbing = 0 }
+  index($0, "\"name\": \"SHA256SUMS\"") > 0 {
+    grabbing = 1
+    next
+  }
+  grabbing && /"browser_download_url": "/ {
+    sub(/^.*"browser_download_url": "/, "")
+    sub(/".*$/, "")
+    print
+    exit
+  }
+' "$release_json")"
+[[ -n "$bin_url" ]] || die "No binary asset for linux/${goarch} in latest release. See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+[[ -n "$sums_url" ]] || die "SHA256SUMS missing in latest release."
 
 bin_path="$tmpdir/ghostpsy"
 curl -fsSL -H "User-Agent: $UA" -o "$bin_path" "$bin_url"

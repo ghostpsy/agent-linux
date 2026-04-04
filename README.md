@@ -13,7 +13,7 @@ This downloads the correct **static** binary for your CPU (**amd64**, **arm64**,
 
 **1. Ingest token** — In the Ghostpsy web app, sign in and use **New ingest token** in the header. Copy the value when it appears; **each token works for one successful upload** only.
 
-**2. Run** (needs `bash`, `curl`, `python3`):
+**2. Run** (needs `bash`, `curl`, `jq`, and `sha256sum` or `shasum`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | bash

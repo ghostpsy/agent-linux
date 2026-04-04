@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download the latest GitHub Release binary for this machine, then run `ghostpsy scan`.
-# Requires: bash, curl, python3, chmod. Optional: sha256sum (or shasum) to verify checksums.
+# Requires: bash, curl, jq, sha256sum or shasum.
 
 set -euo pipefail
 
@@ -25,6 +25,7 @@ map_arch() {
 }
 
 goarch="$(map_arch)"
+command -v jq >/dev/null 2>&1 || die "This script needs jq. Install: apt install jq, dnf install jq, brew install jq — https://jqlang.org/download/"
 tmpdir="$(mktemp -d)"
 cleanup() {
   rm -rf "$tmpdir"
@@ -43,31 +44,14 @@ if ! curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: $UA" \
   exit 1
 fi
 
-read -r bin_url sums_url <<<"$(python3 << PY
-import json, sys
-goarch = "${goarch}"
-path = "${release_json}"
-with open(path, encoding="utf-8") as f:
-    data = json.load(f)
-assets = {a["name"]: a["browser_download_url"] for a in data.get("assets", [])}
-bin_name = next(
-    (
-        n
-        for n in assets
-        if n.startswith("ghostpsy_") and n.endswith(f"_linux_{goarch}") and not n.endswith(".asc")
-    ),
-    None,
-)
-if not bin_name:
-    print("no matching binary in latest release", file=sys.stderr)
-    sys.exit(1)
-sums = assets.get("SHA256SUMS")
-if not sums:
-    print("SHA256SUMS missing in release", file=sys.stderr)
-    sys.exit(1)
-print(assets[bin_name], sums)
-PY
-)" || die "Could not find a release asset for linux/${goarch}. See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+bin_url="$(jq -r --arg arch "$goarch" '
+  .assets[]
+  | select((.name | startswith("ghostpsy_")) and (.name | endswith("_linux_" + $arch)))
+  | .browser_download_url
+  ' "$release_json" | head -n 1)"
+sums_url="$(jq -r '.assets[] | select(.name == "SHA256SUMS") | .browser_download_url' "$release_json" | head -n 1)"
+[[ -n "$bin_url" && "$bin_url" != "null" ]] || die "No binary asset for linux/${goarch} in latest release. See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+[[ -n "$sums_url" && "$sums_url" != "null" ]] || die "SHA256SUMS missing in latest release."
 
 bin_path="$tmpdir/ghostpsy"
 curl -fsSL -H "User-Agent: $UA" -o "$bin_path" "$bin_url"

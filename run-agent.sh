@@ -44,30 +44,19 @@ if ! curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: $UA" \
   exit 1
 fi
 
-bin_url="$(awk -v arch="$goarch" '
-  grabbing && /^      "name": "/ { grabbing = 0 }
-  index($0, "\"name\": \"ghostpsy_") > 0 && index($0, "_linux_" arch "\"") > 0 {
-    grabbing = 1
-    next
-  }
-  grabbing && /"browser_download_url": "/ {
-    sub(/^.*"browser_download_url": "/, "")
-    sub(/".*$/, "")
-    print
-    exit
+# GitHub often returns minified JSON ("name":"…" with no space after ':'). Match download URLs directly.
+bin_url="$(awk -v arch="$goarch" -v o="$REPO_OWNER" -v r="$REPO_NAME" '
+  { buf = buf $0 }
+  END {
+    pat = "https://github\\.com/" o "/" r "/releases/download/[^\"]+/ghostpsy_[^\"]+_linux_" arch "\""
+    if (match(buf, pat)) print substr(buf, RSTART, RLENGTH - 1)
   }
 ' "$release_json")"
-sums_url="$(awk '
-  grabbing && /^      "name": "/ { grabbing = 0 }
-  index($0, "\"name\": \"SHA256SUMS\"") > 0 {
-    grabbing = 1
-    next
-  }
-  grabbing && /"browser_download_url": "/ {
-    sub(/^.*"browser_download_url": "/, "")
-    sub(/".*$/, "")
-    print
-    exit
+sums_url="$(awk -v o="$REPO_OWNER" -v r="$REPO_NAME" '
+  { buf = buf $0 }
+  END {
+    pat = "https://github\\.com/" o "/" r "/releases/download/[^\"]+/SHA256SUMS\""
+    if (match(buf, pat)) print substr(buf, RSTART, RLENGTH - 1)
   }
 ' "$release_json")"
 [[ -n "$bin_url" ]] || die "No binary asset for linux/${goarch} in latest release. See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"

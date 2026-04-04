@@ -10,7 +10,7 @@ import (
 
 	"github.com/beevik/ntp"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const ntpPoolServer = "0.pool.ntp.org"

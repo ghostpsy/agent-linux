@@ -1,4 +1,4 @@
-module ghostpsy/agent-linux
+module github.com/ghostpsy/agent-linux
 
 go 1.24.6
 

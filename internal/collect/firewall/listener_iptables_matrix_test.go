@@ -5,7 +5,7 @@ package firewall
 import (
 	"testing"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 // Matrix: default INPUT policy × filter rules → classifyFromIptablesInputLines. IPv6 uses ip6tables; IPv4 uses iptables.

@@ -17,7 +17,7 @@ import (
 
 	"github.com/coreos/go-systemd/v22/dbus"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const maxServices = 256

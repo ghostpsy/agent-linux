@@ -3,8 +3,8 @@
 package collect
 
 import (
-	"ghostpsy/agent-linux/internal/collect/firewall"
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/collect/firewall"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 type ActionEventObserver func(event ActionEvent)

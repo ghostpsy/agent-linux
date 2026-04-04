@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const maxUserSample = 50

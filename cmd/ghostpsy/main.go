@@ -16,9 +16,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"ghostpsy/agent-linux/internal/actionlog"
-	"ghostpsy/agent-linux/internal/collect"
-	"ghostpsy/agent-linux/internal/state"
+	"github.com/ghostpsy/agent-linux/internal/actionlog"
+	"github.com/ghostpsy/agent-linux/internal/collect"
+	"github.com/ghostpsy/agent-linux/internal/state"
 )
 
 func main() {

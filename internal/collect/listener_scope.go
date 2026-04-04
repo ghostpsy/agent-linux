@@ -6,7 +6,7 @@ import (
 	"net"
 	"strings"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const (

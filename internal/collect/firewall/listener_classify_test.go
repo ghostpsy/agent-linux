@@ -5,7 +5,7 @@ package firewall
 import (
 	"testing"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 // IPv6 listeners read ip6tables; IPv4 listeners read iptables. Applying rules to only one stack (e.g. Makefile

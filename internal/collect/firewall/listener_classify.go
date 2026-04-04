@@ -8,7 +8,7 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 // ApplyFirewallRuleToListeners sets listener.firewall_rule using iptables INPUT (preferred) or

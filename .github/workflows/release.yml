@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64, "386"]
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Build
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          OUT="dist/ghostpsy_${{ steps.meta.outputs.version }}_linux_${{ matrix.goarch }}"
+          go build -trimpath -ldflags="-s -w" -o "$OUT" ./cmd/ghostpsy
+      - uses: actions/upload-artifact@v7.0.0
+        with:
+          name: ghostpsy-linux-${{ matrix.goarch }}
+          path: dist/ghostpsy_*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v6.0.0
+        with:
+          pattern: ghostpsy-linux-*
+          path: release-assets
+          merge-multiple: true
+      - name: SHA256SUMS
+        run: |
+          cd release-assets && sha256sum ghostpsy_* | tee SHA256SUMS
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2.2.2
+        with:
+          files: |
+            release-assets/ghostpsy_*
+            release-assets/SHA256SUMS
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

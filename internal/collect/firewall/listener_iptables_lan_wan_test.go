@@ -5,7 +5,7 @@ package firewall
 import (
 	"testing"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 func TestClassifyFromIptablesInputLinesLanWan(t *testing.T) {

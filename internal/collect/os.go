@@ -8,7 +8,7 @@ import (
 
 	"github.com/shirou/gopsutil/v4/host"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const maxHostnameRunes = 253

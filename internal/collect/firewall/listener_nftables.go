@@ -10,7 +10,7 @@ import (
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 var errNoNftInputChain = errors.New("nft: no filter INPUT chain")

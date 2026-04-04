@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const maxSuidItems = 64

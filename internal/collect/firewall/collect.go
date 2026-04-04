@@ -2,7 +2,7 @@
 
 package firewall
 
-import "ghostpsy/agent-linux/internal/payload"
+import "github.com/ghostpsy/agent-linux/internal/payload"
 
 const collectionNoInfoPrefix = "No information extracted."
 

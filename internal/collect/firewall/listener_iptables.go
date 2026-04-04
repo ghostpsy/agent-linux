@@ -9,7 +9,7 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 // readIptablesInputState returns INPUT default policy and filter-table rules used for listener classification

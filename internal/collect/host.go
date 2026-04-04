@@ -11,7 +11,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 	gopsutilnet "github.com/shirou/gopsutil/v4/net"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const maxDiskFilesystems = 48

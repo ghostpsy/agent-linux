@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 // collectPackagesUpdatesRPM uses dnf or yum check-update (and --security) with English locale.

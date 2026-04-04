@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 type backupTool struct {

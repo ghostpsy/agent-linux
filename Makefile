@@ -1,4 +1,4 @@
-# Ghost Server Autopsy — Linux-only Go agent (module ghostpsy/agent-linux)
+# Ghost Server Autopsy — Linux-only Go agent (module github.com/ghostpsy/agent-linux)
 # Run from this directory: make help
 
 .PHONY: help tidy build install clean test vet lint fmt run-help scan-dry scan

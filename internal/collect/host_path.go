@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const maxPathEntries = 64

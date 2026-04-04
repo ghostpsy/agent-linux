@@ -11,7 +11,7 @@ import (
 	gopsutilnet "github.com/shirou/gopsutil/v4/net"
 	gopsutilproc "github.com/shirou/gopsutil/v4/process"
 
-	"ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const maxListeners = 256

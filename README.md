@@ -3,31 +3,69 @@
 [![Build Linux agent](https://github.com/ghostpsy/agent-linux/actions/workflows/build.yml/badge.svg)](https://github.com/ghostpsy/agent-linux/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**Open-source** Go agent for [Ghost Server Autopsy](https://github.com/edyan/ghostpsy): it collects an **allowlisted** snapshot of a Linux host (OS, listeners, packages, SSH posture, time skew hints, and more), lets the operator **preview the JSON payload**, then posts it to your Ghostpsy API with a **one-time ingest token**.
+**Open-source** Go agent for **Ghostpsy**: it collects an **allowlisted** snapshot of a Linux host (OS, listeners, packages, SSH posture, time skew hints, and more), shows a **full JSON preview**, then posts to your Ghostpsy API with a **one-time ingest token**.
 
-You can read every line of collector code here before you run the binary on production servers.
+You can audit every collector under `internal/collect/` before you run the binary.
+
+## Run the latest release (recommended)
+
+This downloads the correct **static** binary for your CPU (**amd64**, **arm64**, or **386**), checks it against **SHA256SUMS** from the same [GitHub Release](https://github.com/ghostpsy/agent-linux/releases/latest), then starts an interactive `scan`.
+
+**1. Ingest token** — In the Ghostpsy web app, sign in and use **New ingest token** in the header. Copy the value when it appears; **each token works for one successful upload** only.
+
+**2. Run** (needs `bash`, `curl`, `python3`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | bash
+```
+
+Or clone the repo and run `./run-agent.sh`.
+
+The script asks for your **API base URL** (for example `https://app.example.com`) and the **ingest token** if they are not already set in the environment:
+
+| Variable | Purpose |
+|----------|---------|
+| `GHOSTPSY_API_URL` | Base URL of the Ghostpsy API |
+| `GHOSTPSY_INGEST_TOKEN` | Bearer token for `POST /v1/ingest` |
+
+Example without prompts:
+
+```bash
+export GHOSTPSY_API_URL="https://app.example.com"
+export GHOSTPSY_INGEST_TOKEN="your-one-time-token"
+curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | bash
+```
+
+**If there is no Release yet** (or the API call fails), the script prints a link to the [Build workflow](https://github.com/ghostpsy/agent-linux/actions/workflows/build.yml): open the latest successful run → **Artifacts** → download `ghostpsy-linux-<arch>` and `SHA256SUMS`, verify with `sha256sum -c SHA256SUMS`, then run the binary with the same env vars and `ghostpsy scan`.
+
+## Prebuilt binaries and Releases
+
+- **Releases** — Versioned binaries and `SHA256SUMS` are attached to [GitHub Releases](https://github.com/ghostpsy/agent-linux/releases) when a maintainer pushes a version tag such as `v0.1.0` (see [release workflow](.github/workflows/release.yml)).
+- **CI artifacts** — Every push to `main` and each pull request also produces per-arch artifacts in the [Build Linux agent](https://github.com/ghostpsy/agent-linux/actions/workflows/build.yml) workflow runs (`ghostpsy-linux-amd64`, `ghostpsy-linux-arm64`, `ghostpsy-linux-386`, plus **SHA256SUMS**).
+
+Binaries are built with `CGO_ENABLED=0` (static; no glibc version lock-in to the build machine).
 
 ## Why open source
 
-- **Trust:** Security and ops teams can audit what runs on the box.
-- **Reproducible builds:** CI publishes static Linux binaries for **amd64**, **arm64**, and **386** with checksums.
-- **No hidden behavior:** Collection scope is implemented in `internal/collect/` against a versioned ingest contract (`ingest.v1` in the main Ghostpsy repo).
+- **Trust:** Security and ops teams can read what runs on the server.
+- **Reproducible builds:** CI builds **linux/amd64**, **linux/arm64**, and **linux/386** with published checksums.
+- **Clear scope:** Collectors target the **ingest v1** contract (JSON shape aligned with the Ghostpsy product).
 
 ## What it does (and does not do)
 
 | Does | Does not |
 |------|----------|
-| Reads local OS metadata, listeners, firewall hints, package update summaries, selected host facts | Run continuously as a daemon (one-shot `scan` by default) |
-| Shows a **full outbound JSON preview**; send only after explicit confirmation | Send data without confirmation when using interactive `scan` |
-| Uses **HTTPS** to your configured API URL | Store your ingest token in this repository |
+| Reads local OS metadata, listeners, firewall hints, package update summaries, selected host facts | Run as a long-lived daemon (one-shot `scan` by default) |
+| Shows a **full outbound JSON preview**; send only after you confirm | Send without confirmation in interactive `scan` |
+| Uses **HTTPS** to your API | Store your ingest token in this repository |
 
 ## Requirements
 
-- **OS:** Linux (the codebase is Linux-only; `GOOS=linux` in CI and release builds).
-- **API:** A Ghostpsy backend that exposes `POST /v1/ingest` and issues **ingest bearer tokens** from the dashboard or CLI (see main product docs).
-- **Permissions:** Some collectors inspect networking and systemd; running as **root** matches typical server audit expectations.
+- **OS:** Linux only (`GOOS=linux` in release builds).
+- **API:** A Ghostpsy deployment with `POST /v1/ingest` and dashboard- or CLI-minted ingest tokens.
+- **Permissions:** Some collectors need elevated access; **root** is typical for server audits.
 
-## Quick start (from source)
+## Build from source
 
 ```bash
 git clone https://github.com/ghostpsy/agent-linux.git
@@ -38,37 +76,9 @@ make build
 ./bin/ghostpsy scan -dry-run
 ```
 
-Set `GHOSTPSY_API_URL` and `GHOSTPSY_INGEST_TOKEN` (or your deployment’s equivalents) when you run a real `scan`.
-
-## Prebuilt binaries
-
-1. **GitHub Actions** — On each push to `main` and on pull requests, the [Build Linux agent](https://github.com/ghostpsy/agent-linux/actions/workflows/build.yml) workflow uploads per-arch artifacts (`ghostpsy-linux-amd64`, `ghostpsy-linux-arm64`, `ghostpsy-linux-386`) plus **SHA256SUMS**.
-2. **Releases** — Tag `v*` (example: `v0.1.0`) to trigger a [Release](https://github.com/ghostpsy/agent-linux/actions/workflows/release.yml) that attaches the same binaries and `SHA256SUMS` to the GitHub release.
-
-Verify after download:
-
-```bash
-sha256sum -c SHA256SUMS
-chmod +x ghostpsy_*_linux_amd64   # or arm64 / 386
-./ghostpsy_*_linux_amd64 help
-```
-
-Binaries are built with `CGO_ENABLED=0` (static; suitable for older glibc userspace).
-
-## Configuration (environment)
-
-| Variable | Purpose |
-|----------|---------|
-| `GHOSTPSY_API_URL` | Base URL of the Ghostpsy API (e.g. `https://app.example.com`) |
-| `GHOSTPSY_INGEST_TOKEN` | Bearer token for `POST /v1/ingest` |
-
-Exact behavior of pairing and tokens is documented in the main Ghostpsy repository (`docs/`).
-
 ## Module path
 
 Go module: **`github.com/ghostpsy/agent-linux`**
-
-The [Ghostpsy monorepo](https://github.com/edyan/ghostpsy) vendors this tree as a **git submodule** at `agent-linux/` so Docker, CI, and local dev stay aligned.
 
 ## License
 

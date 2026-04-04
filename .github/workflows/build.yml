@@ -51,9 +51,11 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           VERSION=$(tr -d '[:space:]' < VERSION)
+          RELEASE_DATE=$(date -u +%Y-%m-%d)
+          VP="github.com/ghostpsy/agent-linux/internal/version"
           mkdir -p dist
           OUT="dist/ghostpsy_${VERSION}_linux_${{ matrix.out_suffix }}"
-          go build -trimpath -ldflags="-s -w" -o "$OUT" ./cmd/ghostpsy
+          go build -trimpath -ldflags="-s -w -X ${VP}.Version=${VERSION} -X ${VP}.ReleaseDate=${RELEASE_DATE}" -o "$OUT" ./cmd/ghostpsy
       - name: Verify static binary (amd64)
         if: matrix.goarch == 'amd64'
         run: |

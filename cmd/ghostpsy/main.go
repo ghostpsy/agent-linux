@@ -20,6 +20,7 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/actionlog"
 	"github.com/ghostpsy/agent-linux/internal/collect"
 	"github.com/ghostpsy/agent-linux/internal/state"
+	"github.com/ghostpsy/agent-linux/internal/version"
 )
 
 func main() {
@@ -30,6 +31,8 @@ func main() {
 	switch os.Args[1] {
 	case "scan":
 		runScan()
+	case "version", "-v", "--version":
+		fmt.Println(version.Summary())
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -44,6 +47,7 @@ func usage() {
 
 Commands:
   scan       Register this host if needed, build payload, print JSON for review, optionally POST to API.
+  version    Print version, release date (build), and architecture.
 
 Scan options:
   --verbose  Print action-by-action runtime logs and a safety summary.

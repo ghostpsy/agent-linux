@@ -23,18 +23,16 @@ curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent
 
 Or clone the repo and run `./run-agent.sh`.
 
-If `GHOSTPSY_API_URL` is unset, the script uses **`https://api.ghostpsy.com`**. It still asks for the **ingest token** when `GHOSTPSY_INGEST_TOKEN` is unset:
+`run-agent.sh` always sets the API base URL to **`https://api.ghostpsy.com`** (not overridable). It asks for the **ingest token** when `GHOSTPSY_INGEST_TOKEN` is unset:
 
 | Variable | Purpose |
 |----------|---------|
-| `GHOSTPSY_API_URL` | Base URL of the Ghostpsy API (default: `https://api.ghostpsy.com`) |
-| `GHOSTPSY_INGEST_TOKEN` | Bearer token for `POST /v1/ingest` |
+| `GHOSTPSY_INGEST_TOKEN` | Bearer token for `POST /v1/ingest` (set in the environment, or paste when prompted) |
 
-Example without prompts:
+Example without token prompt:
 
 ```bash
 export GHOSTPSY_INGEST_TOKEN="your-one-time-token"
-# Optional: export GHOSTPSY_API_URL="https://api.ghostpsy.com"  # same as default if omitted
 curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | bash
 ```
 

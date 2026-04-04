@@ -62,6 +62,11 @@ func ensureState(logger *actionlog.Logger) *state.AgentState {
 		return st
 	}
 	mid := uuid.NewString()
+	midSource := "random"
+	if osMid, ok := state.MachineUUIDFromOS(); ok {
+		mid = osMid
+		midSource = "OS machine-id (/etc/machine-id or /var/lib/dbus/machine-id)"
+	}
 	claim := strings.ToUpper(uuid.NewString()[:8])
 	s := &state.AgentState{
 		MachineUUID: mid,
@@ -74,7 +79,7 @@ func ensureState(logger *actionlog.Logger) *state.AgentState {
 		os.Exit(1)
 	}
 	fmt.Println("First run: registered this host.")
-	fmt.Println("Machine UUID:", mid)
+	fmt.Println("Machine UUID:", mid, "("+midSource+")")
 	fmt.Println("Claim code (paste in dashboard while logged in):", claim)
 	fmt.Println("State file: ~/.config/ghostpsy/agent.json")
 	return s

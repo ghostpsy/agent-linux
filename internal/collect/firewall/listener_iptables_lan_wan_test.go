@@ -11,13 +11,13 @@ import (
 func TestClassifyFromIptablesInputLinesLanWan(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name        string
-		policy      string
-		lines       []string
-		port        int
-		bindLoop    bool
-		wantLan     string
-		wantWan     string
+		name     string
+		policy   string
+		lines    []string
+		port     int
+		bindLoop bool
+		wantLan  string
+		wantWan  string
 	}{
 		{
 			name:     "drop_no_rules",

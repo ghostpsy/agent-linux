@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"flag"
@@ -116,8 +117,11 @@ func runScan() {
 	}
 
 	fmt.Print("Send this payload to API? [y/N]: ")
-	var line string
-	_, _ = fmt.Scanln(&line)
+	line, err := readConfirmLine()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read confirm: %v\n", err)
+		os.Exit(1)
+	}
 	if strings.TrimSpace(strings.ToLower(line)) != "y" {
 		fmt.Println("Aborted.")
 		os.Exit(0)
@@ -182,6 +186,27 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// readConfirmLine reads one line for [y/N] prompts. Uses /dev/tty when stdin is not the terminal
+// (e.g. ghostpsy started from a shell script whose stdin is a pipe).
+func readConfirmLine() (string, error) {
+	ttyIn, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		var line string
+		_, scanErr := fmt.Scanln(&line)
+		if scanErr != nil && scanErr != io.EOF {
+			return "", scanErr
+		}
+		return strings.TrimSpace(line), nil
+	}
+	defer func() { _ = ttyIn.Close() }()
+	br := bufio.NewReader(ttyIn)
+	line, err := br.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	return strings.TrimSpace(line), nil
 }
 
 // postIngest POSTs JSON to {apiBaseURL}/v1/ingest with a Bearer token.

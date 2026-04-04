@@ -7,6 +7,7 @@ set -euo pipefail
 REPO_OWNER="ghostpsy"
 REPO_NAME="agent-linux"
 UA="ghostpsy-agent-run-script/1.0"
+DEFAULT_GHOSTPSY_API_URL="https://api.ghostpsy.com"
 
 die() {
   echo "Error: $*" >&2
@@ -77,9 +78,8 @@ fi
 [[ "$actual_hash" == "$expected_hash" ]] || die "Checksum mismatch for ${expected_file}"
 chmod +x "$bin_path"
 
-if [[ -z "${GHOSTPSY_API_URL:-}" ]]; then
-  read -r -p "Ghostpsy API base URL (example: https://app.yourcompany.com): " GHOSTPSY_API_URL
-  [[ -n "${GHOSTPSY_API_URL// }" ]] || die "API URL is required."
+if [[ -z "${GHOSTPSY_API_URL// }" ]]; then
+  GHOSTPSY_API_URL="$DEFAULT_GHOSTPSY_API_URL"
 fi
 
 if [[ -z "${GHOSTPSY_INGEST_TOKEN:-}" ]]; then

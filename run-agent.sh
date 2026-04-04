@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download the latest GitHub Release binary for this machine, then run `ghostpsy scan`.
-# Requires: bash, curl, awk (POSIX), sha256sum or shasum.
+# Requires: bash, curl, sha256sum or shasum. (Do not run with `sh`; use `bash run-agent.sh` or `./run-agent.sh`.)
 
 set -euo pipefail
 
@@ -25,7 +25,6 @@ map_arch() {
 }
 
 goarch="$(map_arch)"
-command -v awk >/dev/null 2>&1 || die "awk is required (POSIX systems include it)."
 tmpdir="$(mktemp -d)"
 cleanup() {
   rm -rf "$tmpdir"
@@ -44,22 +43,22 @@ if ! curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: $UA" \
   exit 1
 fi
 
-# GitHub often returns minified JSON ("name":"…" with no space after ':'). Match download URLs directly.
-bin_url="$(awk -v arch="$goarch" -v o="$REPO_OWNER" -v r="$REPO_NAME" '
-  { buf = buf $0 }
-  END {
-    pat = "https://github\\.com/" o "/" r "/releases/download/[^\"]+/ghostpsy_[^\"]+_linux_" arch "\""
-    if (match(buf, pat)) print substr(buf, RSTART, RLENGTH - 1)
-  }
-' "$release_json")"
-sums_url="$(awk -v o="$REPO_OWNER" -v r="$REPO_NAME" '
-  { buf = buf $0 }
-  END {
-    pat = "https://github\\.com/" o "/" r "/releases/download/[^\"]+/SHA256SUMS\""
-    if (match(buf, pat)) print substr(buf, RSTART, RLENGTH - 1)
-  }
-' "$release_json")"
-[[ -n "$bin_url" ]] || die "No binary asset for linux/${goarch} in latest release. See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+# Join response lines: GitHub returns minified JSON; macOS awk match() on dynamic ERE is unreliable — use bash [[ =~ ]].
+release_blob="$(tr -d '\n\r' < "$release_json")"
+if [[ "$release_blob" == *'"message"'*'rate_limit'* ]] || [[ "$release_blob" == *"API rate limit"* ]]; then
+  die "GitHub API rate limit — wait and retry, or download binaries from Actions: https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/build.yml"
+fi
+re_bin="https://github\\.com/${REPO_OWNER}/${REPO_NAME}/releases/download/[^\"]+/ghostpsy_[^\"]+_linux_${goarch}\""
+re_sums="https://github\\.com/${REPO_OWNER}/${REPO_NAME}/releases/download/[^\"]+/SHA256SUMS\""
+bin_url=""
+sums_url=""
+if [[ "$release_blob" =~ $re_bin ]]; then
+  bin_url="${BASH_REMATCH[0]%\"}"
+fi
+if [[ "$release_blob" =~ $re_sums ]]; then
+  sums_url="${BASH_REMATCH[0]%\"}"
+fi
+[[ -n "$bin_url" ]] || die "No binary asset for linux/${goarch} in latest release (or unexpected API JSON). See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
 [[ -n "$sums_url" ]] || die "SHA256SUMS missing in latest release."
 
 bin_path="$tmpdir/ghostpsy"
@@ -69,9 +68,9 @@ sum_line="$(grep "_linux_${goarch}" "$tmpdir/SHA256SUMS" | head -n 1 || true)"
 [[ -n "$sum_line" ]] || die "Could not find checksum line for linux/${goarch} in SHA256SUMS"
 read -r expected_hash expected_file <<<"$sum_line"
 if command -v sha256sum >/dev/null 2>&1; then
-  actual_hash="$(sha256sum "$bin_path" | awk '{print $1}')"
+  read -r actual_hash _ <<<"$(sha256sum "$bin_path")"
 elif command -v shasum >/dev/null 2>&1; then
-  actual_hash="$(shasum -a 256 "$bin_path" | awk '{print $1}')"
+  read -r actual_hash _ <<<"$(shasum -a 256 "$bin_path")"
 else
   die "Need sha256sum or shasum to verify the download."
 fi

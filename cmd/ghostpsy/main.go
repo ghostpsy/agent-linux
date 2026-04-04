@@ -50,7 +50,7 @@ Scan options:
   --save-payload <path>  Save the exact outbound JSON payload to a local file before optional POST.
 
 Environment:
-  GHOSTPSY_API_URL   Base URL for ingest (default https://localhost:8000)
+  GHOSTPSY_API_URL   Base URL for ingest (default https://api.ghostpsy.com; override for local dev)
   GHOSTPSY_INGEST_TOKEN   Bearer token issued after claim bind (required to send)
 
 `)
@@ -87,7 +87,7 @@ func ensureState(logger *actionlog.Logger) *state.AgentState {
 
 func runScan() {
 	fs := flag.NewFlagSet("scan", flag.ExitOnError)
-	apiURL := fs.String("api", envOr("GHOSTPSY_API_URL", "http://127.0.0.1:8000"), "API base URL")
+	apiURL := fs.String("api", envOr("GHOSTPSY_API_URL", "https://api.ghostpsy.com"), "API base URL")
 	dry := fs.Bool("dry-run", false, "only print payload, do not POST")
 	savePayloadPath := fs.String("save-payload", "", "write outbound payload JSON to this path before optional POST")
 	verbose := fs.Bool("verbose", false, "print action-by-action runtime logs with safety summary")

@@ -78,17 +78,23 @@ fi
 [[ "$actual_hash" == "$expected_hash" ]] || die "Checksum mismatch for ${expected_file}"
 chmod +x "$bin_path"
 
-if [[ -z "${GHOSTPSY_API_URL// }" ]]; then
+api_in="${GHOSTPSY_API_URL-}"
+if [[ -z "${api_in// }" ]]; then
   GHOSTPSY_API_URL="$DEFAULT_GHOSTPSY_API_URL"
+else
+  GHOSTPSY_API_URL="$api_in"
 fi
 
-if [[ -z "${GHOSTPSY_INGEST_TOKEN:-}" ]]; then
-  echo ""
-  echo "Ingest token — get one from the Ghostpsy web app: sign in, then use **New ingest token**"
-  echo "in the header. Copy it when shown; each token is valid for **one** successful upload."
-  echo ""
-  read -r -s -p "Paste ingest token: " GHOSTPSY_INGEST_TOKEN
-  echo ""
+if [[ -z "${GHOSTPSY_INGEST_TOKEN-}" ]]; then
+  echo "" >&2
+  echo "Ingest token — get one from the Ghostpsy web app: sign in, then use **New ingest token**" >&2
+  echo "in the header. Copy it when shown; each token is valid for **one** successful upload." >&2
+  echo "" >&2
+  if [[ ! -r /dev/tty ]]; then
+    die "Set GHOSTPSY_INGEST_TOKEN in the environment (stdin is not a TTY — e.g. curl|bash cannot prompt)."
+  fi
+  read -r -s -p "Paste ingest token: " GHOSTPSY_INGEST_TOKEN </dev/tty || die "Could not read token from terminal."
+  echo "" >&2
   [[ -n "${GHOSTPSY_INGEST_TOKEN// }" ]] || die "Ingest token is required."
 fi
 

@@ -15,6 +15,8 @@ This downloads the correct **static** binary for your CPU (**amd64**, **arm64**,
 
 **2. Run** (needs `bash`, `curl`, and `sha256sum` or `shasum`; run with **`bash`**, not plain `sh`):
 
+The script prompts for the token on **`/dev/tty`**, so `curl … | bash` still works from a real terminal. For automation, set **`GHOSTPSY_INGEST_TOKEN`** before `curl` (see below).
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | bash
 ```

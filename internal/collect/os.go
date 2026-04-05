@@ -63,21 +63,20 @@ func CollectOSInfo() (payload.OSInfo, string) {
 	return out, hostname
 }
 
-// CollectFqdn runs `hostname -f` when available. Returns empty when the FQDN is unknown or
-// identical to the short hostname without a domain dot (UI falls back to hostname).
+// CollectFqdn derives a UI FQDN: dotted /etc/hostname if present, then hostname -f, -A, and
+// shortHostname + hostname -d (GNU) when a DNS domain suffix is available.
 func CollectFqdn(shortHostname string) string {
-	out, err := exec.Command("hostname", "-f").Output()
-	if err != nil {
+	if f := fqdnFromEtcHostname(); f != "" {
+		return truncateRunes(f, maxHostnameRunes)
+	}
+	outF, _ := exec.Command("hostname", "-f").Output()
+	outA, _ := exec.Command("hostname", "-A").Output()
+	outD, _ := exec.Command("hostname", "-d").Output()
+	resolved := resolveFqdnFromParts(shortHostname, string(outF), string(outA), string(outD))
+	if resolved == "" {
 		return ""
 	}
-	s := strings.TrimSpace(string(out))
-	if s == "" {
-		return ""
-	}
-	if s == shortHostname && !strings.Contains(s, ".") {
-		return ""
-	}
-	return truncateRunes(s, maxHostnameRunes)
+	return truncateRunes(resolved, maxHostnameRunes)
 }
 
 func platformPrettyFromHost(hi *host.InfoStat) string {

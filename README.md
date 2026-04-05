@@ -17,7 +17,9 @@ This downloads the correct **static** binary for your CPU (**amd64**, **arm64**,
 
 The agent needs **root** for full collection. **Use `sudo` in the command below; drop `sudo` if you are already root.**
 
-The script reads the **token** from your terminal (`/dev/tty`), so `curl … | sudo bash` still works when you are at a real keyboard.
+The script reads the **token** from your terminal (`/dev/tty`), so `curl … | sudo bash` still works when you are at a real keyboard and did not export a token.
+
+**If you `export GHOSTPSY_INGEST_TOKEN=…` first**, use `sudo env "GHOSTPSY_INGEST_TOKEN=$GHOSTPSY_INGEST_TOKEN" bash` instead of plain `sudo bash`: the superuser shell does **not** inherit your normal-user environment by default, so the token would be missing and the script would prompt again.
 
 **Verbose logging** is **on by default** when the script asks you for the token (you can answer **n** at the prompt to turn it off). If **`GHOSTPSY_INGEST_TOKEN`** is **already set** when the script starts (automation), verbose **defaults to off**; set **`GHOSTPSY_VERBOSE=1`** or **`true`** to enable step-by-step logs (`--verbose`). You can also set **`GHOSTPSY_VERBOSE=0`** or **`false`** before `curl` to skip the prompt and run quietly.
 
@@ -36,7 +38,7 @@ Example with token in the environment (preset token → quiet unless you set `GH
 
 ```bash
 export GHOSTPSY_INGEST_TOKEN="your-one-time-token"
-curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | sudo env "GHOSTPSY_INGEST_TOKEN=$GHOSTPSY_INGEST_TOKEN" bash
 ```
 
 ## Without the bash wrapper

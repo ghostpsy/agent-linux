@@ -4,6 +4,7 @@ package collect
 
 import (
 	"log/slog"
+	"os/exec"
 	"strings"
 
 	"github.com/shirou/gopsutil/v4/host"
@@ -60,6 +61,23 @@ func CollectOSInfo() (payload.OSInfo, string) {
 		}
 	}
 	return out, hostname
+}
+
+// CollectFqdn runs `hostname -f` when available. Returns empty when the FQDN is unknown or
+// identical to the short hostname without a domain dot (UI falls back to hostname).
+func CollectFqdn(shortHostname string) string {
+	out, err := exec.Command("hostname", "-f").Output()
+	if err != nil {
+		return ""
+	}
+	s := strings.TrimSpace(string(out))
+	if s == "" {
+		return ""
+	}
+	if s == shortHostname && !strings.Contains(s, ".") {
+		return ""
+	}
+	return truncateRunes(s, maxHostnameRunes)
 }
 
 func platformPrettyFromHost(hi *host.InfoStat) string {

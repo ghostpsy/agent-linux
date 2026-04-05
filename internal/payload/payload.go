@@ -9,6 +9,7 @@ type V1 struct {
 	MachineUUID      string            `json:"machine_uuid"`
 	ScanSeq          int               `json:"scan_seq"`
 	Hostname         string            `json:"hostname,omitempty"`
+	Fqdn             string            `json:"fqdn,omitempty"`
 	OS               OSInfo            `json:"os"`
 	Listeners        []Listener        `json:"listeners"`
 	HostTime         *HostTime         `json:"host_time"`

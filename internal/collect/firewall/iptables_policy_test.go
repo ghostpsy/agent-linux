@@ -4,6 +4,30 @@ package firewall
 
 import "testing"
 
+func TestShouldSkipFilterChainForHostListenerClassification(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		chain string
+		skip  bool
+	}{
+		{"INPUT", false},
+		{"OUTPUT", true},
+		{"FORWARD", true},
+		{"DOCKER", true},
+		{"DOCKER-USER", true},
+		{"DOCKER-ISOLATION-STAGE-1", true},
+		{"ufw-user-input", false},
+		{"KUBE-FIREWALL", true},
+		{"KUBE-NODEPORTS", true},
+		{"KUBE-SVC-FOO", true},
+	}
+	for _, tc := range cases {
+		if got := shouldSkipFilterChainForHostListenerClassification(tc.chain); got != tc.skip {
+			t.Fatalf("chain %q: got %v want %v", tc.chain, got, tc.skip)
+		}
+	}
+}
+
 func TestPolicyFromFilterTableLines(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -51,10 +75,10 @@ func TestFilterTableRulesForListenerClassificationOrderAndChains(t *testing.T) {
 		"-A DOCKER-USER -j RETURN",
 	}
 	got := filterTableRulesForListenerClassification(dump)
-	if len(got) != 3 {
-		t.Fatalf("len %d want 3: %v", len(got), got)
+	if len(got) != 2 {
+		t.Fatalf("len %d want 2 (docker chains skipped): %v", len(got), got)
 	}
-	if got[0] != "-A INPUT -j ufw-before-input" || got[1] != "-A ufw-user-input -p tcp -m tcp --dport 22 -j ACCEPT" || got[2] != "-A DOCKER-USER -j RETURN" {
+	if got[0] != "-A INPUT -j ufw-before-input" || got[1] != "-A ufw-user-input -p tcp -m tcp --dport 22 -j ACCEPT" {
 		t.Fatalf("unexpected order: %v", got)
 	}
 }
@@ -77,19 +101,20 @@ func TestFilterTableRulesForListenerClassificationSkipsOutputForward(t *testing.
 	}
 }
 
-func TestFilterTableRulesLayerUfwBeforeDockerDespiteFileOrder(t *testing.T) {
+func TestFilterTableRulesSkipsDockerAndKubeChainsDespiteFileOrder(t *testing.T) {
 	t.Parallel()
 	dump := []string{
 		"-P INPUT DROP",
 		"-A DOCKER-USER -p tcp -m tcp --dport 22 -j DROP",
+		"-A KUBE-FIREWALL -p tcp -m tcp --dport 22 -j DROP",
 		"-A INPUT -j ufw-before-input",
 		"-A ufw-user-input -p tcp -m tcp --dport 22 -j ACCEPT",
 	}
 	got := filterTableRulesForListenerClassification(dump)
-	if len(got) != 3 {
-		t.Fatalf("len %d want 3: %v", len(got), got)
+	if len(got) != 2 {
+		t.Fatalf("len %d want 2 (docker/kube skipped): %v", len(got), got)
 	}
-	if got[0] != "-A INPUT -j ufw-before-input" || got[1] != "-A ufw-user-input -p tcp -m tcp --dport 22 -j ACCEPT" || got[2] != "-A DOCKER-USER -p tcp -m tcp --dport 22 -j DROP" {
-		t.Fatalf("INPUT+ufw must precede DOCKER so ACCEPT wins: %v", got)
+	if got[0] != "-A INPUT -j ufw-before-input" || got[1] != "-A ufw-user-input -p tcp -m tcp --dport 22 -j ACCEPT" {
+		t.Fatalf("INPUT+ufw only: %v", got)
 	}
 }

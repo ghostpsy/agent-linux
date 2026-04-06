@@ -25,7 +25,7 @@ func readIptablesInputState(proto iptables.Protocol) (policy string, inputRules 
 	}
 	var input, ufw4, ufw6, other []string
 	for _, ch := range chains {
-		if _, skip := filterChainsExcludedFromListenerClassification[ch]; skip {
+		if shouldSkipFilterChainForHostListenerClassification(ch) {
 			continue
 		}
 		rules, errL := ipt.List("filter", ch)

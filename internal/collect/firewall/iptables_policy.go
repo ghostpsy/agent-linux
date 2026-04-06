@@ -25,8 +25,23 @@ var filterChainsExcludedFromListenerClassification = map[string]struct{}{
 	"FORWARD": {},
 }
 
-// UFW stores allows in these chains; they must be evaluated before Docker/Kubernetes helper chains in our
-// linear scan, because iptables -S interleaves chains arbitrarily and a DOCKER-USER rule could match first.
+// shouldSkipFilterChainForHostListenerClassification is true for OUTPUT/FORWARD and for Docker/Kubernetes
+// helper chains (container orchestration), which do not reflect host listener reachability.
+func shouldSkipFilterChainForHostListenerClassification(chain string) bool {
+	if _, skip := filterChainsExcludedFromListenerClassification[chain]; skip {
+		return true
+	}
+	if chain == "DOCKER" || strings.HasPrefix(chain, "DOCKER-") {
+		return true
+	}
+	if strings.HasPrefix(chain, "KUBE-") {
+		return true
+	}
+	return false
+}
+
+// UFW stores allows in these chains; they must be evaluated before other non-skipped custom chains in our
+// linear scan, because iptables -S interleaves chains arbitrarily and a later chain could match first.
 const (
 	ufwUserInputChainName  = "ufw-user-input"
 	ufw6UserInputChainName = "ufw6-user-input"
@@ -43,7 +58,7 @@ func filterTableRulesForListenerClassification(lines []string) []string {
 			continue
 		}
 		ch := chainFromAppendInsertLine(line)
-		if _, skip := filterChainsExcludedFromListenerClassification[ch]; skip {
+		if shouldSkipFilterChainForHostListenerClassification(ch) {
 			continue
 		}
 		switch ch {
@@ -83,6 +98,5 @@ func isFilterTableListenerRuleLine(line string) bool {
 		return false
 	}
 	ch := chainFromAppendInsertLine(line)
-	_, skip := filterChainsExcludedFromListenerClassification[ch]
-	return !skip
+	return !shouldSkipFilterChainForHostListenerClassification(ch)
 }

@@ -96,6 +96,30 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	osInfo, hostname := core.CollectOSInfo()
 	fqdn := core.CollectFqdn(hostname)
 	notifyDone("collect_os_info", nonEmptyOSInfoFields(osInfo), "")
+	notifyStart("collect_grub")
+	grubSnap := core.CollectGrubSnapshot()
+	notifyDone("collect_grub", grubNotifyCount(grubSnap), grubSnap.Error)
+	notifyStart("collect_firmware_boot")
+	fwBoot := core.CollectFirmwareBoot()
+	notifyDone("collect_firmware_boot", firmwareNotifyCount(fwBoot), fwBoot.Error)
+	notifyStart("collect_systemd_health")
+	sysd := core.CollectSystemdHealth()
+	notifyDone("collect_systemd_health", systemdNotifyCount(sysd), sysd.Error)
+	notifyStart("collect_sysctl_live")
+	sysLive := core.CollectSysctlLiveProfile()
+	notifyDone("collect_sysctl_live", len(sysLive.Items), sysLive.Error)
+	notifyStart("collect_sysctl_overlay")
+	sysOverlay := core.CollectSysctlOverlay()
+	notifyDone("collect_sysctl_overlay", len(sysOverlay.Drift), sysOverlay.Error)
+	notifyStart("collect_kernel_modules")
+	kmods := core.CollectKernelModules()
+	notifyDone("collect_kernel_modules", len(kmods.Names), kmods.Error)
+	notifyStart("collect_selinux_apparmor")
+	mac := core.CollectSelinuxApparmor()
+	notifyDone("collect_selinux_apparmor", selinuxNotifyCount(mac), mac.Error)
+	notifyStart("collect_high_risk_process")
+	hrisk := core.CollectHighRiskProcessSurface()
+	notifyDone("collect_high_risk_process", len(hrisk.Items), hrisk.Error)
 	notifyStart("collect_firewall")
 	fw := firewall.CollectFirewall()
 	notifyDone("collect_firewall", firewallRuleCount(fw), firewallError(fw))
@@ -122,9 +146,17 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	notifyDone("collect_listeners", len(listeners), "")
 	components := payload.Components{
 		CoreSystemAndKernel: payload.CoreSystemAndKernelComponent{
-			OS:          osInfo,
-			HostTime:    hostTime,
-			HostProcess: hproc,
+			OS:              osInfo,
+			HostTime:        hostTime,
+			HostProcess:     hproc,
+			Grub:            grubSnap,
+			FirmwareBoot:    fwBoot,
+			SystemdHealth:   sysd,
+			SysctlLive:      sysLive,
+			SysctlOverlay:   sysOverlay,
+			KernelModules:   kmods,
+			SelinuxApparmor: mac,
+			HighRiskProcess: hrisk,
 		},
 		IdentityAccessAndAuthentication: payload.IdentityAccessAndAuthenticationComponent{
 			HostUsersSummary: hus,
@@ -253,4 +285,41 @@ func firewallError(fw *payload.Firewall) string {
 		return "No firewall information could be extracted."
 	}
 	return fw.Error
+}
+
+func grubNotifyCount(g *payload.GrubSnapshot) int {
+	if g == nil {
+		return 0
+	}
+	if g.GrubCmdlineLinux != "" || g.GrubCfgReadablePath != "" {
+		return 1
+	}
+	return 0
+}
+
+func firmwareNotifyCount(f *payload.FirmwareBoot) int {
+	if f == nil {
+		return 0
+	}
+	if f.BootMode != "unknown" {
+		return 1
+	}
+	return 0
+}
+
+func systemdNotifyCount(s *payload.SystemdHealth) int {
+	if s == nil || !s.SystemdPresent {
+		return 0
+	}
+	return 1
+}
+
+func selinuxNotifyCount(m *payload.SelinuxApparmorBlock) int {
+	if m == nil {
+		return 0
+	}
+	if m.SelinuxMode != "" || m.ApparmorSummary != "" {
+		return 1
+	}
+	return 0
 }

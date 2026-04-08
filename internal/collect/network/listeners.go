@@ -44,6 +44,30 @@ func CollectListeners(hn *payload.HostNetwork) []payload.Listener {
 	return listenerWorkToPayload(work, hn)
 }
 
+// CollectListenerPIDs returns distinct PIDs that own a TCP LISTEN socket (bounded by maxListeners).
+func CollectListenerPIDs() []int32 {
+	conns, err := gopsutilnet.Connections("tcp")
+	if err != nil {
+		return nil
+	}
+	seen := make(map[int32]struct{})
+	var pids []int32
+	for _, c := range conns {
+		if c.Status != "LISTEN" || c.Pid <= 0 {
+			continue
+		}
+		if _, ok := seen[c.Pid]; ok {
+			continue
+		}
+		seen[c.Pid] = struct{}{}
+		pids = append(pids, c.Pid)
+		if len(pids) >= maxListeners {
+			break
+		}
+	}
+	return pids
+}
+
 func collectListenerWork() ([]listenerWork, error) {
 	conns, err := gopsutilnet.Connections("tcp")
 	if err != nil {

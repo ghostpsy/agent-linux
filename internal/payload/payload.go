@@ -29,9 +29,17 @@ type Components struct {
 }
 
 type CoreSystemAndKernelComponent struct {
-	OS          OSInfo       `json:"os"`
-	HostTime    *HostTime    `json:"host_time,omitempty"`
-	HostProcess *HostProcess `json:"host_process,omitempty"`
+	OS              OSInfo                  `json:"os"`
+	HostTime        *HostTime               `json:"host_time,omitempty"`
+	HostProcess     *HostProcess            `json:"host_process,omitempty"`
+	Grub            *GrubSnapshot           `json:"grub,omitempty"`
+	FirmwareBoot    *FirmwareBoot           `json:"firmware_boot,omitempty"`
+	SystemdHealth   *SystemdHealth          `json:"systemd_health,omitempty"`
+	SysctlLive      *SysctlLiveBlock        `json:"sysctl_live,omitempty"`
+	SysctlOverlay   *SysctlOverlayBlock     `json:"sysctl_overlay,omitempty"`
+	KernelModules   *KernelModulesBlock     `json:"kernel_modules,omitempty"`
+	SelinuxApparmor *SelinuxApparmorBlock   `json:"selinux_apparmor,omitempty"`
+	HighRiskProcess *HighRiskProcessSurface `json:"high_risk_process,omitempty"`
 }
 
 type IdentityAccessAndAuthenticationComponent struct {

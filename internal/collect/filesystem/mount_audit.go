@@ -5,11 +5,11 @@ package filesystem
 import (
 	"bufio"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"github.com/shirou/gopsutil/v4/disk"
 )
 
 // Matches api/ingest.v1.schema.json maxLength for fstab_options / live_mount_options.
@@ -17,7 +17,7 @@ const maxMountOptionsSchemaRunes = 512
 
 var mountAuditTargets = []string{"/tmp", "/var", "/home", "/boot", "/dev/shm", "/var/tmp"}
 
-// CollectMountOptionsAudit parses /etc/fstab and live mounts (findmnt or /proc/mounts) for hardening flags.
+// CollectMountOptionsAudit parses /etc/fstab and live mounts (gopsutil disk.Partitions) for hardening flags.
 func CollectMountOptionsAudit() *payload.MountOptionsAudit {
 	out := &payload.MountOptionsAudit{}
 	fstab, err := parseFstabOptions()
@@ -25,7 +25,7 @@ func CollectMountOptionsAudit() *payload.MountOptionsAudit {
 		out.Error = "fstab could not be read"
 		fstab = map[string]string{}
 	}
-	procMounts, _ := parseProcMounts()
+	liveMounts := partitionMountsForAudit()
 	for _, mp := range mountAuditTargets {
 		sig := payload.MountPathSignals{Mountpoint: mp}
 		var fstabOptsFull string
@@ -33,8 +33,7 @@ func CollectMountOptionsAudit() *payload.MountOptionsAudit {
 			sig.InFstab = true
 			fstabOptsFull = opts
 		}
-		live := liveMountOptions(mp, procMounts)
-		liveOptsFull := live.opts
+		liveOptsFull := liveMountOptions(mp, liveMounts).opts
 		nodev, nosuid, noexec := mountFlagsFromOptions(liveOptsFull)
 		if liveOptsFull == "" && sig.InFstab {
 			nodev, nosuid, noexec = mountFlagsFromOptions(fstabOptsFull)
@@ -84,22 +83,23 @@ type procMount struct {
 	options    string
 }
 
-func parseProcMounts() ([]procMount, error) {
-	f, err := os.Open("/proc/mounts")
+func partitionMountsForAudit() []procMount {
+	parts, err := disk.Partitions(true)
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	defer func() { _ = f.Close() }()
-	var out []procMount
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		fields := strings.Fields(sc.Text())
-		if len(fields) < 4 {
+	return liveMountsFromPartitionStats(parts)
+}
+
+func liveMountsFromPartitionStats(parts []disk.PartitionStat) []procMount {
+	out := make([]procMount, 0, len(parts))
+	for _, p := range parts {
+		if p.Mountpoint == "" {
 			continue
 		}
-		out = append(out, procMount{mountpoint: fields[1], options: fields[3]})
+		out = append(out, procMount{mountpoint: p.Mountpoint, options: strings.Join(p.Opts, ",")})
 	}
-	return out, sc.Err()
+	return out
 }
 
 func fstabMatch(fstab map[string]string, target string) (opts string, ok bool) {
@@ -127,11 +127,6 @@ type liveOpts struct {
 }
 
 func liveMountOptions(target string, cached []procMount) liveOpts {
-	cmd := exec.Command("findmnt", "-n", "-o", "OPTIONS", "--target", target)
-	b, err := cmd.Output()
-	if err == nil {
-		return liveOpts{opts: strings.TrimSpace(string(b))}
-	}
 	if len(cached) == 0 {
 		return liveOpts{}
 	}

@@ -4,10 +4,8 @@ package network
 
 import (
 	"bufio"
-	"encoding/json"
 	"net"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
@@ -23,7 +21,7 @@ func EnrichHostNetwork(hn *payload.HostNetwork) {
 	}
 	fillResolvConf(hn)
 	fillIfaceIPv6Hints(hn)
-	fillIfacePromiscFromIPLink(hn)
+	fillIfacePromiscFromSysfs(hn)
 }
 
 func fillResolvConf(hn *payload.HostNetwork) {
@@ -82,34 +80,3 @@ func fillIfaceIPv6Hints(hn *payload.HostNetwork) {
 	}
 }
 
-type ipLinkRow struct {
-	Ifname string   `json:"ifname"`
-	Flags  []string `json:"flags"`
-}
-
-func fillIfacePromiscFromIPLink(hn *payload.HostNetwork) {
-	out, err := exec.Command("ip", "-j", "link").Output()
-	if err != nil {
-		return
-	}
-	var rows []ipLinkRow
-	if err := json.Unmarshal(out, &rows); err != nil {
-		return
-	}
-	prom := map[string]bool{}
-	for _, r := range rows {
-		ok := false
-		for _, f := range r.Flags {
-			if strings.EqualFold(f, "PROMISC") {
-				ok = true
-				break
-			}
-		}
-		prom[r.Ifname] = ok
-	}
-	for i := range hn.Interfaces {
-		name := hn.Interfaces[i].Name
-		p := prom[name]
-		hn.Interfaces[i].Promiscuous = &p
-	}
-}

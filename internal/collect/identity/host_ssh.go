@@ -128,8 +128,8 @@ func buildHostSSH(cfg sshdConfig) *payload.HostSSH {
 		MaxAuthTries:               cfg.maxAuthTries,
 		ClientAliveIntervalSeconds: cfg.clientAliveInterval,
 		ClientAliveCountMax:        cfg.clientAliveCountMax,
-		AllowUsersPresent:          allowPresent,
-		DenyUsersPresent:           denyPresent,
+		AllowUsersPresent:          boolPtr(allowPresent),
+		DenyUsersPresent:           boolPtr(denyPresent),
 		Subsystem:                  shared.TruncateRunes(strings.TrimSpace(cfg.subsystem), 256),
 		UsePAM:                     normalizeOnOffValue(cfg.usePAM),
 		X11Forwarding:              normalizeOnOffValue(cfg.x11Forwarding),
@@ -139,6 +139,10 @@ func buildHostSSH(cfg sshdConfig) *payload.HostSSH {
 
 func intPtr(n int) *int {
 	return &n
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
 
 func normalizeOnOffValue(value string) string {

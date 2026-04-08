@@ -1,5 +1,7 @@
 package payload
 
+import "encoding/json"
+
 // ShadowAccountSummary is non-secret metadata from /etc/shadow (no hash material).
 type ShadowAccountSummary struct {
 	ShadowReadable                   bool   `json:"shadow_readable"`
@@ -39,6 +41,7 @@ type PasswordPolicyFingerprint struct {
 }
 
 // SudoersAudit is structural sudoers signal without transmitting full rule bodies.
+// When Error is set, MarshalJSON emits only "error" (no zero-valued counters or flags).
 type SudoersAudit struct {
 	FilesScanned                     []string `json:"files_scanned,omitempty"`
 	NopasswdMentionCount             int      `json:"nopasswd_mention_count"`
@@ -49,4 +52,31 @@ type SudoersAudit struct {
 	DefaultsUsePtyPresent            bool     `json:"defaults_use_pty_present"`
 	DefaultsVisiblepwInvertedPresent bool     `json:"defaults_visiblepw_inverted_present"`
 	Error                            string   `json:"error,omitempty"`
+}
+
+func (s SudoersAudit) MarshalJSON() ([]byte, error) {
+	if s.Error != "" {
+		return json.Marshal(struct {
+			Error string `json:"error"`
+		}{Error: s.Error})
+	}
+	return json.Marshal(struct {
+		FilesScanned                     []string `json:"files_scanned,omitempty"`
+		NopasswdMentionCount             int      `json:"nopasswd_mention_count"`
+		AllAllPatternCount               int      `json:"all_all_pattern_count"`
+		WildcardRiskLineCount            int      `json:"wildcard_risk_line_count"`
+		IncludedirCount                  int      `json:"includedir_count"`
+		DefaultsRequirettyPresent        bool     `json:"defaults_requiretty_present"`
+		DefaultsUsePtyPresent            bool     `json:"defaults_use_pty_present"`
+		DefaultsVisiblepwInvertedPresent bool     `json:"defaults_visiblepw_inverted_present"`
+	}{
+		FilesScanned:                     s.FilesScanned,
+		NopasswdMentionCount:             s.NopasswdMentionCount,
+		AllAllPatternCount:               s.AllAllPatternCount,
+		WildcardRiskLineCount:            s.WildcardRiskLineCount,
+		IncludedirCount:                  s.IncludedirCount,
+		DefaultsRequirettyPresent:        s.DefaultsRequirettyPresent,
+		DefaultsUsePtyPresent:            s.DefaultsUsePtyPresent,
+		DefaultsVisiblepwInvertedPresent: s.DefaultsVisiblepwInvertedPresent,
+	})
 }

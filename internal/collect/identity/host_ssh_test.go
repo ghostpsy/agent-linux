@@ -111,10 +111,10 @@ func TestBuildHostSSHNormalizesAndCapsFields(t *testing.T) {
 	if out.MaxAuthTries == nil || *out.MaxAuthTries != 4 {
 		t.Fatalf("expected max auth tries 4, got %v", out.MaxAuthTries)
 	}
-	if !out.AllowUsersPresent {
+	if out.AllowUsersPresent == nil || !*out.AllowUsersPresent {
 		t.Fatalf("expected allow users present")
 	}
-	if out.DenyUsersPresent {
+	if out.DenyUsersPresent == nil || *out.DenyUsersPresent {
 		t.Fatalf("expected deny users absent")
 	}
 	if out.UsePAM != "yes" {

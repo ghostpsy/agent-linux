@@ -91,6 +91,48 @@ kernel.x86_64                     4.18.0-513.el8                      baseos
 	}
 }
 
+func TestParseApkUpgradeSimulate_upgrading(t *testing.T) {
+	const sample = `(1/3) Upgrading busybox (1.36.1-r20 -> 1.36.1-r21)
+(2/3) Upgrading busybox-binsh (1.36.1-r20 -> 1.36.1-r21)
+(3/3) Upgrading ssl_client (1.36.1-r20 -> 1.36.1-r21)
+OK: 8 MiB in 15 packages
+`
+	if n := parseApkUpgradeSimulate([]byte(sample)); n != 3 {
+		t.Fatalf("pending: got %d want 3", n)
+	}
+}
+
+func TestParseApkUpgradeSimulate_okOnly(t *testing.T) {
+	const sample = `OK: 9 MiB in 14 packages
+`
+	if n := parseApkUpgradeSimulate([]byte(sample)); n != 0 {
+		t.Fatalf("pending: got %d want 0", n)
+	}
+}
+
+func TestMaxModTimeApkCacheDir(t *testing.T) {
+	dir := t.TempDir()
+	tDir := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
+	tFile := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	f := filepath.Join(dir, "APKINDEX.test.tar.gz")
+	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(f, tFile, tFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(dir, tDir, tDir); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := maxModTimeApkCacheDir(dir)
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if !got.Equal(tFile.UTC()) {
+		t.Fatalf("got %v want %v", got, tFile.UTC())
+	}
+}
+
 func TestParseDnfCheckUpdate_tableColumns(t *testing.T) {
 	const sample = `Last metadata expiration check: 0:00:01 ago on Mon 29 Mar 2021 12:00:00 AM UTC.
 openssl                    x86_64  1:1.1.1k-7.fc34            updates

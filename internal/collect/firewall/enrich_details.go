@@ -67,6 +67,7 @@ func fillUfwVerbose(fw *payload.Firewall) {
 		if line == "" {
 			continue
 		}
+		line = redactFirewallTelemetryLine(line)
 		lines = append(lines, shared.TruncateRunes(line, 256))
 		if len(lines) >= maxUfwVerboseLines {
 			break
@@ -82,9 +83,10 @@ func fillBackendRulesetFingerprint(fw *payload.Firewall) {
 	if len(raw) == 0 {
 		return
 	}
-	h := sha256.Sum256(raw)
-	fw.BackendRulesetSha256Hex = hex.EncodeToString(h[:])
-	fw.BackendRulesetExcerpt = shared.TruncateRunes(string(raw), maxRulesetExcerpt)
+	redacted := redactRulesetDumpForIngest(string(raw))
+	sum := sha256.Sum256([]byte(redacted))
+	fw.BackendRulesetSha256Hex = hex.EncodeToString(sum[:])
+	fw.BackendRulesetExcerpt = shared.TruncateRunes(redacted, maxRulesetExcerpt)
 }
 
 func captureRuleset(ctx context.Context) ([]byte, string) {

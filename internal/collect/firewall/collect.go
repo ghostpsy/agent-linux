@@ -31,8 +31,11 @@ type firewallMetrics struct {
 // CollectFirewall detects iptables / nftables / ufw / firewalld and fills metrics via netlink (nftables) or go-iptables.
 // There is no fallback to parsing iptables-save snapshots for these metrics.
 func CollectFirewall() *payload.Firewall {
-	fw := &payload.Firewall{Managers: collectFirewallManagers()}
-	defer enrichFirewallDetails(fw)
+	fw := &payload.Firewall{}
+	defer func() {
+		enrichFirewallDetails(fw)
+		applyFirewallActive(fw)
+	}()
 	if firewalldRunning() {
 		fw.Family = fwFirewalld
 		if m, _, _, err := collectIptablesMetrics(); err == nil {
@@ -77,6 +80,19 @@ func CollectFirewall() *payload.Firewall {
 		fw.Error = collectionNote("Firewall metrics could not be read.")
 	}
 	return fw
+}
+
+// applyFirewallActive sets active true only for ufw or firewalld (host-level managers), not raw iptables/nftables alone.
+func applyFirewallActive(fw *payload.Firewall) {
+	if fw == nil {
+		return
+	}
+	switch fw.Family {
+	case fwUfw, fwFirewalld:
+		fw.Active = true
+	default:
+		fw.Active = false
+	}
 }
 
 func applyMetrics(fw *payload.Firewall, m firewallMetrics) {

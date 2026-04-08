@@ -49,6 +49,8 @@ func CollectHostRuntimes() *payload.HostRuntimes {
 			break
 		}
 	}
+	out.Docker = collectDockerHostFingerprint()
+	out.Kubelet = collectKubeletFingerprint()
 	return out
 }
 

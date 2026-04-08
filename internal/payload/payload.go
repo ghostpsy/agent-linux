@@ -23,7 +23,7 @@ type Components struct {
 	SoftwarePackagesAndApplications     SoftwarePackagesAndApplicationsComponent     `json:"software_packages_and_applications"`
 	ContainerAndCloudNativeLinux        ContainerAndCloudNativeLinuxComponent        `json:"container_and_cloud_native_linux"`
 	LoggingAndSystemAuditing            LoggingAndSystemAuditingComponent            `json:"logging_and_system_auditing"`
-	CryptographyAndTimeSynchronization  CryptographyAndTimeSynchronizationComponent  `json:"cryptography_and_time_synchronization"`
+	Cryptography                        CryptographyComponent                        `json:"cryptography"`
 	SecurityFrameworksAndMalwareDefense SecurityFrameworksAndMalwareDefenseComponent `json:"security_frameworks_and_malware_defense"`
 	Other                               OtherComponent                               `json:"other"`
 }
@@ -67,15 +67,20 @@ type NetworkAndHostFirewallComponent struct {
 	Listeners              []Listener              `json:"listeners"`
 	HostNetwork            *HostNetwork            `json:"host_network,omitempty"`
 	Firewall               *Firewall               `json:"firewall,omitempty"`
-	Services               ServicesBlock           `json:"services"`
 	TcpWrappersFingerprint *TcpWrappersFingerprint `json:"tcp_wrappers_fingerprint,omitempty"`
 	LegacyInsecureServices *LegacyInsecureServices `json:"legacy_insecure_services,omitempty"`
 }
 
 type SoftwarePackagesAndApplicationsComponent struct {
-	PackagesUpdates *PackagesUpdates `json:"packages_updates,omitempty"`
-	HostBackup      *HostBackup      `json:"host_backup,omitempty"`
-	HostRuntimes    *HostRuntimes    `json:"host_runtimes,omitempty"`
+	Services                 ServicesBlock             `json:"services"`
+	PackagesUpdates          *PackagesUpdates          `json:"packages_updates,omitempty"`
+	HostBackup               *HostBackup               `json:"host_backup,omitempty"`
+	HostRuntimes             *HostRuntimes             `json:"host_runtimes,omitempty"`
+	WebDbServersFingerprint  *WebDbServersFingerprint  `json:"web_db_servers_fingerprint,omitempty"`
+	RedisExposureFingerprint *RedisExposureFingerprint `json:"redis_exposure_fingerprint,omitempty"`
+	CronTimersInventory      *CronTimersInventory      `json:"cron_timers_inventory,omitempty"`
+	CupsExposureFingerprint  *CupsExposureFingerprint  `json:"cups_exposure_fingerprint,omitempty"`
+	MtaFingerprint           *MtaFingerprint           `json:"mta_fingerprint,omitempty"`
 }
 
 type ContainerAndCloudNativeLinuxComponent struct {
@@ -86,13 +91,11 @@ type LoggingAndSystemAuditingComponent struct {
 	AuditSections []AuditSection `json:"audit_sections,omitempty"`
 }
 
-type CryptographyAndTimeSynchronizationComponent struct {
-	HostTime *HostTime `json:"host_time"`
-}
+// CryptographyComponent is reserved for TLS/cert inventory; time lives under core_system_and_kernel.host_time.
+type CryptographyComponent struct{}
 
-type SecurityFrameworksAndMalwareDefenseComponent struct {
-	HostProcess *HostProcess `json:"host_process,omitempty"`
-}
+// SecurityFrameworksAndMalwareDefenseComponent is reserved for AV/EDR/fim product signals; process inventory lives under core_system_and_kernel.host_process.
+type SecurityFrameworksAndMalwareDefenseComponent struct{}
 
 // OtherComponent is reserved; send {} until extensions are defined.
 type OtherComponent struct{}
@@ -158,8 +161,8 @@ type HostSSH struct {
 	MaxAuthTries               *int     `json:"max_auth_tries,omitempty"`
 	ClientAliveIntervalSeconds *int     `json:"client_alive_interval_seconds,omitempty"`
 	ClientAliveCountMax        *int     `json:"client_alive_count_max,omitempty"`
-	AllowUsersPresent          bool     `json:"allow_users_present"`
-	DenyUsersPresent           bool     `json:"deny_users_present"`
+	AllowUsersPresent          *bool    `json:"allow_users_present,omitempty"`
+	DenyUsersPresent           *bool    `json:"deny_users_present,omitempty"`
 	Subsystem                  string   `json:"subsystem,omitempty"`
 	UsePAM                     string   `json:"use_pam,omitempty"`
 	X11Forwarding              string   `json:"x11_forwarding,omitempty"`
@@ -210,7 +213,7 @@ type HostNetwork struct {
 
 type NetworkIface struct {
 	Name           string         `json:"name"`
-	IsLoopback     *bool          `json:"is_loopback,omitempty"`
+	Type           string         `json:"type"`
 	IsDockerBridge *bool          `json:"is_docker_bridge,omitempty"`
 	Ipv6Enabled    *bool          `json:"ipv6_enabled,omitempty"`
 	Promiscuous    *bool          `json:"promiscuous,omitempty"`
@@ -225,6 +228,7 @@ type IfaceAddress struct {
 type PackagesUpdates struct {
 	Manager                    string   `json:"manager,omitempty"`
 	LastPackageIndexRefreshUTC string   `json:"last_package_index_refresh_utc,omitempty"`
+	InstalledPackageCount      int      `json:"installed_package_count"`
 	PendingUpdatesCount        int      `json:"pending_updates_count"`
 	SecurityUpdatesCount       int      `json:"security_updates_count"`
 	SecurityUpdatesSample      []string `json:"security_updates_sample,omitempty"`
@@ -240,24 +244,18 @@ type HostBackup struct {
 }
 
 type Firewall struct {
-	Family                  string            `json:"firewall_family"`
-	DefaultPolicyIn         string            `json:"default_policy_in,omitempty"`
-	DefaultPolicyOut        string            `json:"default_policy_out,omitempty"`
-	RuleCount               *int              `json:"rule_count,omitempty"`
-	HasEstablishedRelated   *bool             `json:"has_established_related,omitempty"`
-	Managers                []FirewallManager `json:"firewall_managers"`
-	FirewalldDefaultZone    string            `json:"firewalld_default_zone,omitempty"`
-	FirewalldZoneTarget     string            `json:"firewalld_zone_target,omitempty"`
-	UfwStatusVerboseSample  []string          `json:"ufw_status_verbose_sample,omitempty"`
-	BackendRulesetSha256Hex string            `json:"backend_ruleset_sha256,omitempty"`
-	BackendRulesetExcerpt   string            `json:"backend_ruleset_excerpt,omitempty"`
-	Error                   string            `json:"error,omitempty"`
-}
-
-type FirewallManager struct {
-	Name      string `json:"name"`
-	Installed bool   `json:"installed"`
-	Active    bool   `json:"active"`
+	Family                  string   `json:"firewall_family"`
+	Active                  bool     `json:"active"`
+	DefaultPolicyIn         string   `json:"default_policy_in,omitempty"`
+	DefaultPolicyOut        string   `json:"default_policy_out,omitempty"`
+	RuleCount               *int     `json:"rule_count,omitempty"`
+	HasEstablishedRelated   *bool    `json:"has_established_related,omitempty"`
+	FirewalldDefaultZone    string   `json:"firewalld_default_zone,omitempty"`
+	FirewalldZoneTarget     string   `json:"firewalld_zone_target,omitempty"`
+	UfwStatusVerboseSample  []string `json:"ufw_status_verbose_sample,omitempty"`
+	BackendRulesetSha256Hex string   `json:"backend_ruleset_sha256,omitempty"`
+	BackendRulesetExcerpt   string   `json:"backend_ruleset_excerpt,omitempty"`
+	Error                   string   `json:"error,omitempty"`
 }
 
 type HostPath struct {
@@ -304,8 +302,39 @@ type ProcessSignals struct {
 }
 
 type HostRuntimes struct {
-	Items []RuntimeEntry `json:"items"`
-	Error string         `json:"error,omitempty"`
+	Items   []RuntimeEntry          `json:"items"`
+	Docker  *DockerHostFingerprint  `json:"docker,omitempty"`
+	Kubelet *KubeletNodeFingerprint `json:"kubelet,omitempty"`
+	Error   string                  `json:"error,omitempty"`
+}
+
+// DockerHostFingerprint is non-secret Docker daemon posture (CIS-style hints).
+type DockerHostFingerprint struct {
+	DockerCliPath         string `json:"docker_cli_path,omitempty"`
+	DaemonJSONPath        string `json:"daemon_json_path,omitempty"`
+	LiveRestore           *bool  `json:"live_restore,omitempty"`
+	Icc                   *bool  `json:"icc,omitempty"`
+	UserlandProxy         *bool  `json:"userland_proxy,omitempty"`
+	TlsInDaemonJSON       *bool  `json:"tls_in_daemon_json,omitempty"`
+	TlsVerifyInDaemonJSON *bool  `json:"tls_verify_in_daemon_json,omitempty"`
+	ContainerCount        *int   `json:"container_count,omitempty"`
+	RootlessHint          string `json:"rootless_hint,omitempty"`
+	DockerSockPath        string `json:"docker_sock_path,omitempty"`
+	DockerSockModeOctal   string `json:"docker_sock_mode_octal,omitempty"`
+	DockerSockOwnerUID    *int   `json:"docker_sock_owner_uid,omitempty"`
+	DockerSockGroupGID    *int   `json:"docker_sock_group_gid,omitempty"`
+	Error                 string `json:"error,omitempty"`
+}
+
+// KubeletNodeFingerprint captures bounded kubelet config hints when the node runs Kubernetes.
+type KubeletNodeFingerprint struct {
+	KubeletBinaryPath     string   `json:"kubelet_binary_path,omitempty"`
+	ConfigSourcePaths     []string `json:"config_source_paths,omitempty"`
+	ReadOnlyPort          *int     `json:"read_only_port,omitempty"`
+	ProtectKernelDefaults *bool    `json:"protect_kernel_defaults,omitempty"`
+	AnonymousAuthEnabled  *bool    `json:"anonymous_auth_enabled,omitempty"`
+	DropInExecSampleLines []string `json:"drop_in_exec_sample_lines,omitempty"`
+	Error                 string   `json:"error,omitempty"`
 }
 
 type RuntimeEntry struct {

@@ -248,6 +248,16 @@ func humanMessageForCollectionAction(action string) string {
 		return "Extracting available package updates from the system package manager"
 	case "collect_host_backup":
 		return "Extracting backup schedule and status from local backup configuration"
+	case "collect_web_db_servers_fingerprint":
+		return "Reading bounded nginx, Apache, MySQL, and PostgreSQL configuration hints"
+	case "collect_redis_exposure_fingerprint":
+		return "Reading redis.conf exposure flags and redis unit state (no secrets)"
+	case "collect_cron_timers_inventory":
+		return "Summarizing system cron, user crontabs, and systemd timers"
+	case "collect_cups_exposure_fingerprint":
+		return "Reading CUPS unit state and bounded cupsd Listen/WebInterface lines"
+	case "collect_mta_fingerprint":
+		return "Fingerprinting Postfix, Exim, or Sendmail with bounded relay hints"
 	case "collect_services":
 		return "Extracting enabled/active service states from systemd and init services"
 	case "collect_os_info":
@@ -277,7 +287,7 @@ func humanMessageForCollectionAction(action string) string {
 	case "collect_host_process":
 		return "Extracting top CPU and memory processes plus interpreter counts"
 	case "collect_host_runtimes":
-		return "Detecting installed language runtimes on PATH"
+		return "Detecting language runtimes plus Docker and kubelet posture hints when present"
 	case "collect_listeners":
 		return "Extracting listening ports and processes from local socket tables"
 	default:
@@ -297,6 +307,25 @@ func humanDoneMessage(action string, items int) string {
 		return fmt.Sprintf("Done: extracted %d service entries.", items)
 	case "collect_packages_updates":
 		return fmt.Sprintf("Done: found %d pending package updates.", items)
+	case "collect_web_db_servers_fingerprint":
+		return fmt.Sprintf("Done: collected %d web/DB config signal groups.", items)
+	case "collect_redis_exposure_fingerprint":
+		if items == 0 {
+			return "Done: no redis exposure signals collected."
+		}
+		return "Done: collected redis exposure signals."
+	case "collect_cron_timers_inventory":
+		return fmt.Sprintf("Done: summarized cron/timer inventory (%d combined signals).", items)
+	case "collect_cups_exposure_fingerprint":
+		if items == 0 {
+			return "Done: no CUPS exposure signals collected."
+		}
+		return "Done: collected CUPS exposure signals."
+	case "collect_mta_fingerprint":
+		if items == 0 {
+			return "Done: no MTA fingerprint collected."
+		}
+		return "Done: collected MTA fingerprint."
 	case "collect_host_ssh":
 		return fmt.Sprintf("Done: extracted %d SSH listen address entries.", items)
 	case "collect_shadow_account_summary":
@@ -337,7 +366,7 @@ func humanDoneMessage(action string, items int) string {
 	case "collect_host_process":
 		return fmt.Sprintf("Done: extracted %d top process entries.", items)
 	case "collect_host_runtimes":
-		return fmt.Sprintf("Done: detected %d language runtimes.", items)
+		return fmt.Sprintf("Done: detected %d language runtimes (Docker/kubelet hints when applicable).", items)
 	case "collect_host_backup":
 		if items == 0 {
 			return "Done: no backup tool detected on this host."

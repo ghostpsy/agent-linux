@@ -73,6 +73,21 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	notifyStart("collect_host_backup")
 	hb := software.CollectHostBackup()
 	notifyDone("collect_host_backup", len(hb.ToolsDetected), hostBackupLogError(hb))
+	notifyStart("collect_web_db_servers_fingerprint")
+	wdbf := software.CollectWebDbServersFingerprint()
+	notifyDone("collect_web_db_servers_fingerprint", webDbServersNotifyCount(wdbf), "")
+	notifyStart("collect_redis_exposure_fingerprint")
+	redisF := software.CollectRedisExposureFingerprint()
+	notifyDone("collect_redis_exposure_fingerprint", redisExposureNotifyCount(redisF), "")
+	notifyStart("collect_cron_timers_inventory")
+	cti := software.CollectCronTimersInventory()
+	notifyDone("collect_cron_timers_inventory", cronTimersNotifyCount(cti), cti.Error)
+	notifyStart("collect_cups_exposure_fingerprint")
+	cupsF := software.CollectCupsExposureFingerprint()
+	notifyDone("collect_cups_exposure_fingerprint", cupsExposureNotifyCount(cupsF), "")
+	notifyStart("collect_mta_fingerprint")
+	mtaF := software.CollectMtaFingerprint()
+	notifyDone("collect_mta_fingerprint", mtaNotifyCount(mtaF), "")
 	notifyStart("collect_services")
 	svItems, svErr := network.CollectServices()
 	notifyDone("collect_services", len(svItems), svErr)
@@ -220,25 +235,26 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 			Listeners:              listeners,
 			HostNetwork:            hn,
 			Firewall:               fw,
-			Services:               servicesBlock,
 			TcpWrappersFingerprint: tw,
 			LegacyInsecureServices: leg,
 		},
 		SoftwarePackagesAndApplications: payload.SoftwarePackagesAndApplicationsComponent{
-			PackagesUpdates: pu,
-			HostBackup:      hb,
-			HostRuntimes:    hr,
+			Services:                 servicesBlock,
+			PackagesUpdates:          pu,
+			HostBackup:               hb,
+			HostRuntimes:             softwarePackagesHostRuntimes(hr),
+			WebDbServersFingerprint:  wdbf,
+			RedisExposureFingerprint: redisF,
+			CronTimersInventory:      cti,
+			CupsExposureFingerprint:  cupsF,
+			MtaFingerprint:           mtaF,
 		},
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
-			HostRuntimes: hr,
+			HostRuntimes: containerCloudHostRuntimes(hr),
 		},
 		LoggingAndSystemAuditing: payload.LoggingAndSystemAuditingComponent{},
-		CryptographyAndTimeSynchronization: payload.CryptographyAndTimeSynchronizationComponent{
-			HostTime: hostTime,
-		},
-		SecurityFrameworksAndMalwareDefense: payload.SecurityFrameworksAndMalwareDefenseComponent{
-			HostProcess: hproc,
-		},
+		Cryptography:             payload.CryptographyComponent{},
+		SecurityFrameworksAndMalwareDefense: payload.SecurityFrameworksAndMalwareDefenseComponent{},
 		Other: payload.OtherComponent{},
 	}
 	return payload.V1{
@@ -448,4 +464,89 @@ func selinuxNotifyCount(m *payload.SelinuxApparmorBlock) int {
 		return 1
 	}
 	return 0
+}
+
+func webDbServersNotifyCount(w *payload.WebDbServersFingerprint) int {
+	if w == nil {
+		return 0
+	}
+	n := 0
+	if w.NginxServerTokens != "" || w.NginxConfigPathUsed != "" {
+		n++
+	}
+	if w.ApacheServerTokens != "" || w.ApacheConfigPathUsed != "" {
+		n++
+	}
+	if w.MysqlBindAddress != "" || w.MysqlConfigPathUsed != "" {
+		n++
+	}
+	if w.PostgresqlListenAddresses != "" || w.PostgresqlConfigPathUsed != "" {
+		n++
+	}
+	return n
+}
+
+func redisExposureNotifyCount(r *payload.RedisExposureFingerprint) int {
+	if r == nil {
+		return 0
+	}
+	if r.ConfigPathUsed != "" || r.UnitActiveState != "" {
+		return 1
+	}
+	return 0
+}
+
+func cronTimersNotifyCount(c *payload.CronTimersInventory) int {
+	if c == nil {
+		return 0
+	}
+	return c.SystemCrontabLineCount + c.UserCrontabsPresentCount + c.SystemdTimersCount
+}
+
+func cupsExposureNotifyCount(c *payload.CupsExposureFingerprint) int {
+	if c == nil {
+		return 0
+	}
+	if len(c.ListenLinesSample)+len(c.WebInterfaceLinesSample) > 0 || c.UnitActiveState != "" {
+		return 1
+	}
+	return 0
+}
+
+func mtaNotifyCount(m *payload.MtaFingerprint) int {
+	if m == nil {
+		return 0
+	}
+	if m.DetectedMta != "" && m.DetectedMta != "none" {
+		return 1
+	}
+	return 0
+}
+
+// softwarePackagesHostRuntimes is §5 only: interpreter `items` (and optional collection error).
+// Docker/kubelet fingerprints are emitted only under container_and_cloud_native_linux.
+func softwarePackagesHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntimes {
+	if hr == nil {
+		return nil
+	}
+	if len(hr.Items) == 0 && hr.Error == "" {
+		return nil
+	}
+	return &payload.HostRuntimes{
+		Items: hr.Items,
+		Error: hr.Error,
+	}
+}
+
+// containerCloudHostRuntimes is §6 only: Docker and kubelet fingerprints (`items` always empty).
+// Omit the whole block when there is no Docker or kubelet signal (JSON {} for the component).
+func containerCloudHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntimes {
+	if hr == nil || (hr.Docker == nil && hr.Kubelet == nil) {
+		return nil
+	}
+	return &payload.HostRuntimes{
+		Items:   []payload.RuntimeEntry{},
+		Docker:  hr.Docker,
+		Kubelet: hr.Kubelet,
+	}
 }

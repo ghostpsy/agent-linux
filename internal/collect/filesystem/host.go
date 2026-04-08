@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"fmt"
 	"log/slog"
 	"math"
 	"net"
@@ -117,6 +118,7 @@ func CollectHostNetwork() (*payload.HostNetwork, string) {
 			strings.HasPrefix(iface.Name, "br-") ||
 			strings.HasPrefix(iface.Name, "veth")
 		var addrs []payload.IfaceAddress
+		ifaceWAN := false
 		for _, a := range iface.Addrs {
 			ipStr, scope := ifaceAddrScope(a.Addr)
 			if ipStr == "" {
@@ -126,8 +128,8 @@ func CollectHostNetwork() (*payload.HostNetwork, string) {
 			if !isRealInterfaceIP(ip) {
 				continue
 			}
-			addrs = append(addrs, payload.IfaceAddress{IP: ipStr, Scope: scope})
 			if isPublicUnicastIP(ip) {
+				ifaceWAN = true
 				if ip.To4() != nil {
 					hasPub4 = true
 				} else {
@@ -140,13 +142,17 @@ func CollectHostNetwork() (*payload.HostNetwork, string) {
 					}
 				}
 			}
+			addrs = append(addrs, payload.IfaceAddress{IP: redactIPForDisplay(ip), Scope: scope})
 		}
 		if len(addrs) == 0 {
 			continue
 		}
-		t, f := true, false
-		ni := payload.NetworkIface{Name: iface.Name, Addresses: addrs}
-		ni.IsLoopback = &f
+		t := true
+		ifaceType := "lan"
+		if ifaceWAN {
+			ifaceType = "wan"
+		}
+		ni := payload.NetworkIface{Name: iface.Name, Type: ifaceType, Addresses: addrs}
 		if isDocker {
 			ni.IsDockerBridge = &t
 		}
@@ -212,4 +218,21 @@ func isPublicUnicastIP(ip net.IP) bool {
 		return false
 	}
 	return true
+}
+
+// redactIPForDisplay keeps only the first two IPv4 octets or the first two IPv6 hextets; the rest is replaced with "x".
+func redactIPForDisplay(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return fmt.Sprintf("%d.%d.x.x", int(v4[0]), int(v4[1]))
+	}
+	v6 := ip.To16()
+	if v6 == nil {
+		return ""
+	}
+	h0 := uint16(v6[0])<<8 | uint16(v6[1])
+	h1 := uint16(v6[2])<<8 | uint16(v6[3])
+	return fmt.Sprintf("%x:%x:x:x:x:x:x:x", h0, h1)
 }

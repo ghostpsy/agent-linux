@@ -6,25 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	"github.com/ghostpsy/agent-linux/internal/payload"
 )
-
-func collectFirewallManagers() []payload.FirewallManager {
-	firewalldInstalled := commandOnPath("firewall-cmd")
-	ufwBin := ufwExecutablePath()
-	ufwInstalled := ufwBin != ""
-
-	fd := payload.FirewallManager{Name: "firewalld", Installed: firewalldInstalled}
-	if firewalldInstalled {
-		fd.Active = firewalldRunning()
-	}
-	u := payload.FirewallManager{Name: "ufw", Installed: ufwInstalled}
-	if ufwInstalled {
-		u.Active = ufwStatusActiveWithPath(ufwBin) || ufwEnabledInConf()
-	}
-	return []payload.FirewallManager{fd, u}
-}
 
 func commandOnPath(name string) bool {
 	_, err := exec.LookPath(name)

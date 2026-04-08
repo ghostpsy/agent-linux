@@ -27,7 +27,7 @@ func CollectKernelModules() *payload.KernelModulesBlock {
 		out.Error = "cannot read /proc/modules"
 		return out
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	n := 0
 	seenHit := make(map[string]struct{})

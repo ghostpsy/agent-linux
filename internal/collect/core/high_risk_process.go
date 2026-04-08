@@ -5,6 +5,7 @@ package core
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,38 @@ import (
 )
 
 const maxHighRiskEntries = 24
+
+// isLinuxKernelThread reports whether pid is kthreadd or a kernel thread (child of kthreadd, PID 2).
+func isLinuxKernelThread(pid int32) bool {
+	if pid == 2 {
+		return true
+	}
+	if pid <= 0 {
+		return false
+	}
+	path := filepath.Join("/proc", strconv.FormatInt(int64(pid), 10), "status")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	ppid, ok := parsePPidFromProcStatus(string(data))
+	return ok && ppid == 2
+}
+
+func parsePPidFromProcStatus(status string) (int, bool) {
+	for _, line := range strings.Split(status, "\n") {
+		if !strings.HasPrefix(line, "PPid:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			return 0, false
+		}
+		v, err := strconv.Atoi(fields[1])
+		return v, err == nil
+	}
+	return 0, false
+}
 
 // CollectHighRiskProcessSurface samples TCP listeners and root-owned processes with exe/cmdline hints.
 func CollectHighRiskProcessSurface() *payload.HighRiskProcessSurface {
@@ -41,12 +74,15 @@ func CollectHighRiskProcessSurface() *payload.HighRiskProcessSurface {
 		if err != nil {
 			continue
 		}
-		if u == "root" {
+		if u == "root" && !isLinuxKernelThread(pid) {
 			rootPids = append(rootPids, pid)
 		}
 	}
 	seen := make(map[int32]struct{})
 	appendEntry := func(pid int32) bool {
+		if isLinuxKernelThread(pid) {
+			return true
+		}
 		if len(out.Items) >= maxHighRiskEntries {
 			return false
 		}

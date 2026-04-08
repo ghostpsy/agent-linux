@@ -7,7 +7,7 @@ type GrubSnapshot struct {
 	DefaultGrubPath          string `json:"default_grub_path,omitempty"`
 	GrubCmdlineLinux         string `json:"grub_cmdline_linux,omitempty"`
 	GrubTimeout              string `json:"grub_timeout,omitempty"`
-	PasswordReferencePresent bool   `json:"password_reference_present"`
+	PasswordReferencePresent *bool  `json:"password_reference_present,omitempty"`
 	GrubCfgReadablePath      string `json:"grub_cfg_readable_path,omitempty"`
 	Error                    string `json:"error,omitempty"`
 }

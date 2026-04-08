@@ -24,12 +24,20 @@ func CollectHostSSH() (*payload.HostSSH, string) {
 }
 
 type sshdConfig struct {
-	permitRootLogin string
-	passwordAuth    string
-	challengeAuth   string
-	listenAddresses []string
-	kexAlgorithms   []string
-	ciphers         []string
+	permitRootLogin     string
+	passwordAuth        string
+	challengeAuth       string
+	listenAddresses     []string
+	kexAlgorithms       []string
+	ciphers             []string
+	maxAuthTries        *int
+	clientAliveInterval *int
+	clientAliveCountMax *int
+	allowUsersRaw       string
+	denyUsersRaw        string
+	subsystem           string
+	usePAM              string
+	x11Forwarding       string
 }
 
 func runSSHDT() ([]byte, error) {
@@ -65,6 +73,30 @@ func parseSSHDTOutput(output []byte) sshdConfig {
 			cfg.kexAlgorithms = splitCommaList(value)
 		case "ciphers":
 			cfg.ciphers = splitCommaList(value)
+		case "maxauthtries":
+			if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && n >= 0 {
+				cfg.maxAuthTries = intPtr(n)
+			}
+		case "clientaliveinterval":
+			if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && n >= 0 {
+				cfg.clientAliveInterval = intPtr(n)
+			}
+		case "clientalivecountmax":
+			if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && n >= 0 {
+				cfg.clientAliveCountMax = intPtr(n)
+			}
+		case "allowusers":
+			cfg.allowUsersRaw = value
+		case "denyusers":
+			cfg.denyUsersRaw = value
+		case "subsystem":
+			if cfg.subsystem == "" {
+				cfg.subsystem = value
+			}
+		case "usepam":
+			cfg.usePAM = value
+		case "x11forwarding":
+			cfg.x11Forwarding = value
 		}
 	}
 	return cfg
@@ -84,16 +116,29 @@ func splitCommaList(v string) []string {
 }
 
 func buildHostSSH(cfg sshdConfig) *payload.HostSSH {
+	allowPresent := strings.TrimSpace(cfg.allowUsersRaw) != ""
+	denyPresent := strings.TrimSpace(cfg.denyUsersRaw) != ""
 	out := &payload.HostSSH{
-		PermitRootLogin:         normalizeOnOffValue(cfg.permitRootLogin),
-		PasswordAuthentication:  normalizeOnOffValue(cfg.passwordAuth),
-		ChallengeResponseAuth:   normalizeOnOffValue(cfg.challengeAuth),
-		ListenAddresses:         normalizeListenAddresses(cfg.listenAddresses),
-		KexAlgorithmsSample:     truncateList(cfg.kexAlgorithms, 16, 128),
-		CiphersSample:           truncateList(cfg.ciphers, 16, 128),
-		MaxAuthTriesRecommended: 4,
+		PermitRootLogin:            normalizeOnOffValue(cfg.permitRootLogin),
+		PasswordAuthentication:     normalizeOnOffValue(cfg.passwordAuth),
+		ChallengeResponseAuth:      normalizeOnOffValue(cfg.challengeAuth),
+		ListenAddresses:            normalizeListenAddresses(cfg.listenAddresses),
+		KexAlgorithmsSample:        truncateList(cfg.kexAlgorithms, 16, 128),
+		CiphersSample:              truncateList(cfg.ciphers, 16, 128),
+		MaxAuthTries:               cfg.maxAuthTries,
+		ClientAliveIntervalSeconds: cfg.clientAliveInterval,
+		ClientAliveCountMax:        cfg.clientAliveCountMax,
+		AllowUsersPresent:          allowPresent,
+		DenyUsersPresent:           denyPresent,
+		Subsystem:                  shared.TruncateRunes(strings.TrimSpace(cfg.subsystem), 256),
+		UsePAM:                     normalizeOnOffValue(cfg.usePAM),
+		X11Forwarding:              normalizeOnOffValue(cfg.x11Forwarding),
 	}
 	return out
+}
+
+func intPtr(n int) *int {
+	return &n
 }
 
 func normalizeOnOffValue(value string) string {

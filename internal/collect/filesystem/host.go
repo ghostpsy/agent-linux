@@ -4,6 +4,7 @@ package filesystem
 
 import (
 	"log/slog"
+	"math"
 	"net"
 	"regexp"
 	"strings"
@@ -56,7 +57,7 @@ func CollectHostDisk() (*payload.HostDisk, string) {
 		if u.Total == 0 {
 			continue
 		}
-		availGB := float64(u.Free) / (1024 * 1024 * 1024)
+		availGB := int(math.Round(float64(u.Free) / (1024 * 1024 * 1024)))
 		usedPct := int(u.UsedPercent + 0.5)
 		if usedPct > 100 {
 			usedPct = 100

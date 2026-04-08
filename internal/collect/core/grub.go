@@ -24,6 +24,8 @@ func CollectGrubSnapshot() *payload.GrubSnapshot {
 		out.Error = "default grub file not readable"
 		return out
 	}
+	passwordRef := false
+	out.PasswordReferencePresent = &passwordRef
 	out.DefaultGrubPath = defaultGrubPath
 	lines := strings.Split(string(data), "\n")
 	var cmdlineParts []string
@@ -45,7 +47,7 @@ func CollectGrubSnapshot() *payload.GrubSnapshot {
 		}
 		low := strings.ToLower(line)
 		if strings.Contains(low, "grub_password") || strings.Contains(low, "password_pbkdf2") {
-			out.PasswordReferencePresent = true
+			passwordRef = true
 		}
 	}
 	if len(cmdlineParts) > 0 {
@@ -66,7 +68,7 @@ func CollectGrubSnapshot() *payload.GrubSnapshot {
 		out.GrubCfgReadablePath = p
 		peekS := string(peek)
 		if strings.Contains(strings.ToLower(peekS), "password") {
-			out.PasswordReferencePresent = true
+			passwordRef = true
 		}
 		break
 	}

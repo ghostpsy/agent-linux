@@ -52,6 +52,18 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	notifyStart("collect_host_ssh")
 	hs, hsErr := identity.CollectHostSSH()
 	notifyDone("collect_host_ssh", hostSSHListenCount(hs), hsErr)
+	notifyStart("collect_shadow_account_summary")
+	sas := identity.CollectShadowAccountSummary()
+	notifyDone("collect_shadow_account_summary", shadowNotifyCount(sas), shadowNotifyError(sas))
+	notifyStart("collect_duplicate_uid_gid")
+	dupUG := identity.CollectDuplicateUidGid()
+	notifyDone("collect_duplicate_uid_gid", duplicateIDNotifyCount(dupUG), dupUG.Error)
+	notifyStart("collect_password_policy_fingerprint")
+	ppf := identity.CollectPasswordPolicyFingerprint()
+	notifyDone("collect_password_policy_fingerprint", passwordPolicyNotifyCount(ppf), ppf.Error)
+	notifyStart("collect_sudoers_audit")
+	sau := identity.CollectSudoersAudit()
+	notifyDone("collect_sudoers_audit", len(sau.FilesScanned), sau.Error)
 	notifyStart("collect_packages_updates")
 	pu, puErr := software.CollectPackagesUpdates()
 	notifyDone("collect_packages_updates", packagesPendingUpdatesCount(pu), puErr)
@@ -129,6 +141,24 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	notifyStart("collect_host_suid")
 	hsuid := filesystem.CollectHostSuid()
 	notifyDone("collect_host_suid", len(hsuid.Items), hsuid.Error)
+	notifyStart("collect_mount_options_audit")
+	moa := filesystem.CollectMountOptionsAudit()
+	notifyDone("collect_mount_options_audit", len(moa.Paths), moa.Error)
+	notifyStart("collect_path_permissions_audit")
+	ppa := filesystem.CollectPathPermissionsAudit()
+	notifyDone("collect_path_permissions_audit", pathPermissionsNotifyCount(ppa), ppa.Error)
+	notifyStart("collect_usb_storage_posture")
+	usbp := filesystem.CollectUsbStoragePosture()
+	notifyDone("collect_usb_storage_posture", len(usbp.ModprobeFragmentLinesSample), usbp.Error)
+	notifyStart("collect_file_integrity_tooling")
+	fim := filesystem.CollectFileIntegrityTooling()
+	notifyDone("collect_file_integrity_tooling", len(fim.EvidencePaths)+len(fim.SystemdUnitsSample), fim.Error)
+	notifyStart("collect_crypt_storage_hint")
+	csh := filesystem.CollectCryptStorageHint()
+	notifyDone("collect_crypt_storage_hint", csh.CrypttabEntryCount+csh.LsblkCryptVolumeCount, csh.Error)
+	notifyStart("collect_nfs_exports_fingerprint")
+	nfsx := filesystem.CollectNfsExportsFingerprint()
+	notifyDone("collect_nfs_exports_fingerprint", len(nfsx.Entries), nfsx.Error)
 	notifyStart("collect_host_process")
 	hproc := core.CollectHostProcess()
 	notifyDone("collect_host_process", len(hproc.Top), hproc.Error)
@@ -159,13 +189,23 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 			HighRiskProcess: hrisk,
 		},
 		IdentityAccessAndAuthentication: payload.IdentityAccessAndAuthenticationComponent{
-			HostUsersSummary: hus,
-			HostSSH:          hs,
+			HostUsersSummary:          hus,
+			HostSSH:                   hs,
+			ShadowAccountSummary:      sas,
+			DuplicateUidGid:           dupUG,
+			PasswordPolicyFingerprint: ppf,
+			SudoersAudit:              sau,
 		},
 		FileSystemAndStorage: payload.FileSystemAndStorageComponent{
-			HostDisk: hd,
-			HostPath: hp,
-			HostSuid: hsuid,
+			HostDisk:              hd,
+			HostPath:              hp,
+			HostSuid:              hsuid,
+			MountOptionsAudit:     moa,
+			PathPermissionsAudit:  ppa,
+			UsbStoragePosture:     usbp,
+			FileIntegrityTooling:  fim,
+			CryptStorageHint:      csh,
+			NfsExportsFingerprint: nfsx,
 		},
 		NetworkAndHostFirewall: payload.NetworkAndHostFirewallComponent{
 			Listeners:   listeners,
@@ -226,6 +266,45 @@ func hostSSHListenCount(hs *payload.HostSSH) int {
 		return 0
 	}
 	return len(hs.ListenAddresses)
+}
+
+func shadowNotifyCount(s *payload.ShadowAccountSummary) int {
+	if s == nil || !s.ShadowReadable {
+		return 0
+	}
+	return 1
+}
+
+func shadowNotifyError(s *payload.ShadowAccountSummary) string {
+	if s == nil {
+		return ""
+	}
+	return s.Error
+}
+
+func duplicateIDNotifyCount(d *payload.DuplicateUidGid) int {
+	if d == nil {
+		return 0
+	}
+	return d.DuplicateUidCount + d.DuplicateGidCount
+}
+
+func passwordPolicyNotifyCount(p *payload.PasswordPolicyFingerprint) int {
+	if p == nil {
+		return 0
+	}
+	return len(p.PwqualityKeys) + len(p.PamPasswordRequisiteLines)
+}
+
+func pathPermissionsNotifyCount(p *payload.PathPermissionsAudit) int {
+	if p == nil {
+		return 0
+	}
+	n := len(p.WorldWritableDirsSample) + len(p.SgidItemsSample) + len(p.UnownedFilesSample)
+	if p.TmpStickyBitPresent != nil {
+		n++
+	}
+	return n
 }
 
 func packagesPendingUpdatesCount(pu *payload.PackagesUpdates) int {

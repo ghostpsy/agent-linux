@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	selinuxFsRoot      = "/sys/fs/selinux"
 	selinuxEnforcePath = "/sys/fs/selinux/enforce"
 	apparmorSummaryMax = 4096
 )
@@ -22,7 +23,9 @@ const (
 // CollectSelinuxApparmor reports SELinux mode and a short AppArmor summary when available.
 func CollectSelinuxApparmor() *payload.SelinuxApparmorBlock {
 	out := &payload.SelinuxApparmorBlock{}
-	if b, err := os.ReadFile(selinuxEnforcePath); err == nil {
+	if _, err := os.Stat(selinuxFsRoot); err != nil {
+		out.SelinuxMode = ""
+	} else if b, err := os.ReadFile(selinuxEnforcePath); err == nil {
 		s := strings.TrimSpace(string(b))
 		switch s {
 		case "1":
@@ -44,7 +47,7 @@ func selinuxModeFromGetenforce() string {
 	defer cancel()
 	b, err := exec.CommandContext(ctx, "getenforce").Output()
 	if err != nil {
-		return "disabled"
+		return ""
 	}
 	s := strings.TrimSpace(strings.ToLower(string(b)))
 	switch s {

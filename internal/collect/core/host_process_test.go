@@ -54,16 +54,3 @@ func TestCountProcessSignals(t *testing.T) {
 		t.Fatal("expected miner keyword hit")
 	}
 }
-
-func TestProcSampleToEntryTruncatesCmdline(t *testing.T) {
-	t.Parallel()
-	long := make([]rune, 400)
-	for i := range long {
-		long[i] = 'a'
-	}
-	s := procSample{pid: 1, name: "n", user: "u", cpu: 1.2, rss: 1048576, cmdline: string(long)}
-	e := procSampleToEntry(s)
-	if len([]rune(e.CmdlineTruncated)) > maxCmdlineRunes {
-		t.Fatalf("cmdline not truncated: len=%d", len([]rune(e.CmdlineTruncated)))
-	}
-}

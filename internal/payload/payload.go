@@ -43,14 +43,24 @@ type CoreSystemAndKernelComponent struct {
 }
 
 type IdentityAccessAndAuthenticationComponent struct {
-	HostUsersSummary *HostUsersSummary `json:"host_users_summary,omitempty"`
-	HostSSH          *HostSSH          `json:"host_ssh,omitempty"`
+	HostUsersSummary          *HostUsersSummary          `json:"host_users_summary,omitempty"`
+	HostSSH                   *HostSSH                   `json:"host_ssh,omitempty"`
+	ShadowAccountSummary      *ShadowAccountSummary      `json:"shadow_account_summary,omitempty"`
+	DuplicateUidGid           *DuplicateUidGid           `json:"duplicate_uid_gid,omitempty"`
+	PasswordPolicyFingerprint *PasswordPolicyFingerprint `json:"password_policy_fingerprint,omitempty"`
+	SudoersAudit              *SudoersAudit              `json:"sudoers_audit,omitempty"`
 }
 
 type FileSystemAndStorageComponent struct {
-	HostDisk *HostDisk `json:"host_disk,omitempty"`
-	HostPath *HostPath `json:"host_path,omitempty"`
-	HostSuid *HostSuid `json:"host_suid,omitempty"`
+	HostDisk                *HostDisk                `json:"host_disk,omitempty"`
+	HostPath                *HostPath                `json:"host_path,omitempty"`
+	HostSuid                *HostSuid                `json:"host_suid,omitempty"`
+	MountOptionsAudit       *MountOptionsAudit       `json:"mount_options_audit,omitempty"`
+	PathPermissionsAudit    *PathPermissionsAudit    `json:"path_permissions_audit,omitempty"`
+	UsbStoragePosture       *UsbStoragePosture       `json:"usb_storage_posture,omitempty"`
+	FileIntegrityTooling    *FileIntegrityTooling    `json:"file_integrity_tooling,omitempty"`
+	CryptStorageHint        *CryptStorageHint        `json:"crypt_storage_hint,omitempty"`
+	NfsExportsFingerprint   *NfsExportsFingerprint   `json:"nfs_exports_fingerprint,omitempty"`
 }
 
 type NetworkAndHostFirewallComponent struct {
@@ -134,14 +144,21 @@ type HostTime struct {
 }
 
 type HostSSH struct {
-	PermitRootLogin         string   `json:"permit_root_login,omitempty"`
-	PasswordAuthentication  string   `json:"password_authentication,omitempty"`
-	ChallengeResponseAuth   string   `json:"challenge_response_auth,omitempty"`
-	KexAlgorithmsSample     []string `json:"kex_algorithms_sample,omitempty"`
-	CiphersSample           []string `json:"ciphers_sample,omitempty"`
-	ListenAddresses         []string `json:"listen_addresses,omitempty"`
-	MaxAuthTriesRecommended int      `json:"max_auth_tries_recommended,omitempty"`
-	Error                   string   `json:"error,omitempty"`
+	PermitRootLogin            string   `json:"permit_root_login,omitempty"`
+	PasswordAuthentication     string   `json:"password_authentication,omitempty"`
+	ChallengeResponseAuth      string   `json:"challenge_response_auth,omitempty"`
+	KexAlgorithmsSample        []string `json:"kex_algorithms_sample,omitempty"`
+	CiphersSample              []string `json:"ciphers_sample,omitempty"`
+	ListenAddresses            []string `json:"listen_addresses,omitempty"`
+	MaxAuthTries               *int     `json:"max_auth_tries,omitempty"`
+	ClientAliveIntervalSeconds *int     `json:"client_alive_interval_seconds,omitempty"`
+	ClientAliveCountMax        *int     `json:"client_alive_count_max,omitempty"`
+	AllowUsersPresent          bool     `json:"allow_users_present"`
+	DenyUsersPresent           bool     `json:"deny_users_present"`
+	Subsystem                  string   `json:"subsystem,omitempty"`
+	UsePAM                     string   `json:"use_pam,omitempty"`
+	X11Forwarding              string   `json:"x11_forwarding,omitempty"`
+	Error                      string   `json:"error,omitempty"`
 }
 
 type HostDisk struct {
@@ -150,11 +167,11 @@ type HostDisk struct {
 }
 
 type FilesystemEntry struct {
-	Mount         string  `json:"mount"`
-	Fstype        string  `json:"fstype"`
-	UsedPct       int     `json:"used_pct"`
-	AvailGB       float64 `json:"avail_gb"`
-	InodesUsedPct *int    `json:"inodes_used_pct,omitempty"`
+	Mount         string `json:"mount"`
+	Fstype        string `json:"fstype"`
+	UsedPct       int    `json:"used_pct"`
+	AvailGB       int    `json:"avail_gb"`
+	InodesUsedPct *int   `json:"inodes_used_pct,omitempty"`
 }
 
 type HostUsersSummary struct {
@@ -166,12 +183,11 @@ type HostUsersSummary struct {
 	Error           string       `json:"error,omitempty"`
 }
 
+// UserSample is intentionally free of login names and home paths (PII); uid/gid/shell only.
 type UserSample struct {
-	Name  string `json:"name"`
 	UID   int    `json:"uid"`
 	GID   int    `json:"gid"`
 	Shell string `json:"shell"`
-	Home  string `json:"home"`
 }
 
 type HostNetwork struct {
@@ -257,12 +273,11 @@ type HostProcess struct {
 }
 
 type ProcessTopEntry struct {
-	Pid              int32   `json:"pid"`
-	Name             string  `json:"name"`
-	User             string  `json:"user"`
-	CpuPct           float64 `json:"cpu_pct"`
-	RssMb            float64 `json:"rss_mb"`
-	CmdlineTruncated string  `json:"cmdline_truncated"`
+	Pid    int32   `json:"pid"`
+	Name   string  `json:"name"`
+	User   string  `json:"user"`
+	CpuPct float64 `json:"cpu_pct"`
+	RssMb  float64 `json:"rss_mb"`
 }
 
 type ProcessSignals struct {

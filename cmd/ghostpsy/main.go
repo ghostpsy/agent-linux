@@ -236,6 +236,14 @@ func humanMessageForCollectionAction(action string) string {
 		return "Extracting user names, shell, UID and GID from /etc/passwd"
 	case "collect_host_ssh":
 		return "Extracting OpenSSH hardening settings from sshd configuration files"
+	case "collect_shadow_account_summary":
+		return "Summarizing account lock and password hints from shadow metadata (no secrets)"
+	case "collect_duplicate_uid_gid":
+		return "Detecting duplicate UID and GID entries in passwd and group files"
+	case "collect_password_policy_fingerprint":
+		return "Reading pwquality.conf and PAM password stack lines (no secrets)"
+	case "collect_sudoers_audit":
+		return "Scanning sudoers structure for risky patterns (no full rule dump)"
 	case "collect_packages_updates":
 		return "Extracting available package updates from the system package manager"
 	case "collect_host_backup":
@@ -250,6 +258,18 @@ func humanMessageForCollectionAction(action string) string {
 		return "Extracting PATH directory entries and world-writable flags"
 	case "collect_host_suid":
 		return "Extracting a capped setuid binary inventory from standard locations"
+	case "collect_mount_options_audit":
+		return "Comparing fstab and live mount options for nodev, nosuid, and noexec on key paths"
+	case "collect_path_permissions_audit":
+		return "Sampling world-writable directories, /tmp sticky bit, setgid files, and unowned paths"
+	case "collect_usb_storage_posture":
+		return "Checking usb_storage module load state and modprobe blacklist fragments"
+	case "collect_file_integrity_tooling":
+		return "Detecting AIDE or Tripwire installation hints (no integrity database upload)"
+	case "collect_crypt_storage_hint":
+		return "Summarizing crypttab and encrypted block devices from lsblk (no keys)"
+	case "collect_nfs_exports_fingerprint":
+		return "Fingerprinting NFS exports with hashed paths (no raw export paths)"
 	case "collect_host_process":
 		return "Extracting top CPU and memory processes plus interpreter counts"
 	case "collect_host_runtimes":
@@ -275,6 +295,17 @@ func humanDoneMessage(action string, items int) string {
 		return fmt.Sprintf("Done: found %d pending package updates.", items)
 	case "collect_host_ssh":
 		return fmt.Sprintf("Done: extracted %d SSH listen address entries.", items)
+	case "collect_shadow_account_summary":
+		if items == 0 {
+			return "Done: shadow summary unavailable for this host."
+		}
+		return "Done: summarized shadow account lock and expiry hints."
+	case "collect_duplicate_uid_gid":
+		return fmt.Sprintf("Done: found %d duplicate UID/GID groups.", items)
+	case "collect_password_policy_fingerprint":
+		return fmt.Sprintf("Done: collected %d password policy signal lines.", items)
+	case "collect_sudoers_audit":
+		return fmt.Sprintf("Done: scanned %d sudoers files.", items)
 	case "collect_listeners":
 		return fmt.Sprintf("Done: extracted %d listening port entries.", items)
 	case "collect_firewall":
@@ -283,6 +314,18 @@ func humanDoneMessage(action string, items int) string {
 		return fmt.Sprintf("Done: extracted %d PATH directory entries.", items)
 	case "collect_host_suid":
 		return fmt.Sprintf("Done: extracted %d setuid file entries.", items)
+	case "collect_mount_options_audit":
+		return fmt.Sprintf("Done: audited mount options for %d standard paths.", items)
+	case "collect_path_permissions_audit":
+		return fmt.Sprintf("Done: collected %d path permission signals.", items)
+	case "collect_usb_storage_posture":
+		return fmt.Sprintf("Done: recorded %d modprobe lines mentioning USB storage.", items)
+	case "collect_file_integrity_tooling":
+		return fmt.Sprintf("Done: collected %d FIM tooling signals.", items)
+	case "collect_crypt_storage_hint":
+		return fmt.Sprintf("Done: collected %d crypt volume hints.", items)
+	case "collect_nfs_exports_fingerprint":
+		return fmt.Sprintf("Done: fingerprinted %d NFS export lines.", items)
 	case "collect_host_process":
 		return fmt.Sprintf("Done: extracted %d top process entries.", items)
 	case "collect_host_runtimes":

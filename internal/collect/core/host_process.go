@@ -16,10 +16,9 @@ import (
 )
 
 const (
-	processTopCPU   = 8
-	processTopRSS   = 8
-	processTopMax   = 16
-	maxCmdlineRunes = 256
+	processTopCPU = 8
+	processTopRSS = 8
+	processTopMax = 16
 )
 
 var minerCmdlineKeywords = []string{
@@ -158,15 +157,12 @@ func mergeProcessTop(samples []procSample) []payload.ProcessTopEntry {
 }
 
 func procSampleToEntry(s procSample) payload.ProcessTopEntry {
-	cmd := RedactCmdline(s.cmdline)
-	cmd = shared.TruncateRunes(cmd, maxCmdlineRunes)
 	return payload.ProcessTopEntry{
-		Pid:              s.pid,
-		Name:             shared.TruncateRunes(s.name, 256),
-		User:             shared.TruncateRunes(s.user, 64),
-		CpuPct:           round2(s.cpu),
-		RssMb:            round2(float64(s.rss) / 1048576.0),
-		CmdlineTruncated: cmd,
+		Pid:    s.pid,
+		Name:   shared.TruncateRunes(s.name, 256),
+		User:   shared.TruncateRunes(s.user, 64),
+		CpuPct: round2(s.cpu),
+		RssMb:  round2(float64(s.rss) / 1048576.0),
 	}
 }
 

@@ -15,7 +15,8 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
-const maxUserSample = 50
+// Capped sample rows; no account names or home directories (PII) in the payload.
+const maxUserSample = 16
 
 func minHumanUID() int {
 	return 1000
@@ -100,11 +101,9 @@ func CollectHostUsersSummary() (*payload.HostUsersSummary, string) {
 			break
 		}
 		sample = append(sample, payload.UserSample{
-			Name:  shared.TruncateRunes(e.name, 256),
 			UID:   e.uid,
 			GID:   e.gid,
 			Shell: shared.TruncateRunes(e.shell, 256),
-			Home:  shared.TruncateRunes(e.home, 512),
 		})
 	}
 	return &payload.HostUsersSummary{

@@ -5,6 +5,7 @@ package core
 import (
 	"log/slog"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -90,7 +91,26 @@ func listenerPortsByPID() map[int32][]int {
 		}
 		m[c.Pid] = append(m[c.Pid], port)
 	}
+	for pid, ports := range m {
+		m[pid] = dedupeSortedInts(ports)
+	}
 	return m
+}
+
+func dedupeSortedInts(ports []int) []int {
+	if len(ports) <= 1 {
+		return ports
+	}
+	seen := make(map[int]struct{}, len(ports))
+	for _, p := range ports {
+		seen[p] = struct{}{}
+	}
+	out := make([]int, 0, len(seen))
+	for p := range seen {
+		out = append(out, p)
+	}
+	sort.Ints(out)
+	return out
 }
 
 func buildHighRiskEntry(pid int32, ports []int) payload.HighRiskProcessEntry {

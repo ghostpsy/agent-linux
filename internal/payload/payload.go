@@ -52,22 +52,24 @@ type IdentityAccessAndAuthenticationComponent struct {
 }
 
 type FileSystemAndStorageComponent struct {
-	HostDisk                *HostDisk                `json:"host_disk,omitempty"`
-	HostPath                *HostPath                `json:"host_path,omitempty"`
-	HostSuid                *HostSuid                `json:"host_suid,omitempty"`
-	MountOptionsAudit       *MountOptionsAudit       `json:"mount_options_audit,omitempty"`
-	PathPermissionsAudit    *PathPermissionsAudit    `json:"path_permissions_audit,omitempty"`
-	UsbStoragePosture       *UsbStoragePosture       `json:"usb_storage_posture,omitempty"`
-	FileIntegrityTooling    *FileIntegrityTooling    `json:"file_integrity_tooling,omitempty"`
-	CryptStorageHint        *CryptStorageHint        `json:"crypt_storage_hint,omitempty"`
-	NfsExportsFingerprint   *NfsExportsFingerprint   `json:"nfs_exports_fingerprint,omitempty"`
+	HostDisk              *HostDisk              `json:"host_disk,omitempty"`
+	HostPath              *HostPath              `json:"host_path,omitempty"`
+	HostSuid              *HostSuid              `json:"host_suid,omitempty"`
+	MountOptionsAudit     *MountOptionsAudit     `json:"mount_options_audit,omitempty"`
+	PathPermissionsAudit  *PathPermissionsAudit  `json:"path_permissions_audit,omitempty"`
+	UsbStoragePosture     *UsbStoragePosture     `json:"usb_storage_posture,omitempty"`
+	FileIntegrityTooling  *FileIntegrityTooling  `json:"file_integrity_tooling,omitempty"`
+	CryptStorageHint      *CryptStorageHint      `json:"crypt_storage_hint,omitempty"`
+	NfsExportsFingerprint *NfsExportsFingerprint `json:"nfs_exports_fingerprint,omitempty"`
 }
 
 type NetworkAndHostFirewallComponent struct {
-	Listeners   []Listener    `json:"listeners"`
-	HostNetwork *HostNetwork  `json:"host_network,omitempty"`
-	Firewall    *Firewall     `json:"firewall,omitempty"`
-	Services    ServicesBlock `json:"services"`
+	Listeners              []Listener              `json:"listeners"`
+	HostNetwork            *HostNetwork            `json:"host_network,omitempty"`
+	Firewall               *Firewall               `json:"firewall,omitempty"`
+	Services               ServicesBlock           `json:"services"`
+	TcpWrappersFingerprint *TcpWrappersFingerprint `json:"tcp_wrappers_fingerprint,omitempty"`
+	LegacyInsecureServices *LegacyInsecureServices `json:"legacy_insecure_services,omitempty"`
 }
 
 type SoftwarePackagesAndApplicationsComponent struct {
@@ -124,14 +126,17 @@ const (
 )
 
 type Listener struct {
-	Port            int    `json:"port"`
-	Bind            string `json:"bind"`
-	Process         string `json:"process"`
-	BindScope       string `json:"bind_scope,omitempty"`
-	ExposureRisk    string `json:"exposure_risk,omitempty"`
-	FirewallRule    string `json:"firewall_rule,omitempty"`
-	LanFirewallRule string `json:"lan_firewall_rule,omitempty"`
-	WanFirewallRule string `json:"wan_firewall_rule,omitempty"`
+	Port               int    `json:"port"`
+	Bind               string `json:"bind"`
+	Process            string `json:"process"`
+	ListenPid          int32  `json:"listen_pid,omitempty"`
+	SystemdUnit        string `json:"systemd_unit,omitempty"`
+	SystemdUnitMissing bool   `json:"systemd_unit_missing,omitempty"`
+	BindScope          string `json:"bind_scope,omitempty"`
+	ExposureRisk       string `json:"exposure_risk,omitempty"`
+	FirewallRule       string `json:"firewall_rule,omitempty"`
+	LanFirewallRule    string `json:"lan_firewall_rule,omitempty"`
+	WanFirewallRule    string `json:"wan_firewall_rule,omitempty"`
 }
 
 type HostTime struct {
@@ -191,18 +196,24 @@ type UserSample struct {
 }
 
 type HostNetwork struct {
-	DefaultRouteVia    string         `json:"default_route_via,omitempty"`
-	HasPublicIPv4      *bool          `json:"has_public_ipv4,omitempty"`
-	HasPublicIPv6      *bool          `json:"has_public_ipv6,omitempty"`
-	PublicIPCandidates []string       `json:"public_ip_candidates,omitempty"`
-	Interfaces         []NetworkIface `json:"interfaces,omitempty"`
-	Error              string         `json:"error,omitempty"`
+	DefaultRouteVia         string         `json:"default_route_via,omitempty"`
+	HasPublicIPv4           *bool          `json:"has_public_ipv4,omitempty"`
+	HasPublicIPv6           *bool          `json:"has_public_ipv6,omitempty"`
+	PublicIPCandidates      []string       `json:"public_ip_candidates,omitempty"`
+	Interfaces              []NetworkIface `json:"interfaces,omitempty"`
+	ResolvConfNameservers   []string       `json:"resolv_conf_nameservers,omitempty"`
+	ResolvConfSearchDomains []string       `json:"resolv_conf_search_domains,omitempty"`
+	ResolvConfSampleLines   []string       `json:"resolv_conf_sample_lines,omitempty"`
+	SystemdResolvedStub     *bool          `json:"systemd_resolved_stub,omitempty"`
+	Error                   string         `json:"error,omitempty"`
 }
 
 type NetworkIface struct {
 	Name           string         `json:"name"`
 	IsLoopback     *bool          `json:"is_loopback,omitempty"`
 	IsDockerBridge *bool          `json:"is_docker_bridge,omitempty"`
+	Ipv6Enabled    *bool          `json:"ipv6_enabled,omitempty"`
+	Promiscuous    *bool          `json:"promiscuous,omitempty"`
 	Addresses      []IfaceAddress `json:"addresses,omitempty"`
 }
 
@@ -229,13 +240,18 @@ type HostBackup struct {
 }
 
 type Firewall struct {
-	Family                string            `json:"firewall_family"`
-	DefaultPolicyIn       string            `json:"default_policy_in,omitempty"`
-	DefaultPolicyOut      string            `json:"default_policy_out,omitempty"`
-	RuleCount             *int              `json:"rule_count,omitempty"`
-	HasEstablishedRelated *bool             `json:"has_established_related,omitempty"`
-	Managers              []FirewallManager `json:"firewall_managers"`
-	Error                 string            `json:"error,omitempty"`
+	Family                  string            `json:"firewall_family"`
+	DefaultPolicyIn         string            `json:"default_policy_in,omitempty"`
+	DefaultPolicyOut        string            `json:"default_policy_out,omitempty"`
+	RuleCount               *int              `json:"rule_count,omitempty"`
+	HasEstablishedRelated   *bool             `json:"has_established_related,omitempty"`
+	Managers                []FirewallManager `json:"firewall_managers"`
+	FirewalldDefaultZone    string            `json:"firewalld_default_zone,omitempty"`
+	FirewalldZoneTarget     string            `json:"firewalld_zone_target,omitempty"`
+	UfwStatusVerboseSample  []string          `json:"ufw_status_verbose_sample,omitempty"`
+	BackendRulesetSha256Hex string            `json:"backend_ruleset_sha256,omitempty"`
+	BackendRulesetExcerpt   string            `json:"backend_ruleset_excerpt,omitempty"`
+	Error                   string            `json:"error,omitempty"`
 }
 
 type FirewallManager struct {

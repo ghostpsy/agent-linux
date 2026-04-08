@@ -270,6 +270,10 @@ func humanMessageForCollectionAction(action string) string {
 		return "Summarizing crypttab and encrypted block devices from lsblk (no keys)"
 	case "collect_nfs_exports_fingerprint":
 		return "Fingerprinting NFS exports with hashed paths (no raw export paths)"
+	case "collect_tcp_wrappers_fingerprint":
+		return "Summarizing hosts.allow and hosts.deny (bounded lines)"
+	case "collect_legacy_insecure_services":
+		return "Checking systemd for legacy telnet/rsh/FTP unit hints and inetd.conf"
 	case "collect_host_process":
 		return "Extracting top CPU and memory processes plus interpreter counts"
 	case "collect_host_runtimes":
@@ -326,6 +330,10 @@ func humanDoneMessage(action string, items int) string {
 		return fmt.Sprintf("Done: collected %d crypt volume hints.", items)
 	case "collect_nfs_exports_fingerprint":
 		return fmt.Sprintf("Done: fingerprinted %d NFS export lines.", items)
+	case "collect_tcp_wrappers_fingerprint":
+		return fmt.Sprintf("Done: summarized %d TCP wrappers rule lines.", items)
+	case "collect_legacy_insecure_services":
+		return fmt.Sprintf("Done: collected %d legacy insecure service signals.", items)
 	case "collect_host_process":
 		return fmt.Sprintf("Done: extracted %d top process entries.", items)
 	case "collect_host_runtimes":

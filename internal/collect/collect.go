@@ -42,6 +42,9 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 
 	notifyStart("collect_host_network")
 	hn, hnErr := filesystem.CollectHostNetwork()
+	if hn != nil {
+		network.EnrichHostNetwork(hn)
+	}
 	notifyDone("collect_host_network", len(hostNetworkInterfaces(hn)), hnErr)
 	notifyStart("collect_host_disk")
 	hd, hdErr := filesystem.CollectHostDisk()
@@ -135,6 +138,12 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	notifyStart("collect_firewall")
 	fw := firewall.CollectFirewall()
 	notifyDone("collect_firewall", firewallRuleCount(fw), firewallError(fw))
+	notifyStart("collect_tcp_wrappers_fingerprint")
+	tw := network.CollectTcpWrappersFingerprint()
+	notifyDone("collect_tcp_wrappers_fingerprint", tcpWrappersNotifyCount(tw), tw.Error)
+	notifyStart("collect_legacy_insecure_services")
+	leg := network.CollectLegacyInsecureServices()
+	notifyDone("collect_legacy_insecure_services", legacyInsecureNotifyCount(leg), leg.Error)
 	notifyStart("collect_host_path")
 	hp := filesystem.CollectHostPath()
 	notifyDone("collect_host_path", len(hp.Entries), hp.Error)
@@ -208,10 +217,12 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 			NfsExportsFingerprint: nfsx,
 		},
 		NetworkAndHostFirewall: payload.NetworkAndHostFirewallComponent{
-			Listeners:   listeners,
-			HostNetwork: hn,
-			Firewall:    fw,
-			Services:    servicesBlock,
+			Listeners:              listeners,
+			HostNetwork:            hn,
+			Firewall:               fw,
+			Services:               servicesBlock,
+			TcpWrappersFingerprint: tw,
+			LegacyInsecureServices: leg,
 		},
 		SoftwarePackagesAndApplications: payload.SoftwarePackagesAndApplicationsComponent{
 			PackagesUpdates: pu,
@@ -302,6 +313,42 @@ func pathPermissionsNotifyCount(p *payload.PathPermissionsAudit) int {
 	}
 	n := len(p.WorldWritableDirsSample) + len(p.SgidItemsSample) + len(p.UnownedFilesSample)
 	if p.TmpStickyBitPresent != nil {
+		n++
+	}
+	return n
+}
+
+func tcpWrappersNotifyCount(t *payload.TcpWrappersFingerprint) int {
+	if t == nil {
+		return 0
+	}
+	return t.HostsAllowLineCount + t.HostsDenyLineCount
+}
+
+func legacyInsecureNotifyCount(l *payload.LegacyInsecureServices) int {
+	if l == nil {
+		return 0
+	}
+	n := 0
+	if l.TelnetSuspected {
+		n++
+	}
+	if l.RshSuspected {
+		n++
+	}
+	if l.RloginSuspected {
+		n++
+	}
+	if l.RexecSuspected {
+		n++
+	}
+	if l.VsftpdSuspected {
+		n++
+	}
+	if l.ProftpdSuspected {
+		n++
+	}
+	if l.InetdConfPresent {
 		n++
 	}
 	return n

@@ -32,6 +32,7 @@ type firewallMetrics struct {
 // There is no fallback to parsing iptables-save snapshots for these metrics.
 func CollectFirewall() *payload.Firewall {
 	fw := &payload.Firewall{Managers: collectFirewallManagers()}
+	defer enrichFirewallDetails(fw)
 	if firewalldRunning() {
 		fw.Family = fwFirewalld
 		if m, _, _, err := collectIptablesMetrics(); err == nil {

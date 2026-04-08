@@ -11,6 +11,7 @@ import (
 	gopsutilnet "github.com/shirou/gopsutil/v4/net"
 	gopsutilproc "github.com/shirou/gopsutil/v4/process"
 
+	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -32,6 +33,7 @@ type listenerWork struct {
 	port    int
 	bind    string
 	process string
+	pid     int32
 }
 
 // CollectListeners lists TCP listeners via gopsutil net.Connections (same idea as psutil net_connections).
@@ -96,6 +98,7 @@ func collectListenerWork() ([]listenerWork, error) {
 			port:    port,
 			bind:    bind,
 			process: processNameFromPID(c.Pid),
+			pid:     c.Pid,
 		})
 		if len(work) >= maxListeners {
 			break
@@ -108,13 +111,20 @@ func listenerWorkToPayload(work []listenerWork, hn *payload.HostNetwork) []paylo
 	out := make([]payload.Listener, len(work))
 	for i := range work {
 		bs, er := classifyListenerExposure(work[i].bind, hn)
-		out[i] = payload.Listener{
+		unit, ok := systemdUnitFromCgroup(work[i].pid)
+		ent := payload.Listener{
 			Port:         work[i].port,
 			Bind:         truncateRunes(work[i].bind, 64),
 			Process:      truncateRunes(work[i].process, 256),
+			ListenPid:    work[i].pid,
+			SystemdUnit:  shared.TruncateRunes(unit, 128),
 			BindScope:    bs,
 			ExposureRisk: er,
 		}
+		if work[i].pid > 0 && !ok {
+			ent.SystemdUnitMissing = true
+		}
+		out[i] = ent
 	}
 	return out
 }

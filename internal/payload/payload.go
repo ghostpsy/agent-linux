@@ -84,7 +84,14 @@ type SoftwarePackagesAndApplicationsComponent struct {
 }
 
 type ContainerAndCloudNativeLinuxComponent struct {
-	HostRuntimes *HostRuntimes `json:"host_runtimes,omitempty"`
+	HostRuntimes *ContainerNativeHostRuntimes `json:"host_runtimes,omitempty"`
+}
+
+// ContainerNativeHostRuntimes is §6 host_runtimes: Docker daemon and kubelet hints only (no language runtime items).
+type ContainerNativeHostRuntimes struct {
+	Docker  *DockerHostFingerprint  `json:"docker,omitempty"`
+	Kubelet *KubeletNodeFingerprint `json:"kubelet,omitempty"`
+	Error   string                  `json:"error,omitempty"`
 }
 
 type LoggingAndSystemAuditingComponent struct {

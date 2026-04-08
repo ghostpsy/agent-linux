@@ -39,7 +39,7 @@ func TestContainerCloudHostRuntimesWithDocker(t *testing.T) {
 		Docker: &payload.DockerHostFingerprint{DockerCliPath: "/usr/bin/docker"},
 	}
 	got := containerCloudHostRuntimes(hr)
-	if got == nil || len(got.Items) != 0 || got.Docker == nil || got.Kubelet != nil {
+	if got == nil || got.Docker == nil || got.Kubelet != nil {
 		t.Fatalf("got %+v", got)
 	}
 }
@@ -50,7 +50,7 @@ func TestContainerCloudHostRuntimesWithKubelet(t *testing.T) {
 		Kubelet: &payload.KubeletNodeFingerprint{KubeletBinaryPath: "/usr/bin/kubelet"},
 	}
 	got := containerCloudHostRuntimes(hr)
-	if got == nil || len(got.Items) != 0 || got.Kubelet == nil || got.Docker != nil {
+	if got == nil || got.Kubelet == nil || got.Docker != nil {
 		t.Fatalf("got %+v", got)
 	}
 }

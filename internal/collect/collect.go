@@ -538,14 +538,13 @@ func softwarePackagesHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntime
 	}
 }
 
-// containerCloudHostRuntimes is §6 only: Docker and kubelet fingerprints (`items` always empty).
+// containerCloudHostRuntimes is §6 only: Docker and kubelet fingerprints (no language `items` key).
 // Omit the whole block when there is no Docker or kubelet signal (JSON {} for the component).
-func containerCloudHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntimes {
+func containerCloudHostRuntimes(hr *payload.HostRuntimes) *payload.ContainerNativeHostRuntimes {
 	if hr == nil || (hr.Docker == nil && hr.Kubelet == nil) {
 		return nil
 	}
-	return &payload.HostRuntimes{
-		Items:   []payload.RuntimeEntry{},
+	return &payload.ContainerNativeHostRuntimes{
 		Docker:  hr.Docker,
 		Kubelet: hr.Kubelet,
 	}

@@ -79,4 +79,3 @@ func fillIfaceIPv6Hints(hn *payload.HostNetwork) {
 		hn.Interfaces[i].Ipv6Enabled = &v
 	}
 }
-

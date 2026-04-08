@@ -252,10 +252,10 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
 			HostRuntimes: containerCloudHostRuntimes(hr),
 		},
-		LoggingAndSystemAuditing: payload.LoggingAndSystemAuditingComponent{},
-		Cryptography:             payload.CryptographyComponent{},
+		LoggingAndSystemAuditing:            payload.LoggingAndSystemAuditingComponent{},
+		Cryptography:                        payload.CryptographyComponent{},
 		SecurityFrameworksAndMalwareDefense: payload.SecurityFrameworksAndMalwareDefenseComponent{},
-		Other: payload.OtherComponent{},
+		Other:                               payload.OtherComponent{},
 	}
 	return payload.V1{
 		SchemaVersion: 1,

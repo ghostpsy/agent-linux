@@ -88,7 +88,12 @@ func parseSysctlLine(line string) (key, val string) {
 }
 
 func normalizeSysctlVal(s string) string {
-	return strings.TrimSpace(s)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	// Live /proc/sys values often use tabs; sysctl.conf uses spaces — compare token-wise.
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func normalizeSysctlKey(k string) string {

@@ -209,7 +209,7 @@ type HostNetwork struct {
 	DefaultRouteVia         string         `json:"default_route_via,omitempty"`
 	HasPublicIPv4           *bool          `json:"has_public_ipv4,omitempty"`
 	HasPublicIPv6           *bool          `json:"has_public_ipv6,omitempty"`
-	PublicIPCandidates      []string       `json:"public_ip_candidates,omitempty"`
+	PublicIPCandidates      []string       `json:"public_ip_candidates,omitempty"` // redacted: IPv4 a.b.x.x / IPv6 h:h:x:x:x:x:x:x
 	Interfaces              []NetworkIface `json:"interfaces,omitempty"`
 	ResolvConfNameservers   []string       `json:"resolv_conf_nameservers,omitempty"`
 	ResolvConfSearchDomains []string       `json:"resolv_conf_search_domains,omitempty"`

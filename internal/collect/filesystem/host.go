@@ -21,8 +21,20 @@ const maxDiskFilesystems = 48
 const maxNetworkIfaces = 64
 const maxPublicIPCandidates = 24
 
+// fstypes omitted from host disk inventory: immutable compressed images are always ~100% "used".
+var skipHostDiskFstypes = map[string]struct{}{
+	"squashfs": {},
+	"erofs":    {},
+}
+
 // loIfaceName matches Linux "lo", "lo0", … and typical loopback device names.
 var loIfaceName = regexp.MustCompile(`^lo\d*$`)
+
+func shouldSkipHostDiskFstype(fstype string) bool {
+	fs := strings.ToLower(strings.TrimSpace(fstype))
+	_, skip := skipHostDiskFstypes[fs]
+	return skip
+}
 
 // CollectHostDisk reports mount usage via gopsutil disk.Partitions(false) + disk.Usage.
 // The second return is non-empty when host disk usage could not be collected (error message for ingest).
@@ -45,6 +57,9 @@ func CollectHostDisk() (*payload.HostDisk, string) {
 			continue
 		}
 		if _, dup := seen[mp]; dup {
+			continue
+		}
+		if shouldSkipHostDiskFstype(p.Fstype) {
 			continue
 		}
 		seen[mp] = struct{}{}
@@ -135,10 +150,11 @@ func CollectHostNetwork() (*payload.HostNetwork, string) {
 				} else {
 					hasPub6 = true
 				}
-				if len(public) < maxPublicIPCandidates {
-					if _, dup := seenPublic[ipStr]; !dup {
-						seenPublic[ipStr] = struct{}{}
-						public = append(public, ipStr)
+				red := redactIPForDisplay(ip)
+				if red != "" && len(public) < maxPublicIPCandidates {
+					if _, dup := seenPublic[red]; !dup {
+						seenPublic[red] = struct{}{}
+						public = append(public, red)
 					}
 				}
 			}

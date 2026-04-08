@@ -3,7 +3,13 @@
 package collect
 
 import (
+	"github.com/ghostpsy/agent-linux/internal/collect/core"
+	"github.com/ghostpsy/agent-linux/internal/collect/crypto_time"
+	"github.com/ghostpsy/agent-linux/internal/collect/filesystem"
 	"github.com/ghostpsy/agent-linux/internal/collect/firewall"
+	"github.com/ghostpsy/agent-linux/internal/collect/identity"
+	"github.com/ghostpsy/agent-linux/internal/collect/network"
+	"github.com/ghostpsy/agent-linux/internal/collect/software"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -35,25 +41,25 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	}
 
 	notifyStart("collect_host_network")
-	hn, hnErr := CollectHostNetwork()
+	hn, hnErr := filesystem.CollectHostNetwork()
 	notifyDone("collect_host_network", len(hostNetworkInterfaces(hn)), hnErr)
 	notifyStart("collect_host_disk")
-	hd, hdErr := CollectHostDisk()
+	hd, hdErr := filesystem.CollectHostDisk()
 	notifyDone("collect_host_disk", len(hostDiskFilesystems(hd)), hdErr)
 	notifyStart("collect_host_users_summary")
-	hus, husErr := CollectHostUsersSummary()
+	hus, husErr := identity.CollectHostUsersSummary()
 	notifyDone("collect_host_users_summary", len(hostUsersSample(hus)), husErr)
 	notifyStart("collect_host_ssh")
-	hs, hsErr := CollectHostSSH()
+	hs, hsErr := identity.CollectHostSSH()
 	notifyDone("collect_host_ssh", hostSSHListenCount(hs), hsErr)
 	notifyStart("collect_packages_updates")
-	pu, puErr := CollectPackagesUpdates()
+	pu, puErr := software.CollectPackagesUpdates()
 	notifyDone("collect_packages_updates", packagesPendingUpdatesCount(pu), puErr)
 	notifyStart("collect_host_backup")
-	hb := CollectHostBackup()
+	hb := software.CollectHostBackup()
 	notifyDone("collect_host_backup", len(hb.ToolsDetected), hostBackupLogError(hb))
 	notifyStart("collect_services")
-	svItems, svErr := CollectServices()
+	svItems, svErr := network.CollectServices()
 	notifyDone("collect_services", len(svItems), svErr)
 
 	if svItems == nil {
@@ -87,48 +93,78 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	}
 
 	notifyStart("collect_os_info")
-	osInfo, hostname := CollectOSInfo()
-	fqdn := CollectFqdn(hostname)
+	osInfo, hostname := core.CollectOSInfo()
+	fqdn := core.CollectFqdn(hostname)
 	notifyDone("collect_os_info", nonEmptyOSInfoFields(osInfo), "")
 	notifyStart("collect_firewall")
 	fw := firewall.CollectFirewall()
 	notifyDone("collect_firewall", firewallRuleCount(fw), firewallError(fw))
 	notifyStart("collect_host_path")
-	hp := CollectHostPath()
+	hp := filesystem.CollectHostPath()
 	notifyDone("collect_host_path", len(hp.Entries), hp.Error)
 	notifyStart("collect_host_suid")
-	hsuid := CollectHostSuid()
+	hsuid := filesystem.CollectHostSuid()
 	notifyDone("collect_host_suid", len(hsuid.Items), hsuid.Error)
 	notifyStart("collect_host_process")
-	hproc := CollectHostProcess()
+	hproc := core.CollectHostProcess()
 	notifyDone("collect_host_process", len(hproc.Top), hproc.Error)
 	notifyStart("collect_host_runtimes")
-	hr := CollectHostRuntimes()
+	hr := software.CollectHostRuntimes()
 	notifyDone("collect_host_runtimes", len(hr.Items), hr.Error)
+	notifyStart("collect_host_time")
+	hostTime := crypto_time.CollectHostTime()
+	notifyDone("collect_host_time", 1, "")
 	notifyStart("collect_listeners")
-	listeners := firewall.ApplyFirewallRuleToListeners(CollectListeners(hn), fw)
+	listeners := firewall.ApplyFirewallRuleToListeners(network.CollectListeners(hn), fw)
+	if listeners == nil {
+		listeners = []payload.Listener{}
+	}
 	notifyDone("collect_listeners", len(listeners), "")
+	components := payload.Components{
+		CoreSystemAndKernel: payload.CoreSystemAndKernelComponent{
+			OS:          osInfo,
+			HostTime:    hostTime,
+			HostProcess: hproc,
+		},
+		IdentityAccessAndAuthentication: payload.IdentityAccessAndAuthenticationComponent{
+			HostUsersSummary: hus,
+			HostSSH:          hs,
+		},
+		FileSystemAndStorage: payload.FileSystemAndStorageComponent{
+			HostDisk: hd,
+			HostPath: hp,
+			HostSuid: hsuid,
+		},
+		NetworkAndHostFirewall: payload.NetworkAndHostFirewallComponent{
+			Listeners:   listeners,
+			HostNetwork: hn,
+			Firewall:    fw,
+			Services:    servicesBlock,
+		},
+		SoftwarePackagesAndApplications: payload.SoftwarePackagesAndApplicationsComponent{
+			PackagesUpdates: pu,
+			HostBackup:      hb,
+			HostRuntimes:    hr,
+		},
+		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
+			HostRuntimes: hr,
+		},
+		LoggingAndSystemAuditing: payload.LoggingAndSystemAuditingComponent{},
+		CryptographyAndTimeSynchronization: payload.CryptographyAndTimeSynchronizationComponent{
+			HostTime: hostTime,
+		},
+		SecurityFrameworksAndMalwareDefense: payload.SecurityFrameworksAndMalwareDefenseComponent{
+			HostProcess: hproc,
+		},
+		Other: payload.OtherComponent{},
+	}
 	return payload.V1{
-		SchemaVersion:    1,
-		MachineUUID:      machineUUID,
-		ScanSeq:          scanSeq,
-		Hostname:         hostname,
-		Fqdn:             fqdn,
-		OS:               osInfo,
-		Listeners:        listeners,
-		HostDisk:         hd,
-		HostNetwork:      hn,
-		HostUsersSummary: hus,
-		HostSSH:          hs,
-		PackagesUpdates:  pu,
-		HostBackup:       hb,
-		HostTime:         CollectHostTime(),
-		Firewall:         fw,
-		HostPath:         hp,
-		HostSuid:         hsuid,
-		HostProcess:      hproc,
-		HostRuntimes:     hr,
-		Services:         servicesBlock,
+		SchemaVersion: 1,
+		MachineUUID:   machineUUID,
+		ScanSeq:       scanSeq,
+		Hostname:      hostname,
+		Fqdn:          fqdn,
+		Components:    components,
 	}
 }
 
@@ -177,22 +213,7 @@ func hostBackupLogError(hb *payload.HostBackup) string {
 	if hb.BackupStatus == "on" {
 		return ""
 	}
-	return "No backup found from paths " + backupPathsForLogs()
-}
-
-func backupPathsForLogs() string {
-	return joinComma(backupDatePaths)
-}
-
-func joinComma(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	out := values[0]
-	for _, value := range values[1:] {
-		out += ", " + value
-	}
-	return out
+	return "No backup found."
 }
 
 func nonEmptyOSInfoFields(osInfo payload.OSInfo) int {

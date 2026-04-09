@@ -28,7 +28,7 @@ func collectAuditdPosture() *payload.AuditdPosture {
 		return nil
 	}
 	out := &payload.AuditdPosture{}
-	out.UnitActive = systemdIsActiveFirst([]string{"auditd.service", "auditd"})
+	out.UnitActive = systemdUnitActiveBool([]string{"auditd.service", "auditd"})
 	ctx, cancel := context.WithTimeout(context.Background(), auditctlTimeoutSeconds)
 	defer cancel()
 	if _, err := exec.LookPath("auditctl"); err != nil {

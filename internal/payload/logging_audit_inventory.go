@@ -12,7 +12,7 @@ type SyslogForwardingPosture struct {
 type SyslogDaemonEntry struct {
 	Implementation              string   `json:"implementation"`
 	UnitName                    string   `json:"unit_name,omitempty"`
-	UnitActive                  string   `json:"unit_active,omitempty"`
+	UnitActive                  *bool    `json:"unit_active,omitempty"`
 	ConfigPathsRead             []string `json:"config_paths_read,omitempty"`
 	RemoteLogHosts              []string `json:"remote_log_hosts,omitempty"`
 	ForwardingRuleSampleLines   []string `json:"forwarding_rule_sample_lines,omitempty"`
@@ -20,7 +20,7 @@ type SyslogDaemonEntry struct {
 
 // JournaldPosture summarizes systemd-journald config hints (no journal contents).
 type JournaldPosture struct {
-	UnitActive                   string `json:"unit_active,omitempty"`
+	UnitActive                   *bool `json:"unit_active,omitempty"`
 	ConfigPathsRead              []string `json:"config_paths_read,omitempty"`
 	Storage                      string `json:"storage,omitempty"`
 	ForwardToSyslog              *bool  `json:"forward_to_syslog,omitempty"`
@@ -37,7 +37,7 @@ type JournaldPosture struct {
 
 // AuditdPosture summarizes auditd activation and rule inventory (no full rule bodies).
 type AuditdPosture struct {
-	UnitActive                 string               `json:"unit_active,omitempty"`
+	UnitActive                 *bool                `json:"unit_active,omitempty"`
 	RuleLineCount              *int                 `json:"rule_line_count,omitempty"`
 	RulesDropInFiles           []AuditRulesFileHash `json:"rules_drop_in_files,omitempty"`
 	AuditctlUnavailableReason  string               `json:"auditctl_unavailable_reason,omitempty"`
@@ -61,7 +61,6 @@ type LogrotateDiskPosture struct {
 	MainConfPresent                      bool                   `json:"main_conf_present,omitempty"`
 	MainConfIncludeLinesSample           []string               `json:"main_conf_include_lines_sample,omitempty"`
 	VarLogStanzaHint                     bool                   `json:"var_log_stanza_hint,omitempty"`
-	VarLogDirectiveSampleLines            []string               `json:"var_log_directive_sample_lines,omitempty"`
 	VarLogUsagePath                      string                 `json:"var_log_usage_path,omitempty"`
 	VarLogMountUsedPct                   *int                   `json:"var_log_mount_used_pct,omitempty"`
 	LogPartitionUsageHigh                *bool                  `json:"log_partition_usage_high,omitempty"`
@@ -72,7 +71,7 @@ type LogrotateDiskPosture struct {
 
 // AtBatchPosture summarizes atd and at.allow / at.deny / spool exposure hints.
 type AtBatchPosture struct {
-	AtdUnitActive      string `json:"atd_unit_active,omitempty"`
+	AtdUnitActive      *bool `json:"atd_unit_active,omitempty"`
 	AtAllowPresent     bool   `json:"at_allow_present,omitempty"`
 	AtDenyPresent      bool   `json:"at_deny_present,omitempty"`
 	AtAllowModeOctal   string `json:"at_allow_mode_octal,omitempty"`

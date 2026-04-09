@@ -57,14 +57,16 @@ func TestContainerCloudHostRuntimesWithKubelet(t *testing.T) {
 
 func TestLoggingAuditNotifyCount(t *testing.T) {
 	pct := 50
+	journalActive := true
+	atdInactive := false
 	c := payload.LoggingAndSystemAuditingComponent{
 		SyslogForwarding: &payload.SyslogForwardingPosture{
 			Daemons: []payload.SyslogDaemonEntry{{Implementation: "rsyslog"}},
 		},
-		Journald:      &payload.JournaldPosture{UnitActive: "active"},
+		Journald:      &payload.JournaldPosture{UnitActive: &journalActive},
 		Auditd:        &payload.AuditdPosture{},
 		LogrotateDisk: &payload.LogrotateDiskPosture{VarLogMountUsedPct: &pct},
-		AtBatch:       &payload.AtBatchPosture{AtdUnitActive: "inactive"},
+		AtBatch:       &payload.AtBatchPosture{AtdUnitActive: &atdInactive},
 		ProcessAccounting: &payload.ProcessAccountingPosture{
 			SadcOnPath: true,
 		},

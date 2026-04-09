@@ -17,7 +17,7 @@ var atSpoolCandidates = []string{
 
 func collectAtBatchPosture() *payload.AtBatchPosture {
 	out := &payload.AtBatchPosture{}
-	out.AtdUnitActive = systemdIsActiveFirst([]string{"atd.service", "atd"})
+	out.AtdUnitActive = systemdUnitActiveBool([]string{"atd.service", "atd"})
 	fillFileMeta("/etc/at.allow", &out.AtAllowPresent, &out.AtAllowModeOctal)
 	fillFileMeta("/etc/at.deny", &out.AtDenyPresent, &out.AtDenyModeOctal)
 	for _, p := range atSpoolCandidates {

@@ -30,3 +30,17 @@ func systemdIsActiveFirst(unitNames []string) string {
 	}
 	return ""
 }
+
+// systemdUnitActiveBool is true when is-active is exactly "active", false for other non-empty states, nil when unknown.
+func systemdUnitActiveBool(unitNames []string) *bool {
+	return unitActiveBoolFromString(systemdIsActiveFirst(unitNames))
+}
+
+func unitActiveBoolFromString(isActiveLine string) *bool {
+	s := strings.TrimSpace(isActiveLine)
+	if s == "" {
+		return nil
+	}
+	v := s == "active"
+	return &v
+}

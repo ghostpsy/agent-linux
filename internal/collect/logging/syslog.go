@@ -49,14 +49,14 @@ func collectSyslogForwarding() *payload.SyslogForwardingPosture {
 		},
 	}
 	for _, prof := range profiles {
-		unitActive := systemdIsActiveFirst(prof.unitCandidates)
+		activeStr := systemdIsActiveFirst(prof.unitCandidates)
 		paths := prof.configGlob()
-		if len(paths) == 0 && unitActive == "" {
+		if len(paths) == 0 && activeStr == "" {
 			continue
 		}
 		ent := payload.SyslogDaemonEntry{Implementation: prof.implementation}
-		ent.UnitActive = unitActive
-		if ent.UnitActive != "" && len(prof.unitCandidates) > 0 {
+		ent.UnitActive = unitActiveBoolFromString(activeStr)
+		if activeStr != "" && len(prof.unitCandidates) > 0 {
 			ent.UnitName = prof.unitCandidates[0]
 		}
 		var hosts []string
@@ -99,7 +99,7 @@ func collectSyslogForwarding() *payload.SyslogForwardingPosture {
 		sort.Strings(hosts)
 		ent.RemoteLogHosts = hosts
 		ent.ForwardingRuleSampleLines = samples
-		if ent.UnitActive == "" && len(ent.ConfigPathsRead) == 0 && len(hosts) == 0 {
+		if ent.UnitActive == nil && len(ent.ConfigPathsRead) == 0 && len(hosts) == 0 {
 			continue
 		}
 		out.Daemons = append(out.Daemons, ent)

@@ -39,7 +39,7 @@ func journaldNonEmpty(j *payload.JournaldPosture) bool {
 	if j.Error != "" {
 		return true
 	}
-	if j.UnitActive != "" {
+	if j.UnitActive != nil {
 		return true
 	}
 	if len(j.ConfigPathsRead) > 0 {
@@ -64,7 +64,7 @@ func auditdNonEmpty(a *payload.AuditdPosture) bool {
 	if a == nil {
 		return false
 	}
-	return a.UnitActive != "" || a.RuleLineCount != nil || len(a.RulesDropInFiles) > 0 || a.AuditctlUnavailableReason != "" || a.Error != ""
+	return a.UnitActive != nil || a.RuleLineCount != nil || len(a.RulesDropInFiles) > 0 || a.AuditctlUnavailableReason != "" || a.Error != ""
 }
 
 func logrotateNonEmpty(l *payload.LogrotateDiskPosture) bool {
@@ -78,7 +78,7 @@ func atBatchNonEmpty(t *payload.AtBatchPosture) bool {
 	if t == nil {
 		return false
 	}
-	return t.AtdUnitActive != "" || t.AtAllowPresent || t.AtDenyPresent || t.SpoolPathUsed != "" || t.Error != ""
+	return t.AtdUnitActive != nil || t.AtAllowPresent || t.AtDenyPresent || t.SpoolPathUsed != "" || t.Error != ""
 }
 
 func processAccountingNonEmpty(p *payload.ProcessAccountingPosture) bool {

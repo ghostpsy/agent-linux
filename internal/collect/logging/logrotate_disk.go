@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	maxLogrotateSampleLines = 12
-	maxLogrotateDirFiles    = 64
-	logUsageHighPct         = 90
+	maxLogrotateDirFiles = 64
+	logUsageHighPct      = 90
 )
 
 func collectLogrotateDiskPosture() *payload.LogrotateDiskPosture {
@@ -31,7 +30,7 @@ func collectLogrotateDiskPosture() *payload.LogrotateDiskPosture {
 			}, 6)
 		}
 	}
-	out.VarLogStanzaHint, out.VarLogDirectiveSampleLines = scanLogrotateForVarLog()
+	out.VarLogStanzaHint = scanLogrotateForVarLog()
 	patterns := collectLogrotatePathPatterns()
 	largeFiles, noRot := scanLargeVarLogFiles(patterns)
 	if len(largeFiles) > 0 {
@@ -58,45 +57,30 @@ func sampleLogrotateLines(body string, keep func(string) bool, max int) []string
 	return lines
 }
 
-func scanLogrotateForVarLog() (bool, []string) {
-	var samples []string
-	found := false
+func scanLogrotateForVarLog() bool {
 	dir := "/etc/logrotate.d"
 	ents, err := os.ReadDir(dir)
-	if err == nil {
-		sort.Slice(ents, func(i, j int) bool { return ents[i].Name() < ents[j].Name() })
-		for i, ent := range ents {
-			if i >= maxLogrotateDirFiles {
-				break
-			}
-			if ent.IsDir() || len(samples) >= maxLogrotateSampleLines {
-				continue
-			}
-			p := filepath.Join(dir, ent.Name())
-			b, err := readFileBounded(p)
-			if err != nil {
-				continue
-			}
-			body := string(b)
-			if !strings.Contains(body, "/var/log") {
-				continue
-			}
-			found = true
-			for _, line := range strings.Split(body, "\n") {
-				t := strings.TrimSpace(line)
-				if t == "" || strings.HasPrefix(t, "#") {
-					continue
-				}
-				lower := strings.ToLower(t)
-				if strings.Contains(lower, "rotate") || strings.Contains(lower, "maxage") || strings.Contains(lower, "size") || strings.Contains(lower, "weekly") || strings.Contains(lower, "daily") {
-					if len(samples) < maxLogrotateSampleLines {
-						samples = append(samples, shared.TruncateRunes(t, 512))
-					}
-				}
-			}
+	if err != nil {
+		return false
+	}
+	sort.Slice(ents, func(i, j int) bool { return ents[i].Name() < ents[j].Name() })
+	for i, ent := range ents {
+		if i >= maxLogrotateDirFiles {
+			break
+		}
+		if ent.IsDir() {
+			continue
+		}
+		p := filepath.Join(dir, ent.Name())
+		b, err := readFileBounded(p)
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(b), "/var/log") {
+			return true
 		}
 	}
-	return found, samples
+	return false
 }
 
 func fillVarLogDiskUsage(out *payload.LogrotateDiskPosture) {

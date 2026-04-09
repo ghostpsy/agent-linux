@@ -24,7 +24,7 @@ func collectJournaldPosture() *payload.JournaldPosture {
 		return nil
 	}
 	out := &payload.JournaldPosture{}
-	out.UnitActive = systemdIsActiveFirst([]string{"systemd-journald.service", "systemd-journald.socket"})
+	out.UnitActive = systemdUnitActiveBool([]string{"systemd-journald.service", "systemd-journald.socket"})
 	for _, p := range journaldConfigPaths() {
 		if len(out.ConfigPathsRead) >= maxJournaldConfPaths {
 			break

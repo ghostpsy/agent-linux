@@ -61,6 +61,7 @@ func CollectOSInfo() (payload.OSInfo, string) {
 			out.KernelArch = shared.TruncateRunes(ka, 64)
 		}
 	}
+	applyDistroPaidExtendedSecurityActive(out.OSReleaseID, &out)
 	return out, hostname
 }
 

@@ -119,6 +119,8 @@ type OSInfo struct {
 	DistroID           string `json:"distro_id,omitempty"`
 	DistroName         string `json:"distro_name,omitempty"`
 	DistroVersionID    string `json:"distro_version_id,omitempty"`
+	// True when agent detects Ubuntu Pro ESM or Debian ELTS-style apt; API uses this for ESM/ELTS posture.
+	DistroPaidExtendedSecurityActive *bool `json:"distro_paid_extended_security_active,omitempty"`
 	OSReleaseID        string `json:"os_release_id,omitempty"`
 	OSReleaseVersionID string `json:"os_release_version_id,omitempty"`
 	OSReleaseVersion   string `json:"os_release_version,omitempty"`

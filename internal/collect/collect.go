@@ -8,6 +8,7 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/collect/filesystem"
 	"github.com/ghostpsy/agent-linux/internal/collect/firewall"
 	"github.com/ghostpsy/agent-linux/internal/collect/identity"
+	"github.com/ghostpsy/agent-linux/internal/collect/logging"
 	"github.com/ghostpsy/agent-linux/internal/collect/network"
 	"github.com/ghostpsy/agent-linux/internal/collect/software"
 	"github.com/ghostpsy/agent-linux/internal/payload"
@@ -198,6 +199,9 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 		listeners = []payload.Listener{}
 	}
 	notifyDone("collect_listeners", len(listeners), "")
+	notifyStart("collect_logging_and_system_auditing")
+	logAudit := logging.CollectLoggingAndSystemAuditing()
+	notifyDone("collect_logging_and_system_auditing", loggingAuditNotifyCount(logAudit), loggingAuditFirstError(logAudit))
 	components := payload.Components{
 		CoreSystemAndKernel: payload.CoreSystemAndKernelComponent{
 			OS:              osInfo,
@@ -252,7 +256,7 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
 			HostRuntimes: containerCloudHostRuntimes(hr),
 		},
-		LoggingAndSystemAuditing:            payload.LoggingAndSystemAuditingComponent{},
+		LoggingAndSystemAuditing: logAudit,
 		Cryptography:                        payload.CryptographyComponent{},
 		SecurityFrameworksAndMalwareDefense: payload.SecurityFrameworksAndMalwareDefenseComponent{},
 		Other:                               payload.OtherComponent{},
@@ -548,4 +552,49 @@ func containerCloudHostRuntimes(hr *payload.HostRuntimes) *payload.ContainerNati
 		Docker:  hr.Docker,
 		Kubelet: hr.Kubelet,
 	}
+}
+
+func loggingAuditNotifyCount(c payload.LoggingAndSystemAuditingComponent) int {
+	n := 0
+	if c.SyslogForwarding != nil {
+		n += len(c.SyslogForwarding.Daemons)
+	}
+	if c.Journald != nil {
+		n++
+	}
+	if c.Auditd != nil {
+		n++
+	}
+	if c.LogrotateDisk != nil {
+		n++
+	}
+	if c.AtBatch != nil {
+		n++
+	}
+	if c.ProcessAccounting != nil {
+		n++
+	}
+	return n
+}
+
+func loggingAuditFirstError(c payload.LoggingAndSystemAuditingComponent) string {
+	if c.SyslogForwarding != nil && c.SyslogForwarding.Error != "" {
+		return c.SyslogForwarding.Error
+	}
+	if c.Journald != nil && c.Journald.Error != "" {
+		return c.Journald.Error
+	}
+	if c.Auditd != nil && c.Auditd.Error != "" {
+		return c.Auditd.Error
+	}
+	if c.LogrotateDisk != nil && c.LogrotateDisk.Error != "" {
+		return c.LogrotateDisk.Error
+	}
+	if c.AtBatch != nil && c.AtBatch.Error != "" {
+		return c.AtBatch.Error
+	}
+	if c.ProcessAccounting != nil && c.ProcessAccounting.Error != "" {
+		return c.ProcessAccounting.Error
+	}
+	return ""
 }

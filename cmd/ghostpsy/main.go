@@ -290,6 +290,8 @@ func humanMessageForCollectionAction(action string) string {
 		return "Detecting language runtimes plus Docker and kubelet posture hints when present"
 	case "collect_listeners":
 		return "Extracting listening ports and processes from local socket tables"
+	case "collect_logging_and_system_auditing":
+		return "Summarizing syslog forwarding, auditd, logrotate, at/batch, and process-accounting hints"
 	default:
 		return "Extracting allowlisted local system data"
 	}
@@ -367,6 +369,8 @@ func humanDoneMessage(action string, items int) string {
 		return fmt.Sprintf("Done: extracted %d top process entries.", items)
 	case "collect_host_runtimes":
 		return fmt.Sprintf("Done: detected %d language runtimes (Docker/kubelet hints when applicable).", items)
+	case "collect_logging_and_system_auditing":
+		return fmt.Sprintf("Done: collected %d logging and auditing signal groups.", items)
 	case "collect_host_backup":
 		if items == 0 {
 			return "Done: no backup tool detected on this host."

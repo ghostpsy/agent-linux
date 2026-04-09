@@ -95,7 +95,13 @@ type ContainerNativeHostRuntimes struct {
 }
 
 type LoggingAndSystemAuditingComponent struct {
-	AuditSections []AuditSection `json:"audit_sections,omitempty"`
+	AuditSections       []AuditSection               `json:"audit_sections,omitempty"`
+	SyslogForwarding    *SyslogForwardingPosture     `json:"syslog_forwarding,omitempty"`
+	Journald            *JournaldPosture             `json:"journald,omitempty"`
+	Auditd              *AuditdPosture               `json:"auditd,omitempty"`
+	LogrotateDisk       *LogrotateDiskPosture        `json:"logrotate_disk,omitempty"`
+	AtBatch             *AtBatchPosture              `json:"at_batch,omitempty"`
+	ProcessAccounting   *ProcessAccountingPosture    `json:"process_accounting,omitempty"`
 }
 
 // CryptographyComponent is reserved for TLS/cert inventory; time lives under core_system_and_kernel.host_time.

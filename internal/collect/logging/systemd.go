@@ -1,0 +1,32 @@
+//go:build linux
+
+package logging
+
+import (
+	"context"
+	"os/exec"
+	"strings"
+	"time"
+)
+
+const systemdCmdTimeout = 5 * time.Second
+
+func systemdIsActiveFirst(unitNames []string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), systemdCmdTimeout)
+	defer cancel()
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return ""
+	}
+	for _, u := range unitNames {
+		cmd := exec.CommandContext(ctx, "systemctl", "is-active", u)
+		out, err := cmd.Output()
+		s := strings.TrimSpace(string(out))
+		if err != nil && s == "" {
+			continue
+		}
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}

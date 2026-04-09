@@ -19,6 +19,8 @@ import (
 
 const maxHighRiskEntries = 24
 
+const ppidUnknown = -1
+
 // isLinuxKernelThread reports whether pid is kthreadd or a kernel thread (child of kthreadd, PID 2).
 func isLinuxKernelThread(pid int32) bool {
 	if pid == 2 {
@@ -27,28 +29,69 @@ func isLinuxKernelThread(pid int32) bool {
 	if pid <= 0 {
 		return false
 	}
+	pp := readPPidFromProc(pid)
+	if pp == 2 {
+		return true
+	}
+	if pp != ppidUnknown {
+		return false
+	}
+	if p, err := gopsutilproc.NewProcess(pid); err == nil {
+		if gpp, err := p.Ppid(); err == nil && gpp == 2 {
+			return true
+		}
+	}
+	return kernelThreadHeuristic(pid)
+}
+
+func readPPidFromProc(pid int32) int {
 	path := filepath.Join("/proc", strconv.FormatInt(int64(pid), 10), "status")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false
+		return ppidUnknown
 	}
 	ppid, ok := parsePPidFromProcStatus(string(data))
-	return ok && ppid == 2
+	if !ok {
+		return ppidUnknown
+	}
+	return ppid
 }
 
 func parsePPidFromProcStatus(status string) (int, bool) {
 	for _, line := range strings.Split(status, "\n") {
+		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "PPid:") {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		rest := strings.TrimSpace(strings.TrimPrefix(line, "PPid:"))
+		if rest == "" {
 			return 0, false
 		}
-		v, err := strconv.Atoi(fields[1])
+		v, err := strconv.Atoi(rest)
 		return v, err == nil
 	}
 	return 0, false
+}
+
+// kernelThreadHeuristic handles hosts where /proc/PID/status is unreadable but kthreads still appear
+// in the process list: root, no argv, no exe path (typical of kernel threads).
+func kernelThreadHeuristic(pid int32) bool {
+	p, err := gopsutilproc.NewProcess(pid)
+	if err != nil {
+		return false
+	}
+	u, err := p.Username()
+	if err != nil || u != "root" {
+		return false
+	}
+	cmdline, err := p.CmdlineSlice()
+	if err != nil || len(cmdline) != 0 {
+		return false
+	}
+	if _, err := p.Exe(); err == nil {
+		return false
+	}
+	return true
 }
 
 // CollectHighRiskProcessSurface samples TCP listeners and root-owned processes with exe/cmdline hints.

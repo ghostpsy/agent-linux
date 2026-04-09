@@ -15,6 +15,8 @@ func TestParsePPidFromProcStatus(t *testing.T) {
 		ok     bool
 	}{
 		{"Name:\tksoftirqd/1\nPPid:\t2\n", 2, true},
+		{"PPid:2\n", 2, true},
+		{"PPid: 2\n", 2, true},
 		{"PPid:\t1\n", 1, true},
 		{"Name:\tbash\n", 0, false},
 		{"PPid:\t\n", 0, false},

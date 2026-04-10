@@ -24,7 +24,7 @@ var suidFindRoots = []string{"/usr/bin", "/bin", "/sbin", "/usr/sbin", "/usr/loc
 // Implemented with filepath.WalkDir (no external find): gopsutil does not expose filesystem setuid enumeration.
 func CollectHostSuid(ctx context.Context) *payload.HostSuid {
 	out := &payload.HostSuid{Items: []payload.SuidItem{}}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	for _, root := range suidFindRoots {
 		if len(out.Items) >= maxSuidItems {

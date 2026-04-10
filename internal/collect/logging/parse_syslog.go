@@ -92,10 +92,7 @@ func isRemoteLogHostToken(s string) bool {
 	case "localhost", "0.0.0.0", "::", "::1", "127.0.0.1":
 		return false
 	}
-	if isNumericIPToken(lower) {
-		return false
-	}
-	return true
+	return !isNumericIPToken(lower)
 }
 
 func isNumericIPToken(s string) bool {

@@ -28,7 +28,7 @@ func TestPostIngest_OK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := readLimited(resp.Body, 4096)
 	if !strings.Contains(string(body), "ok") {
 		t.Fatalf("body %s", body)

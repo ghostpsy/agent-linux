@@ -67,7 +67,7 @@ func writeTestCertPEM(t *testing.T, path string, notAfter time.Time, sigAlg x509
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: der}); err != nil {
 		t.Fatal(err)
 	}

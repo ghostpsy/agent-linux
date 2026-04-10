@@ -48,14 +48,17 @@ install: tidy
 clean:
 	rm -rf $(BIN_DIR)
 
+# golangci-lint and go vet skip //go:build linux packages unless GOOS=linux (e.g. on macOS).
+LINUX_GO_ENV := GOOS=linux GOARCH=amd64
+
 test:
 	$(GO) test ./...
 
 vet:
-	$(GO) vet ./...
+	$(LINUX_GO_ENV) $(GO) vet ./...
 
 lint:
-	golangci-lint run ./...
+	$(LINUX_GO_ENV) golangci-lint run ./...
 
 fmt:
 	$(GO) fmt ./...

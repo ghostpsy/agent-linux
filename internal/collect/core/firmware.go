@@ -24,7 +24,7 @@ func CollectFirmwareBoot(ctx context.Context) *payload.FirmwareBoot {
 		out.EfiSysfsPresent = false
 		out.BootMode = "bios"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "efibootmgr", "-v")
 	if err := cmd.Run(); err == nil {

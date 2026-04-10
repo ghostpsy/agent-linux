@@ -3,6 +3,7 @@
 package identity
 
 import (
+	"context"
 	"bufio"
 	"log/slog"
 	"os"
@@ -42,10 +43,10 @@ type passwdEnt struct {
 }
 
 // CollectHostUsersSummary parses /etc/passwd for counts and a capped sample (no password material).
-func CollectHostUsersSummary() (*payload.HostUsersSummary, string) {
+func CollectHostUsersSummary(ctx context.Context) *payload.HostUsersSummary {
 	f, err := os.Open("/etc/passwd")
 	if err != nil {
-		return nil, shared.CollectionNote("/etc/passwd could not be read.")
+		return &payload.HostUsersSummary{Error: shared.CollectionNote("/etc/passwd could not be read.")}
 	}
 	defer func() { _ = f.Close() }()
 	var ents []passwdEnt
@@ -74,10 +75,10 @@ func CollectHostUsersSummary() (*payload.HostUsersSummary, string) {
 	}
 	if err := sc.Err(); err != nil {
 		slog.Warn("failed to read /etc/passwd completely", "error", err)
-		return nil, shared.CollectionNote("/etc/passwd could not be fully read.")
+		return &payload.HostUsersSummary{Error: shared.CollectionNote("/etc/passwd could not be fully read.")}
 	}
 	if len(ents) == 0 {
-		return nil, shared.CollectionNote("no valid user entries were found in /etc/passwd.")
+		return &payload.HostUsersSummary{Error: shared.CollectionNote("no valid user entries were found in /etc/passwd.")}
 	}
 	minH := minHumanUID()
 	var nZero, nHuman, nSystem, nShell int
@@ -112,5 +113,5 @@ func CollectHostUsersSummary() (*payload.HostUsersSummary, string) {
 		NWithLoginShell: nShell,
 		NUidZero:        nZero,
 		Sample:          sample,
-	}, ""
+	}
 }

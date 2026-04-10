@@ -3,6 +3,7 @@
 package software
 
 import (
+	"context"
 	"bufio"
 	"log/slog"
 	"os"
@@ -57,7 +58,7 @@ var backupDatePaths = []string{
 
 // CollectHostBackup detects known backup systems and periodic backup cron hints.
 // backup_status is "on" when tools/cron indicate backups likely exist, otherwise "unknown".
-func CollectHostBackup() *payload.HostBackup {
+func CollectHostBackup(ctx context.Context) *payload.HostBackup {
 	tools := detectBackupTools()
 	hasCronHint := detectBackupCronHint()
 	latest, hasLatest := detectLatestBackupUTC()

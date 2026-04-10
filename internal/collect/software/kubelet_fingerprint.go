@@ -51,7 +51,7 @@ func collectKubeletFingerprint() *payload.KubeletNodeFingerprint {
 			break
 		}
 		out.ConfigSourcePaths = append(out.ConfigSourcePaths, path)
-		b, err := readFileBounded(path)
+		b, err := shared.ReadFileBounded(path, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			slog.Debug("kubelet config read failed", "path", path, "error", err)
 			continue

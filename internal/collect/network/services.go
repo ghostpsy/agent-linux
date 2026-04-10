@@ -27,20 +27,29 @@ const serviceCollectTimeout = 15 * time.Second
 
 // CollectServices lists running services: systemd (D-Bus) when pid 1 is systemd, otherwise sysvinit
 // (Debian/Ubuntu-style `service --status-all` parsing).
-// The second return is non-empty when service inventory could not be collected.
-func CollectServices() ([]payload.ServiceEntry, string) {
+func CollectServices(ctx context.Context) payload.ServicesBlock {
 	mode := detectServiceCollector()
 	switch mode {
 	case "systemd":
-		return collectSystemdServices()
+		items, err := collectSystemdServices(ctx)
+		return servicesBlockFrom(items, err)
 	case "chkconfig":
-		return collectFromChkconfig()
+		items, err := collectFromChkconfig(ctx)
+		return servicesBlockFrom(items, err)
 	case "service":
 		serviceBin, _ := exec.LookPath("service")
-		return collectFromServiceStatusAll(serviceBin)
+		items, err := collectFromServiceStatusAll(ctx, serviceBin)
+		return servicesBlockFrom(items, err)
 	default:
-		return nil, shared.CollectionNote("no supported service collector detected.")
+		return payload.ServicesBlock{Error: shared.CollectionNote("no supported service collector detected.")}
 	}
+}
+
+func servicesBlockFrom(items []payload.ServiceEntry, err string) payload.ServicesBlock {
+	if items == nil {
+		items = []payload.ServiceEntry{}
+	}
+	return payload.ServicesBlock{Items: items, Error: err}
 }
 
 // isSystemdPID1 is true when PID 1 is systemd.
@@ -78,8 +87,8 @@ func detectServiceCollector() string {
 }
 
 // collectSystemdServices lists running .service units with optional unit-file state (capped).
-func collectSystemdServices() ([]payload.ServiceEntry, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), serviceCollectTimeout)
+func collectSystemdServices(parent context.Context) ([]payload.ServiceEntry, string) {
+	ctx, cancel := context.WithTimeout(parent, serviceCollectTimeout)
 	defer cancel()
 
 	conn, err := dbus.NewSystemConnectionContext(ctx)
@@ -132,8 +141,8 @@ func collectSystemdServices() ([]payload.ServiceEntry, string) {
 	return out, ""
 }
 
-func collectFromServiceStatusAll(serviceBin string) ([]payload.ServiceEntry, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), serviceCollectTimeout)
+func collectFromServiceStatusAll(parent context.Context, serviceBin string) ([]payload.ServiceEntry, string) {
+	ctx, cancel := context.WithTimeout(parent, serviceCollectTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, serviceBin, "--status-all")
 	cmd.Env = shared.EnvLocaleC()
@@ -170,12 +179,12 @@ func collectFromServiceStatusAll(serviceBin string) ([]payload.ServiceEntry, str
 	return out, ""
 }
 
-func collectFromChkconfig() ([]payload.ServiceEntry, string) {
+func collectFromChkconfig(parent context.Context) ([]payload.ServiceEntry, string) {
 	chkconfigBin, err := exec.LookPath("chkconfig")
 	if err != nil {
 		return nil, shared.CollectionNote("service and chkconfig commands not found; sysvinit service list unavailable.")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), serviceCollectTimeout)
+	ctx, cancel := context.WithTimeout(parent, serviceCollectTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, chkconfigBin, "--list")
 	cmd.Env = shared.EnvLocaleC()

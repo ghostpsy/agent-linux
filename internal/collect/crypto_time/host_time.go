@@ -3,6 +3,7 @@
 package crypto_time
 
 import (
+	"context"
 	"log/slog"
 	"os/exec"
 	"strings"
@@ -10,17 +11,18 @@ import (
 
 	"github.com/beevik/ntp"
 
+	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 const ntpPoolServer = "0.pool.ntp.org"
 
 // CollectHostTime sets utc_now, tries an SNTP query for offset_ms, and detects a running timesync daemon.
-func CollectHostTime() *payload.HostTime {
+func CollectHostTime(ctx context.Context) *payload.HostTime {
 	now := time.Now()
 	ht := &payload.HostTime{
 		UtcNow:         payload.AgentUtcRFC3339(now),
-		TimesyncDaemon: detectTimesyncDaemon(),
+		TimesyncDaemon: detectTimesyncDaemon(ctx),
 	}
 	switch ht.TimesyncDaemon {
 	case "chrony", "systemd-timesyncd", "ntp":
@@ -29,6 +31,9 @@ func CollectHostTime() *payload.HostTime {
 	case "none":
 		f := false
 		ht.NtpActive = &f
+	}
+	if err := shared.ScanContextError(ctx); err != nil {
+		return ht
 	}
 	resp, err := ntp.QueryWithOptions(ntpPoolServer, ntp.QueryOptions{Timeout: 4 * time.Second})
 	if err != nil {
@@ -50,7 +55,9 @@ func CollectHostTime() *payload.HostTime {
 	return ht
 }
 
-func detectTimesyncDaemon() string {
+const systemctlIsActiveTimeout = 2 * time.Second
+
+func detectTimesyncDaemon(parent context.Context) string {
 	checks := []struct {
 		unit, label string
 	}{
@@ -66,7 +73,9 @@ func detectTimesyncDaemon() string {
 			continue
 		}
 		seen[c.unit] = struct{}{}
-		out, err := exec.Command("systemctl", "is-active", c.unit).Output()
+		subCtx, cancel := context.WithTimeout(parent, systemctlIsActiveTimeout)
+		out, err := exec.CommandContext(subCtx, "systemctl", "is-active", c.unit).Output()
+		cancel()
 		if err != nil {
 			continue
 		}

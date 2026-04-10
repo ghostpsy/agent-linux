@@ -3,6 +3,7 @@
 package crypto_time
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"io"
@@ -24,7 +25,7 @@ const (
 )
 
 // CollectLocalTlsCertInventory reads bounded PEM material from known paths; NotAfter and SHA-1 signature hints only.
-func CollectLocalTlsCertInventory() *payload.LocalTlsCertInventory {
+func CollectLocalTlsCertInventory(ctx context.Context) *payload.LocalTlsCertInventory {
 	paths := tlsCertCandidatePaths()
 	if len(paths) == 0 {
 		return nil

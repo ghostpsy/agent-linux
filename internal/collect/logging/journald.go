@@ -29,7 +29,7 @@ func collectJournaldPosture() *payload.JournaldPosture {
 		if len(out.ConfigPathsRead) >= maxJournaldConfPaths {
 			break
 		}
-		b, err := readFileBounded(p)
+		b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			continue
 		}

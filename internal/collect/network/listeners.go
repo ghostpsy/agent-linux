@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"strconv"
@@ -37,7 +38,8 @@ type listenerWork struct {
 }
 
 // CollectListeners lists TCP listeners via gopsutil net.Connections (same idea as psutil net_connections).
-func CollectListeners(hn *payload.HostNetwork) []payload.Listener {
+func CollectListeners(ctx context.Context, hn *payload.HostNetwork) []payload.Listener {
+	_ = ctx
 	work, err := collectListenerWork()
 	if err != nil {
 		slog.Warn("gopsutil net.Connections failed", "error", err)
@@ -46,9 +48,27 @@ func CollectListeners(hn *payload.HostNetwork) []payload.Listener {
 	return listenerWorkToPayload(work, hn)
 }
 
+// mergeTCPConnectionStats merges tcp and tcp6 connection lists from gopsutil.
+func mergeTCPConnectionStats() ([]gopsutilnet.ConnectionStat, error) {
+	c4, e4 := gopsutilnet.Connections("tcp")
+	c6, e6 := gopsutilnet.Connections("tcp6")
+	if e4 != nil && e6 != nil {
+		return nil, e4
+	}
+	var merged []gopsutilnet.ConnectionStat
+	if e4 == nil {
+		merged = append(merged, c4...)
+	}
+	if e6 == nil {
+		merged = append(merged, c6...)
+	}
+	return merged, nil
+}
+
 // CollectListenerPIDs returns distinct PIDs that own a TCP LISTEN socket (bounded by maxListeners).
-func CollectListenerPIDs() []int32 {
-	conns, err := gopsutilnet.Connections("tcp")
+func CollectListenerPIDs(ctx context.Context) []int32 {
+	_ = ctx
+	conns, err := mergeTCPConnectionStats()
 	if err != nil {
 		return nil
 	}
@@ -71,7 +91,7 @@ func CollectListenerPIDs() []int32 {
 }
 
 func collectListenerWork() ([]listenerWork, error) {
-	conns, err := gopsutilnet.Connections("tcp")
+	conns, err := mergeTCPConnectionStats()
 	if err != nil {
 		return nil, err
 	}

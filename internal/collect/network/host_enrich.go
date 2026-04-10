@@ -4,6 +4,7 @@ package network
 
 import (
 	"bufio"
+	"context"
 	"net"
 	"os"
 	"strings"
@@ -15,7 +16,8 @@ import (
 const maxResolvSampleLines = 12
 
 // EnrichHostNetwork adds resolver snapshot and link-layer flags (IPv6, promiscuous).
-func EnrichHostNetwork(hn *payload.HostNetwork) {
+func EnrichHostNetwork(ctx context.Context, hn *payload.HostNetwork) {
+	_ = ctx
 	if hn == nil {
 		return
 	}

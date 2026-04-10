@@ -3,6 +3,7 @@
 package core
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -95,7 +96,7 @@ func kernelThreadHeuristic(pid int32) bool {
 }
 
 // CollectHighRiskProcessSurface samples TCP listeners and root-owned processes with exe/cmdline hints.
-func CollectHighRiskProcessSurface() *payload.HighRiskProcessSurface {
+func CollectHighRiskProcessSurface(ctx context.Context) *payload.HighRiskProcessSurface {
 	out := &payload.HighRiskProcessSurface{Items: []payload.HighRiskProcessEntry{}}
 	portsByPID := listenerPortsByPID()
 	procs, err := gopsutilproc.Processes()

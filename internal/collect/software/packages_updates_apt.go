@@ -3,6 +3,7 @@
 package software
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -16,13 +17,13 @@ import (
 
 const aptManagerName = "apt"
 
-func collectPackagesUpdatesApt() *payload.PackagesUpdates {
+func collectPackagesUpdatesApt(ctx context.Context) *payload.PackagesUpdates {
 	env := shared.EnvLocaleC()
-	out, err := combinedOutputEnv(env, "apt-get", "-s", "dist-upgrade")
+	out, err := combinedOutputEnv(ctx, env, "apt-get", "-s", "dist-upgrade")
 	pending, sec, secNames := parseAptGetSimulateDistUpgrade(out)
 	if pending == 0 {
 		if aptBin, e := exec.LookPath("apt"); e == nil {
-			listOut, lerr := combinedOutputEnv(env, aptBin, "list", "--upgradable")
+			listOut, lerr := combinedOutputEnv(ctx, env, aptBin, "list", "--upgradable")
 			p2, s2, n2 := parseAptListUpgradable(listOut)
 			if p2 > 0 {
 				pending, sec, secNames = p2, s2, n2

@@ -13,7 +13,7 @@ import (
 )
 
 // CollectSystemdHealth reports systemd default target and running state when systemctl exists.
-func CollectSystemdHealth() *payload.SystemdHealth {
+func CollectSystemdHealth(ctx context.Context) *payload.SystemdHealth {
 	out := &payload.SystemdHealth{}
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		out.SystemdPresent = false

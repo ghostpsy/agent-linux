@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"context"
 	"bufio"
 	"encoding/json"
 	"os"
@@ -17,7 +18,7 @@ const maxCrypttabNames = 8
 const maxLsblkCryptNames = 16
 
 // CollectCryptStorageHint summarizes crypttab and lsblk crypt volumes (no key material).
-func CollectCryptStorageHint() *payload.CryptStorageHint {
+func CollectCryptStorageHint(ctx context.Context) *payload.CryptStorageHint {
 	out := &payload.CryptStorageHint{}
 	b, err := os.ReadFile("/etc/crypttab")
 	if err != nil {

@@ -3,9 +3,11 @@
 package identity
 
 import (
+	"context"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
@@ -13,14 +15,16 @@ import (
 
 const sshdPath = "sshd"
 
+const sshdDumpTimeout = 20 * time.Second
+
 // CollectHostSSH reads effective sshd settings from `sshd -T`.
-func CollectHostSSH() (*payload.HostSSH, string) {
-	output, err := runSSHDT()
+func CollectHostSSH(ctx context.Context) *payload.HostSSH {
+	output, err := runSSHDT(ctx)
 	if err != nil {
-		return nil, shared.CollectionNote("OpenSSH effective configuration could not be read from sshd.")
+		return &payload.HostSSH{Error: shared.CollectionNote("OpenSSH effective configuration could not be read from sshd.")}
 	}
 	cfg := parseSSHDTOutput(output)
-	return buildHostSSH(cfg), ""
+	return buildHostSSH(cfg)
 }
 
 type sshdConfig struct {
@@ -40,8 +44,10 @@ type sshdConfig struct {
 	x11Forwarding       string
 }
 
-func runSSHDT() ([]byte, error) {
-	command := exec.Command(sshdPath, "-T")
+func runSSHDT(ctx context.Context) ([]byte, error) {
+	subCtx, cancel := context.WithTimeout(ctx, sshdDumpTimeout)
+	defer cancel()
+	command := exec.CommandContext(subCtx, sshdPath, "-T")
 	command.Env = shared.EnvLocaleC()
 	return command.CombinedOutput()
 }

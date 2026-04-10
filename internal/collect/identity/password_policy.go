@@ -3,6 +3,7 @@
 package identity
 
 import (
+	"context"
 	"bufio"
 	"os"
 	"strings"
@@ -24,7 +25,7 @@ var pamPasswordCandidates = []string{
 }
 
 // CollectPasswordPolicyFingerprint reads pwquality.conf and PAM password stack lines (no secrets).
-func CollectPasswordPolicyFingerprint() *payload.PasswordPolicyFingerprint {
+func CollectPasswordPolicyFingerprint(ctx context.Context) *payload.PasswordPolicyFingerprint {
 	out := &payload.PasswordPolicyFingerprint{}
 	out.PwqualityKeys = readPwqualityConf()
 	out.PamPasswordRequisiteLines = readPamPasswordStackLines()

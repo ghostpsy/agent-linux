@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -40,14 +41,14 @@ func scanSysstatCronHints() bool {
 			return true
 		}
 	}
-	if b, err := readFileBounded("/etc/crontab"); err == nil {
+	if b, err := shared.ReadFileBounded("/etc/crontab", shared.DefaultConfigFileReadLimit); err == nil {
 		if strings.Contains(strings.ToLower(string(b)), "sysstat") || strings.Contains(string(b), "sadc") {
 			return true
 		}
 	}
 	if matches, err := filepath.Glob("/etc/cron.d/*"); err == nil {
 		for _, p := range matches {
-			if b, err := readFileBounded(p); err == nil {
+			if b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit); err == nil {
 				lower := strings.ToLower(string(b))
 				if strings.Contains(lower, "sysstat") || strings.Contains(lower, "sadc") {
 					return true

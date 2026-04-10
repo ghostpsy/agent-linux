@@ -3,8 +3,10 @@
 package software
 
 import (
+	"context"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
@@ -12,31 +14,35 @@ import (
 
 const maxSecurityUpdatesSample = 32
 
+const packageManagerExecTimeout = 6 * time.Minute
+
 // CollectPackagesUpdates fills pending/security counts, installed package count, and a capped list of security-only package names.
 // Prefers apt (Debian/Ubuntu), then dnf, then yum (RHEL family), then apk (Alpine), then pacman (Arch-style).
-// The second return is a non-empty message when no package manager is available.
-func CollectPackagesUpdates() (*payload.PackagesUpdates, string) {
+func CollectPackagesUpdates(ctx context.Context) *payload.PackagesUpdates {
+	if err := shared.ScanContextError(ctx); err != nil {
+		return &payload.PackagesUpdates{Error: err.Error()}
+	}
 	var pu *payload.PackagesUpdates
 	switch {
 	case fileExists("/usr/bin/apt-get"):
-		pu = collectPackagesUpdatesApt()
+		pu = collectPackagesUpdatesApt(ctx)
 	default:
 		if p, err := exec.LookPath("dnf"); err == nil {
-			pu = collectPackagesUpdatesRPM(p, "dnf")
+			pu = collectPackagesUpdatesRPM(ctx, p, "dnf")
 		} else if p, err := exec.LookPath("yum"); err == nil {
-			pu = collectPackagesUpdatesRPM(p, "yum")
+			pu = collectPackagesUpdatesRPM(ctx, p, "yum")
 		} else if p, err := exec.LookPath("apk"); err == nil {
-			pu = collectPackagesUpdatesApk(p)
+			pu = collectPackagesUpdatesApk(ctx, p)
 		} else if fileExists("/usr/bin/pacman") {
 			pu = &payload.PackagesUpdates{Manager: "pacman"}
 		} else {
-			return nil, shared.CollectionNote("no supported package manager found (apt, dnf, yum, apk, or pacman).")
+			return &payload.PackagesUpdates{Error: shared.CollectionNote("no supported package manager found (apt, dnf, yum, apk, or pacman).")}
 		}
 	}
 	if pu != nil {
 		pu.InstalledPackageCount = countInstalledPackageLines()
 	}
-	return pu, ""
+	return pu
 }
 
 func capSecuritySample(names []string) []string {
@@ -50,8 +56,13 @@ func capSecuritySample(names []string) []string {
 	return out
 }
 
-func combinedOutputEnv(env []string, name string, arg ...string) ([]byte, error) {
-	cmd := exec.Command(name, arg...)
+func combinedOutputEnv(ctx context.Context, env []string, name string, arg ...string) ([]byte, error) {
+	if err := shared.ScanContextError(ctx); err != nil {
+		return nil, err
+	}
+	subCtx, cancel := context.WithTimeout(ctx, packageManagerExecTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(subCtx, name, arg...)
 	cmd.Env = env
 	return cmd.CombinedOutput()
 }

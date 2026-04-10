@@ -2,10 +2,14 @@
 
 package logging
 
-import "github.com/ghostpsy/agent-linux/internal/payload"
+import (
+	"context"
+	"github.com/ghostpsy/agent-linux/internal/payload"
+)
 
 // CollectLoggingAndSystemAuditing gathers §7 logging, auditd, logrotate/disk, at/batch, and process-accounting hints.
-func CollectLoggingAndSystemAuditing() payload.LoggingAndSystemAuditingComponent {
+func CollectLoggingAndSystemAuditing(ctx context.Context) payload.LoggingAndSystemAuditingComponent {
+	_ = ctx
 	out := payload.LoggingAndSystemAuditingComponent{}
 	if s := collectSyslogForwarding(); syslogForwardingNonEmpty(s) {
 		out.SyslogForwarding = s

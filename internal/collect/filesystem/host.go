@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"math"
@@ -37,14 +38,13 @@ func shouldSkipHostDiskFstype(fstype string) bool {
 }
 
 // CollectHostDisk reports mount usage via gopsutil disk.Partitions(false) + disk.Usage.
-// The second return is non-empty when host disk usage could not be collected (error message for ingest).
-func CollectHostDisk() (*payload.HostDisk, string) {
+func CollectHostDisk(ctx context.Context) *payload.HostDisk {
 	parts, err := disk.Partitions(false)
 	if err != nil {
-		return nil, shared.CollectionNote("disk partition list could not be read.")
+		return &payload.HostDisk{Error: shared.CollectionNote("disk partition list could not be read.")}
 	}
 	if len(parts) == 0 {
-		return nil, ""
+		return &payload.HostDisk{}
 	}
 	seen := make(map[string]struct{})
 	var fses []payload.FilesystemEntry
@@ -94,19 +94,19 @@ func CollectHostDisk() (*payload.HostDisk, string) {
 		fses = append(fses, ent)
 	}
 	if len(fses) == 0 {
-		return nil, shared.CollectionNote("no filesystem usage statistics could be collected.")
+		return &payload.HostDisk{Error: shared.CollectionNote("no filesystem usage statistics could be collected.")}
 	}
-	return &payload.HostDisk{Filesystems: fses}, ""
+	return &payload.HostDisk{Filesystems: fses}
 }
 
 // CollectHostNetwork summarizes interfaces and public-IP hints via gopsutil net.Interfaces.
-func CollectHostNetwork() (*payload.HostNetwork, string) {
+func CollectHostNetwork(ctx context.Context) *payload.HostNetwork {
 	ifs, err := gopsutilnet.Interfaces()
 	if err != nil {
-		return nil, shared.CollectionNote("network interfaces could not be enumerated.")
+		return &payload.HostNetwork{Error: shared.CollectionNote("network interfaces could not be enumerated.")}
 	}
 	if len(ifs) == 0 {
-		return nil, shared.CollectionNote("no network interfaces were reported.")
+		return &payload.HostNetwork{Error: shared.CollectionNote("no network interfaces were reported.")}
 	}
 	var (
 		out        []payload.NetworkIface
@@ -184,7 +184,7 @@ func CollectHostNetwork() (*payload.HostNetwork, string) {
 	if hasPub6 {
 		hn.HasPublicIPv6 = &hasPub6
 	}
-	return hn, ""
+	return hn
 }
 
 func ifaceAddrScope(addr string) (ip string, scope string) {

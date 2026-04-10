@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"bufio"
 	"os"
 	"strings"
@@ -14,7 +15,7 @@ import (
 const maxTcpWrapperSampleLines = 16
 
 // CollectTcpWrappersFingerprint summarizes hosts.allow and hosts.deny (bounded lines).
-func CollectTcpWrappersFingerprint() *payload.TcpWrappersFingerprint {
+func CollectTcpWrappersFingerprint(ctx context.Context) *payload.TcpWrappersFingerprint {
 	out := &payload.TcpWrappersFingerprint{}
 	allowPath := "/etc/hosts.allow"
 	denyPath := "/etc/hosts.deny"

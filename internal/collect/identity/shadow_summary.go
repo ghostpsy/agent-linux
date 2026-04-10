@@ -17,7 +17,7 @@ import (
 const shadowPath = "/etc/shadow"
 
 // CollectShadowAccountSummary derives non-secret counts from /etc/shadow (no hash material).
-func CollectShadowAccountSummary() *payload.ShadowAccountSummary {
+func CollectShadowAccountSummary(ctx context.Context) *payload.ShadowAccountSummary {
 	out := &payload.ShadowAccountSummary{}
 	f, err := os.Open(shadowPath)
 	if err != nil {

@@ -3,6 +3,7 @@
 package software
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -19,9 +20,9 @@ const apkManagerName = "apk"
 // Matches apk simulate transaction lines, e.g. "(1/3) Upgrading busybox (1.36.1-r20 -> 1.36.1-r21)".
 var reApkSimulateChange = regexp.MustCompile(`^\(\d+/\d+\) (Upgrading|Installing|Downgrading|Reinstalling) `)
 
-func collectPackagesUpdatesApk(apkBin string) *payload.PackagesUpdates {
+func collectPackagesUpdatesApk(ctx context.Context, apkBin string) *payload.PackagesUpdates {
 	env := shared.EnvLocaleC()
-	out, err := combinedOutputEnv(env, apkBin, "upgrade", "-s")
+	out, err := combinedOutputEnv(ctx, env, apkBin, "upgrade", "-s")
 	pending := parseApkUpgradeSimulate(out)
 	if err != nil && pending == 0 && len(strings.TrimSpace(string(out))) == 0 {
 		return &payload.PackagesUpdates{

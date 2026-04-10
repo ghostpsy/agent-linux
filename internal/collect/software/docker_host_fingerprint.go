@@ -101,13 +101,10 @@ func resolveDockerSocketPath() string {
 }
 
 func readDockerDaemonJSON(path string) *dockerDaemonJSONKeys {
-	b, err := os.ReadFile(path)
+	b, err := shared.ReadFileBounded(path, shared.DefaultConfigFileReadLimit)
 	if err != nil {
 		slog.Debug("docker daemon.json not readable", "path", path, "error", err)
 		return nil
-	}
-	if len(b) > maxConfigReadBytes {
-		b = b[:maxConfigReadBytes]
 	}
 	var d dockerDaemonJSONKeys
 	if err := json.Unmarshal(b, &d); err != nil {

@@ -3,14 +3,8 @@
 package collect
 
 import (
-	"github.com/ghostpsy/agent-linux/internal/collect/core"
-	"github.com/ghostpsy/agent-linux/internal/collect/crypto_time"
-	"github.com/ghostpsy/agent-linux/internal/collect/filesystem"
-	"github.com/ghostpsy/agent-linux/internal/collect/firewall"
-	"github.com/ghostpsy/agent-linux/internal/collect/identity"
-	"github.com/ghostpsy/agent-linux/internal/collect/logging"
-	"github.com/ghostpsy/agent-linux/internal/collect/network"
-	"github.com/ghostpsy/agent-linux/internal/collect/software"
+	"context"
+
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -25,256 +19,52 @@ type ActionEvent struct {
 
 // Stub builds a v1 payload (listeners include firewall_rule; other blocks optional).
 func Stub(machineUUID string, scanSeq int) payload.V1 {
-	return StubWithObserver(machineUUID, scanSeq, nil)
+	v, _ := StubWithObserver(context.Background(), machineUUID, scanSeq, nil)
+	return v
 }
 
 // StubWithObserver builds a v1 payload and calls observe before each data collection action.
-func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserver) payload.V1 {
-	notifyStart := func(action string) {
-		if observe != nil {
-			observe(ActionEvent{Action: action, Phase: "start"})
-		}
+// Pass a cancellable context (e.g. signal.NotifyContext) to abort a long scan; returns ctx.Err() when cancelled between steps.
+func StubWithObserver(ctx context.Context, machineUUID string, scanSeq int, observe ActionEventObserver) (payload.V1, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	notifyDone := func(action string, items int, err string) {
-		if observe != nil {
-			observe(ActionEvent{Action: action, Phase: "done", Items: items, Error: err})
-		}
-	}
+	return stubBuildPayloadV1(ctx, machineUUID, scanSeq, observe)
+}
 
-	notifyStart("collect_host_network")
-	hn, hnErr := filesystem.CollectHostNetwork()
-	if hn != nil {
-		network.EnrichHostNetwork(hn)
+func hostNetworkErr(hn *payload.HostNetwork) string {
+	if hn == nil {
+		return ""
 	}
-	notifyDone("collect_host_network", len(hostNetworkInterfaces(hn)), hnErr)
-	notifyStart("collect_host_disk")
-	hd, hdErr := filesystem.CollectHostDisk()
-	notifyDone("collect_host_disk", len(hostDiskFilesystems(hd)), hdErr)
-	notifyStart("collect_host_users_summary")
-	hus, husErr := identity.CollectHostUsersSummary()
-	notifyDone("collect_host_users_summary", len(hostUsersSample(hus)), husErr)
-	notifyStart("collect_host_ssh")
-	hs, hsErr := identity.CollectHostSSH()
-	notifyDone("collect_host_ssh", hostSSHListenCount(hs), hsErr)
-	notifyStart("collect_shadow_account_summary")
-	sas := identity.CollectShadowAccountSummary()
-	notifyDone("collect_shadow_account_summary", shadowNotifyCount(sas), shadowNotifyError(sas))
-	notifyStart("collect_duplicate_uid_gid")
-	dupUG := identity.CollectDuplicateUidGid()
-	notifyDone("collect_duplicate_uid_gid", duplicateIDNotifyCount(dupUG), dupUG.Error)
-	notifyStart("collect_password_policy_fingerprint")
-	ppf := identity.CollectPasswordPolicyFingerprint()
-	notifyDone("collect_password_policy_fingerprint", passwordPolicyNotifyCount(ppf), ppf.Error)
-	notifyStart("collect_sudoers_audit")
-	sau := identity.CollectSudoersAudit()
-	notifyDone("collect_sudoers_audit", len(sau.FilesScanned), sau.Error)
-	notifyStart("collect_packages_updates")
-	pu, puErr := software.CollectPackagesUpdates()
-	notifyDone("collect_packages_updates", packagesPendingUpdatesCount(pu), puErr)
-	notifyStart("collect_host_backup")
-	hb := software.CollectHostBackup()
-	notifyDone("collect_host_backup", len(hb.ToolsDetected), hostBackupLogError(hb))
-	notifyStart("collect_web_db_servers_fingerprint")
-	wdbf := software.CollectWebDbServersFingerprint()
-	notifyDone("collect_web_db_servers_fingerprint", webDbServersNotifyCount(wdbf), "")
-	notifyStart("collect_redis_exposure_fingerprint")
-	redisF := software.CollectRedisExposureFingerprint()
-	notifyDone("collect_redis_exposure_fingerprint", redisExposureNotifyCount(redisF), "")
-	notifyStart("collect_cron_timers_inventory")
-	cti := software.CollectCronTimersInventory()
-	notifyDone("collect_cron_timers_inventory", cronTimersNotifyCount(cti), cti.Error)
-	notifyStart("collect_cups_exposure_fingerprint")
-	cupsF := software.CollectCupsExposureFingerprint()
-	notifyDone("collect_cups_exposure_fingerprint", cupsExposureNotifyCount(cupsF), "")
-	notifyStart("collect_mta_fingerprint")
-	mtaF := software.CollectMtaFingerprint()
-	notifyDone("collect_mta_fingerprint", mtaNotifyCount(mtaF), "")
-	notifyStart("collect_services")
-	svItems, svErr := network.CollectServices()
-	notifyDone("collect_services", len(svItems), svErr)
+	return hn.Error
+}
 
-	if svItems == nil {
-		svItems = []payload.ServiceEntry{}
+func hostDiskErr(hd *payload.HostDisk) string {
+	if hd == nil {
+		return ""
 	}
+	return hd.Error
+}
 
-	servicesBlock := payload.ServicesBlock{Items: svItems}
-	if svErr != "" {
-		servicesBlock.Error = svErr
+func hostUsersErr(hus *payload.HostUsersSummary) string {
+	if hus == nil {
+		return ""
 	}
+	return hus.Error
+}
 
-	if hd == nil && hdErr != "" {
-		hd = &payload.HostDisk{}
-		hd.Error = hdErr
+func hostSSHErr(hs *payload.HostSSH) string {
+	if hs == nil {
+		return ""
 	}
-	if hn == nil && hnErr != "" {
-		hn = &payload.HostNetwork{}
-		hn.Error = hnErr
-	}
-	if hus == nil && husErr != "" {
-		hus = &payload.HostUsersSummary{}
-		hus.Error = husErr
-	}
-	if hs == nil && hsErr != "" {
-		hs = &payload.HostSSH{}
-		hs.Error = hsErr
-	}
-	if pu == nil && puErr != "" {
-		pu = &payload.PackagesUpdates{}
-		pu.Error = puErr
-	}
+	return hs.Error
+}
 
-	notifyStart("collect_os_info")
-	osInfo, hostname := core.CollectOSInfo()
-	fqdn := core.CollectFqdn(hostname)
-	notifyDone("collect_os_info", nonEmptyOSInfoFields(osInfo), "")
-	notifyStart("collect_grub")
-	grubSnap := core.CollectGrubSnapshot()
-	notifyDone("collect_grub", grubNotifyCount(grubSnap), grubSnap.Error)
-	notifyStart("collect_firmware_boot")
-	fwBoot := core.CollectFirmwareBoot()
-	notifyDone("collect_firmware_boot", firmwareNotifyCount(fwBoot), fwBoot.Error)
-	notifyStart("collect_systemd_health")
-	sysd := core.CollectSystemdHealth()
-	notifyDone("collect_systemd_health", systemdNotifyCount(sysd), sysd.Error)
-	notifyStart("collect_sysctl_live")
-	sysLive := core.CollectSysctlLiveProfile()
-	notifyDone("collect_sysctl_live", len(sysLive.Items), sysLive.Error)
-	notifyStart("collect_sysctl_overlay")
-	sysOverlay := core.CollectSysctlOverlay()
-	notifyDone("collect_sysctl_overlay", len(sysOverlay.Drift), sysOverlay.Error)
-	notifyStart("collect_kernel_modules")
-	kmods := core.CollectKernelModules()
-	notifyDone("collect_kernel_modules", len(kmods.Names), kmods.Error)
-	notifyStart("collect_selinux_apparmor")
-	mac := core.CollectSelinuxApparmor()
-	notifyDone("collect_selinux_apparmor", selinuxNotifyCount(mac), mac.Error)
-	notifyStart("collect_high_risk_process")
-	hrisk := core.CollectHighRiskProcessSurface()
-	notifyDone("collect_high_risk_process", len(hrisk.Items), hrisk.Error)
-	notifyStart("collect_firewall")
-	fw := firewall.CollectFirewall()
-	notifyDone("collect_firewall", firewallRuleCount(fw), firewallError(fw))
-	notifyStart("collect_tcp_wrappers_fingerprint")
-	tw := network.CollectTcpWrappersFingerprint()
-	notifyDone("collect_tcp_wrappers_fingerprint", tcpWrappersNotifyCount(tw), tw.Error)
-	notifyStart("collect_legacy_insecure_services")
-	leg := network.CollectLegacyInsecureServices()
-	notifyDone("collect_legacy_insecure_services", legacyInsecureNotifyCount(leg), leg.Error)
-	notifyStart("collect_host_path")
-	hp := filesystem.CollectHostPath()
-	notifyDone("collect_host_path", len(hp.Entries), hp.Error)
-	notifyStart("collect_host_suid")
-	hsuid := filesystem.CollectHostSuid()
-	notifyDone("collect_host_suid", len(hsuid.Items), hsuid.Error)
-	notifyStart("collect_mount_options_audit")
-	moa := filesystem.CollectMountOptionsAudit()
-	notifyDone("collect_mount_options_audit", len(moa.Paths), moa.Error)
-	notifyStart("collect_path_permissions_audit")
-	ppa := filesystem.CollectPathPermissionsAudit()
-	notifyDone("collect_path_permissions_audit", pathPermissionsNotifyCount(ppa), ppa.Error)
-	notifyStart("collect_usb_storage_posture")
-	usbp := filesystem.CollectUsbStoragePosture()
-	notifyDone("collect_usb_storage_posture", len(usbp.ModprobeFragmentLinesSample), usbp.Error)
-	notifyStart("collect_file_integrity_tooling")
-	fim := filesystem.CollectFileIntegrityTooling()
-	notifyDone("collect_file_integrity_tooling", len(fim.EvidencePaths)+len(fim.SystemdUnitsSample), fim.Error)
-	notifyStart("collect_crypt_storage_hint")
-	csh := filesystem.CollectCryptStorageHint()
-	notifyDone("collect_crypt_storage_hint", csh.CrypttabEntryCount+csh.LsblkCryptVolumeCount, csh.Error)
-	notifyStart("collect_nfs_exports_fingerprint")
-	nfsx := filesystem.CollectNfsExportsFingerprint()
-	notifyDone("collect_nfs_exports_fingerprint", len(nfsx.Entries), nfsx.Error)
-	notifyStart("collect_host_process")
-	hproc := core.CollectHostProcess()
-	notifyDone("collect_host_process", len(hproc.Top), hproc.Error)
-	notifyStart("collect_host_runtimes")
-	hr := software.CollectHostRuntimes()
-	notifyDone("collect_host_runtimes", len(hr.Items), hr.Error)
-	notifyStart("collect_host_time")
-	hostTime := crypto_time.CollectHostTime()
-	notifyDone("collect_host_time", 1, "")
-	notifyStart("collect_cryptography")
-	cryptoComp := payload.CryptographyComponent{}
-	if inv := crypto_time.CollectLocalTlsCertInventory(); inv != nil {
-		cryptoComp.LocalTlsCertInventory = inv
+func packagesUpdatesErr(pu *payload.PackagesUpdates) string {
+	if pu == nil {
+		return ""
 	}
-	notifyDone("collect_cryptography", cryptographyNotifyCount(cryptoComp), "")
-	notifyStart("collect_listeners")
-	listeners := firewall.ApplyFirewallRuleToListeners(network.CollectListeners(hn), fw)
-	if listeners == nil {
-		listeners = []payload.Listener{}
-	}
-	notifyDone("collect_listeners", len(listeners), "")
-	notifyStart("collect_logging_and_system_auditing")
-	logAudit := logging.CollectLoggingAndSystemAuditing()
-	notifyDone("collect_logging_and_system_auditing", loggingAuditNotifyCount(logAudit), loggingAuditFirstError(logAudit))
-	components := payload.Components{
-		CoreSystemAndKernel: payload.CoreSystemAndKernelComponent{
-			OS:              osInfo,
-			HostTime:        hostTime,
-			HostProcess:     hproc,
-			Grub:            grubSnap,
-			FirmwareBoot:    fwBoot,
-			SystemdHealth:   sysd,
-			SysctlLive:      sysLive,
-			SysctlOverlay:   sysOverlay,
-			KernelModules:   kmods,
-			SelinuxApparmor: mac,
-			HighRiskProcess: hrisk,
-		},
-		IdentityAccessAndAuthentication: payload.IdentityAccessAndAuthenticationComponent{
-			HostUsersSummary:          hus,
-			HostSSH:                   hs,
-			ShadowAccountSummary:      sas,
-			DuplicateUidGid:           dupUG,
-			PasswordPolicyFingerprint: ppf,
-			SudoersAudit:              sau,
-		},
-		FileSystemAndStorage: payload.FileSystemAndStorageComponent{
-			HostDisk:              hd,
-			HostPath:              hp,
-			HostSuid:              hsuid,
-			MountOptionsAudit:     moa,
-			PathPermissionsAudit:  ppa,
-			UsbStoragePosture:     usbp,
-			FileIntegrityTooling:  fim,
-			CryptStorageHint:      csh,
-			NfsExportsFingerprint: nfsx,
-		},
-		NetworkAndHostFirewall: payload.NetworkAndHostFirewallComponent{
-			Listeners:              listeners,
-			HostNetwork:            hn,
-			Firewall:               fw,
-			TcpWrappersFingerprint: tw,
-			LegacyInsecureServices: leg,
-		},
-		SoftwarePackagesAndApplications: payload.SoftwarePackagesAndApplicationsComponent{
-			Services:                 servicesBlock,
-			PackagesUpdates:          pu,
-			HostBackup:               hb,
-			HostRuntimes:             softwarePackagesHostRuntimes(hr),
-			WebDbServersFingerprint:  wdbf,
-			RedisExposureFingerprint: redisF,
-			CronTimersInventory:      cti,
-			CupsExposureFingerprint:  cupsF,
-			MtaFingerprint:           mtaF,
-		},
-		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
-			HostRuntimes: containerCloudHostRuntimes(hr),
-		},
-		LoggingAndSystemAuditing:            logAudit,
-		Cryptography:                        cryptoComp,
-		SecurityFrameworksAndMalwareDefense: payload.SecurityFrameworksAndMalwareDefenseComponent{},
-		Other:                               payload.OtherComponent{},
-	}
-	return payload.V1{
-		SchemaVersion: 1,
-		MachineUUID:   machineUUID,
-		ScanSeq:       scanSeq,
-		Hostname:      hostname,
-		Fqdn:          fqdn,
-		Components:    components,
-	}
+	return pu.Error
 }
 
 func hostNetworkInterfaces(hn *payload.HostNetwork) []payload.NetworkIface {

@@ -3,6 +3,7 @@
 package identity
 
 import (
+	"context"
 	"bufio"
 	"os"
 	"sort"
@@ -19,7 +20,7 @@ const (
 )
 
 // CollectDuplicateUidGid reports passwd/group IDs shared by more than one account (names capped).
-func CollectDuplicateUidGid() *payload.DuplicateUidGid {
+func CollectDuplicateUidGid(ctx context.Context) *payload.DuplicateUidGid {
 	out := &payload.DuplicateUidGid{}
 	uidMap := map[int][]string{}
 	if err := scanPasswdUids(uidMap); err != nil {

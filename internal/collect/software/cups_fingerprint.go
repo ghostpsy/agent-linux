@@ -3,6 +3,7 @@
 package software
 
 import (
+	"context"
 	"regexp"
 	"strings"
 
@@ -18,12 +19,12 @@ var (
 const maxCupsSampleLines = 8
 
 // CollectCupsExposureFingerprint reads CUPS unit state and bounded cupsd config.
-func CollectCupsExposureFingerprint() *payload.CupsExposureFingerprint {
+func CollectCupsExposureFingerprint(ctx context.Context) *payload.CupsExposureFingerprint {
 	out := &payload.CupsExposureFingerprint{}
 	out.UnitActiveState = systemdUnitActiveState([]string{"cups.service", "cups.socket"})
 	paths := []string{"/etc/cups/cupsd.conf", "/etc/cups/cups-files.conf", "/usr/local/etc/cups/cupsd.conf"}
 	for _, p := range paths {
-		b, err := readFileBounded(p)
+		b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			continue
 		}

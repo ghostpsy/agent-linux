@@ -22,7 +22,7 @@ var suidFindRoots = []string{"/usr/bin", "/bin", "/sbin", "/usr/sbin", "/usr/loc
 
 // CollectHostSuid lists setuid binaries under common roots (bounded).
 // Implemented with filepath.WalkDir (no external find): gopsutil does not expose filesystem setuid enumeration.
-func CollectHostSuid() *payload.HostSuid {
+func CollectHostSuid(ctx context.Context) *payload.HostSuid {
 	out := &payload.HostSuid{Items: []payload.SuidItem{}}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

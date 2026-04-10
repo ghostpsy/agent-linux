@@ -3,10 +3,12 @@
 package software
 
 import (
+	"context"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -20,11 +22,11 @@ var (
 )
 
 // CollectWebDbServersFingerprint reads bounded nginx/Apache/MySQL/PostgreSQL config hints.
-func CollectWebDbServersFingerprint() *payload.WebDbServersFingerprint {
+func CollectWebDbServersFingerprint(ctx context.Context) *payload.WebDbServersFingerprint {
 	out := &payload.WebDbServersFingerprint{}
 	paths := []string{"/etc/nginx/nginx.conf", "/usr/local/nginx/conf/nginx.conf"}
 	for _, p := range paths {
-		b, err := readFileBounded(p)
+		b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			continue
 		}
@@ -36,7 +38,7 @@ func CollectWebDbServersFingerprint() *payload.WebDbServersFingerprint {
 	}
 	apPaths := []string{"/etc/apache2/apache2.conf", "/etc/httpd/conf/httpd.conf", "/etc/apache2/conf/httpd.conf"}
 	for _, p := range apPaths {
-		b, err := readFileBounded(p)
+		b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			continue
 		}
@@ -51,7 +53,7 @@ func CollectWebDbServersFingerprint() *payload.WebDbServersFingerprint {
 	}
 	mysqlPaths := []string{"/etc/my.cnf", "/etc/mysql/my.cnf", "/etc/mysql/mysql.conf.d/mysqld.cnf"}
 	for _, p := range mysqlPaths {
-		b, err := readFileBounded(p)
+		b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			continue
 		}
@@ -68,7 +70,7 @@ func CollectWebDbServersFingerprint() *payload.WebDbServersFingerprint {
 	if out.MysqlBindAddress == "" {
 		matches, _ := filepath.Glob("/etc/mysql/conf.d/*.cnf")
 		for _, p := range matches {
-			b, err := readFileBounded(p)
+			b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 			if err != nil {
 				continue
 			}
@@ -83,7 +85,7 @@ func CollectWebDbServersFingerprint() *payload.WebDbServersFingerprint {
 	for _, g := range pgGlobs {
 		matches, _ := filepath.Glob(g)
 		for _, p := range matches {
-			b, err := readFileBounded(p)
+			b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 			if err != nil {
 				continue
 			}

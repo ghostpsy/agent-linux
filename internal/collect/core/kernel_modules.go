@@ -3,6 +3,7 @@
 package core
 
 import (
+	"context"
 	"bufio"
 	"os"
 	"strings"
@@ -20,7 +21,7 @@ var moduleDenylistSubstrings = []string{
 }
 
 // CollectKernelModules lists loaded modules from /proc/modules (capped) with denylist hits.
-func CollectKernelModules() *payload.KernelModulesBlock {
+func CollectKernelModules(ctx context.Context) *payload.KernelModulesBlock {
 	out := &payload.KernelModulesBlock{Names: []string{}, DenylistMatches: []string{}}
 	f, err := os.Open("/proc/modules")
 	if err != nil {

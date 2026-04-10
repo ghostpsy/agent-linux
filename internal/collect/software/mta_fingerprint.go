@@ -16,7 +16,7 @@ import (
 const mtaTimeout = 12 * time.Second
 
 // CollectMtaFingerprint detects Postfix / Exim / Sendmail and collects bounded relay hints.
-func CollectMtaFingerprint() *payload.MtaFingerprint {
+func CollectMtaFingerprint(ctx context.Context) *payload.MtaFingerprint {
 	out := &payload.MtaFingerprint{}
 	if _, err := exec.LookPath("postfix"); err == nil || fileExists("/usr/sbin/postfix") || fileExists("/usr/bin/postfix") {
 		out.DetectedMta = "postfix"
@@ -28,7 +28,7 @@ func CollectMtaFingerprint() *payload.MtaFingerprint {
 		if fileExists(p) {
 			out.DetectedMta = "exim"
 			out.EximConfigPath = p
-			b, err := readFileBounded(p)
+			b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 			if err == nil {
 				out.EximRelayDomainsHintSample = grepLinesContaining(string(b), "relay_domains", 8, 256)
 				if len(out.EximRelayDomainsHintSample) == 0 {
@@ -43,7 +43,7 @@ func CollectMtaFingerprint() *payload.MtaFingerprint {
 		t := true
 		out.DetectedMta = "sendmail"
 		out.SendmailCfPathPresent = &t
-		b, err := readFileBounded(sendmailCf)
+		b, err := shared.ReadFileBounded(sendmailCf, shared.DefaultConfigFileReadLimit)
 		if err == nil {
 			lines := nonCommentLines(string(b))
 			out.SendmailLinesSample = capStringSlice(lines, 8, 256)

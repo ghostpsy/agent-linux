@@ -3,6 +3,7 @@
 package core
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,7 +15,7 @@ import (
 const maxSysctlDrift = 64
 
 // CollectSysctlOverlay parses sysctl.conf and sysctl.d, compares to live values for drift.
-func CollectSysctlOverlay() *payload.SysctlOverlayBlock {
+func CollectSysctlOverlay(ctx context.Context) *payload.SysctlOverlayBlock {
 	out := &payload.SysctlOverlayBlock{}
 	var files []string
 	if matches, err := filepath.Glob("/etc/sysctl.d/*.conf"); err == nil {

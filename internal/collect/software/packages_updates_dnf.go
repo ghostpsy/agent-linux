@@ -3,6 +3,7 @@
 package software
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -14,11 +15,11 @@ import (
 )
 
 // collectPackagesUpdatesRPM uses dnf or yum check-update (and --security) with English locale.
-func collectPackagesUpdatesRPM(bin, manager string) *payload.PackagesUpdates {
+func collectPackagesUpdatesRPM(ctx context.Context, bin, manager string) *payload.PackagesUpdates {
 	env := shared.EnvLocaleC()
-	out, err := combinedOutputEnv(env, bin, "check-update")
+	out, err := combinedOutputEnv(ctx, env, bin, "check-update")
 	pending, _ := parseDnfCheckUpdate(out)
-	secOut, secErr := combinedOutputEnv(env, bin, "check-update", "--security")
+	secOut, secErr := combinedOutputEnv(ctx, env, bin, "check-update", "--security")
 	secCount, secNames := parseDnfCheckUpdate(secOut)
 	if secErr != nil {
 		slog.Warn("rpm check-update --security failed", "manager", manager, "error", secErr)

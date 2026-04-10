@@ -21,7 +21,7 @@ const (
 )
 
 // CollectSelinuxApparmor reports SELinux mode and a short AppArmor summary when available.
-func CollectSelinuxApparmor() *payload.SelinuxApparmorBlock {
+func CollectSelinuxApparmor(ctx context.Context) *payload.SelinuxApparmorBlock {
 	out := &payload.SelinuxApparmorBlock{}
 	if _, err := os.Stat(selinuxFsRoot); err != nil {
 		out.SelinuxMode = ""
@@ -36,14 +36,14 @@ func CollectSelinuxApparmor() *payload.SelinuxApparmorBlock {
 			out.SelinuxMode = "unknown"
 		}
 	} else {
-		out.SelinuxMode = selinuxModeFromGetenforce()
+		out.SelinuxMode = selinuxModeFromGetenforce(ctx)
 	}
-	out.ApparmorSummary = apparmorShortStatus()
+	out.ApparmorSummary = apparmorShortStatus(ctx)
 	return out
 }
 
-func selinuxModeFromGetenforce() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func selinuxModeFromGetenforce(parent context.Context) string {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	b, err := exec.CommandContext(ctx, "getenforce").Output()
 	if err != nil {
@@ -62,8 +62,8 @@ func selinuxModeFromGetenforce() string {
 	}
 }
 
-func apparmorShortStatus() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func apparmorShortStatus(parent context.Context) string {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "aa-status", "--short")
 	var buf bytes.Buffer
@@ -72,7 +72,7 @@ func apparmorShortStatus() string {
 		return shared.TruncateRunes(strings.TrimSpace(buf.String()), apparmorSummaryMax)
 	}
 	cancel()
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx2, cancel2 := context.WithTimeout(parent, 2*time.Second)
 	defer cancel2()
 	cmd2 := exec.CommandContext(ctx2, "aa-status")
 	var buf2 bytes.Buffer

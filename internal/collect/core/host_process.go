@@ -3,6 +3,7 @@
 package core
 
 import (
+	"context"
 	"log/slog"
 	"math"
 	"sort"
@@ -35,7 +36,7 @@ type procSample struct {
 }
 
 // CollectHostProcess builds top CPU/RSS merge and interpreter / heuristic signals (M1).
-func CollectHostProcess() *payload.HostProcess {
+func CollectHostProcess(ctx context.Context) *payload.HostProcess {
 	hp := &payload.HostProcess{
 		Top:     []payload.ProcessTopEntry{},
 		Signals: &payload.ProcessSignals{},

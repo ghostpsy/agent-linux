@@ -3,9 +3,11 @@
 package core
 
 import (
+	"context"
 	"log/slog"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/shirou/gopsutil/v4/host"
@@ -18,7 +20,10 @@ const maxHostnameRunes = 253
 // CollectOSInfo sends pretty/kernel, raw /etc/os-release fields, and gopsutil host.Info.
 // The API derives distro_id / distro_version_id / distro_name for EOL (see backend src/ingest/os_normalize).
 // The second return is the host name from host.Info (for dashboard titles), or "" if unavailable.
-func CollectOSInfo() (payload.OSInfo, string) {
+func CollectOSInfo(ctx context.Context) (payload.OSInfo, string) {
+	if err := shared.ScanContextError(ctx); err != nil {
+		return payload.OSInfo{}, ""
+	}
 	rel := parseOSRelease()
 	hi, err := host.Info()
 	if err != nil {
@@ -61,19 +66,24 @@ func CollectOSInfo() (payload.OSInfo, string) {
 			out.KernelArch = shared.TruncateRunes(ka, 64)
 		}
 	}
-	applyDistroPaidExtendedSecurityActive(out.OSReleaseID, &out)
+	applyDistroPaidExtendedSecurityActive(ctx, out.OSReleaseID, &out)
 	return out, hostname
 }
 
 // CollectFqdn derives a UI FQDN: dotted /etc/hostname if present, then hostname -f, -A, and
 // shortHostname + hostname -d (GNU) when a DNS domain suffix is available.
-func CollectFqdn(shortHostname string) string {
+func CollectFqdn(ctx context.Context, shortHostname string) string {
+	if err := shared.ScanContextError(ctx); err != nil {
+		return ""
+	}
 	if f := fqdnFromEtcHostname(); f != "" {
 		return shared.TruncateRunes(f, maxHostnameRunes)
 	}
-	outF, _ := exec.Command("hostname", "-f").Output()
-	outA, _ := exec.Command("hostname", "-A").Output()
-	outD, _ := exec.Command("hostname", "-d").Output()
+	subCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	outF, _ := exec.CommandContext(subCtx, "hostname", "-f").Output()
+	outA, _ := exec.CommandContext(subCtx, "hostname", "-A").Output()
+	outD, _ := exec.CommandContext(subCtx, "hostname", "-d").Output()
 	resolved := resolveFqdnFromParts(shortHostname, string(outF), string(outA), string(outD))
 	if resolved == "" {
 		return ""

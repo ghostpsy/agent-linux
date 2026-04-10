@@ -3,9 +3,11 @@
 package network
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
@@ -13,10 +15,14 @@ import (
 
 const maxLegacyUnitSample = 16
 
+const legacySystemctlListTimeout = 10 * time.Second
+
 // CollectLegacyInsecureServices reports systemd unit/socket hints and inetd.conf presence.
-func CollectLegacyInsecureServices() *payload.LegacyInsecureServices {
+func CollectLegacyInsecureServices(ctx context.Context) *payload.LegacyInsecureServices {
 	out := &payload.LegacyInsecureServices{}
-	if b, err := exec.Command("systemctl", "list-unit-files", "--no-legend").Output(); err == nil {
+	ctx, cancel := context.WithTimeout(ctx, legacySystemctlListTimeout)
+	defer cancel()
+	if b, err := exec.CommandContext(ctx, "systemctl", "list-unit-files", "--no-legend").Output(); err == nil {
 		lower := strings.ToLower(string(b))
 		out.TelnetSuspected = strings.Contains(lower, "telnet")
 		out.RshSuspected = strings.Contains(lower, "rsh") || strings.Contains(lower, "rshd")
@@ -57,7 +63,7 @@ func sampleLegacyUnitLines(statusOut string) []string {
 }
 
 func countInetdNonCommentLines() int {
-	b, err := os.ReadFile("/etc/inetd.conf")
+	b, err := shared.ReadFileBounded("/etc/inetd.conf", shared.DefaultConfigFileReadLimit)
 	if err != nil {
 		return 0
 	}

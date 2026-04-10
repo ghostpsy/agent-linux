@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
@@ -25,7 +26,7 @@ var fimEvidenceCandidates = []string{
 }
 
 // CollectFileIntegrityTooling detects AIDE/Tripwire-style installation hints (no DB upload).
-func CollectFileIntegrityTooling() *payload.FileIntegrityTooling {
+func CollectFileIntegrityTooling(ctx context.Context) *payload.FileIntegrityTooling {
 	out := &payload.FileIntegrityTooling{}
 	var evidence []string
 	for _, p := range fimEvidenceCandidates {

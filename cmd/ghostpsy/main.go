@@ -6,13 +6,16 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +25,9 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/state"
 	"github.com/ghostpsy/agent-linux/internal/version"
 )
+
+// maxIngestResponseBodyBytes caps response body reads to avoid OOM on hostile servers.
+const maxIngestResponseBodyBytes int64 = 1 << 20
 
 func main() {
 	if len(os.Args) < 2 {
@@ -100,7 +106,14 @@ func runScan() {
 	logger := actionlog.New(*verbose, os.Stdout)
 	defer logger.PrintSummary()
 
-	st, nextSeq, body := buildScanPayload(logger)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	st, nextSeq, body, err := buildScanPayload(ctx, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "scan: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Println("--- Outbound payload (review before any send) ---")
 	fmt.Println(string(body))
@@ -138,13 +151,17 @@ func runScan() {
 	}
 
 	logger.Step("external-send", strings.TrimSuffix(*apiURL, "/")+"/v1/ingest", "Sending allowlisted payload to the ingest API endpoint", map[string]string{"authorization": "Bearer token", "content_type": "application/json"})
-	resp, err := postIngest(*apiURL, token, body)
+	resp, err := postIngest(ctx, *apiURL, token, body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "post: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := readLimited(resp.Body, maxIngestResponseBodyBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read response body: %v\n", err)
+		os.Exit(1)
+	}
 	fmt.Println("Response:", resp.Status, string(respBody))
 	if resp.StatusCode >= 400 {
 		os.Exit(1)
@@ -157,12 +174,12 @@ func runScan() {
 	}
 }
 
-func buildScanPayload(logger *actionlog.Logger) (*state.AgentState, int, []byte) {
+func buildScanPayload(ctx context.Context, logger *actionlog.Logger) (*state.AgentState, int, []byte, error) {
 	logger.Step("local-read-only", "~/.config/ghostpsy/agent.json", "Reading local agent state from ~/.config/ghostpsy/agent.json", nil)
 	st := ensureState(logger)
 	nextSeq := st.ScanSeq + 1
 	logger.Step("local-compute", "payload.v1", "Building allowlisted inventory payload from local system data", map[string]string{"scan_seq": fmt.Sprintf("%d", nextSeq)})
-	p := collect.StubWithObserver(st.MachineUUID, nextSeq, func(event collect.ActionEvent) {
+	p, err := collect.StubWithObserver(ctx, st.MachineUUID, nextSeq, func(event collect.ActionEvent) {
 		if event.Phase == "start" {
 			logger.Step("local-read-only", event.Action, humanMessageForCollectionAction(event.Action), nil)
 			return
@@ -173,16 +190,16 @@ func buildScanPayload(logger *actionlog.Logger) (*state.AgentState, int, []byte)
 		}
 		logger.Note(humanDoneMessage(event.Action, event.Items), nil)
 	})
+	if err != nil {
+		return nil, 0, nil, err
+	}
 	logger.Step("local-compute", "payload.v1", "Preparing JSON payload preview before any network send", nil)
 	body, err := json.MarshalIndent(p, "", "  ")
-	if err == nil {
-		logger.Note("Payload prepared successfully", map[string]string{"payload_bytes": fmt.Sprintf("%d", len(body))})
-	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
-		os.Exit(1)
+		return nil, 0, nil, err
 	}
-	return st, nextSeq, body
+	logger.Note("Payload prepared successfully", map[string]string{"payload_bytes": fmt.Sprintf("%d", len(body))})
+	return st, nextSeq, body, nil
 }
 
 func envOr(k, def string) string {
@@ -213,10 +230,18 @@ func readConfirmLine() (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
+// readLimited reads r until EOF or maxBytes bytes, whichever comes first.
+func readLimited(r io.Reader, maxBytes int64) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(r, maxBytes))
+}
+
 // postIngest POSTs JSON to {apiBaseURL}/v1/ingest with a Bearer token.
-func postIngest(apiBaseURL, token string, body []byte) (*http.Response, error) {
+func postIngest(ctx context.Context, apiBaseURL, token string, body []byte) (*http.Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	url := strings.TrimSuffix(apiBaseURL, "/") + "/v1/ingest"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

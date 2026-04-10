@@ -27,9 +27,9 @@ const (
 )
 
 // CollectCronTimersInventory summarizes /etc/crontab, cron.d, user spool, and systemd timers.
-func CollectCronTimersInventory() *payload.CronTimersInventory {
+func CollectCronTimersInventory(ctx context.Context) *payload.CronTimersInventory {
 	out := &payload.CronTimersInventory{}
-	if b, err := readFileBounded("/etc/crontab"); err == nil {
+	if b, err := shared.ReadFileBounded("/etc/crontab", shared.DefaultConfigFileReadLimit); err == nil {
 		lines := nonCommentLines(string(b))
 		out.SystemCrontabLineCount = len(lines)
 		out.SystemCrontabSample = capStringSlice(lines, maxCronSampleLines, 256)
@@ -71,7 +71,7 @@ func CollectCronTimersInventory() *payload.CronTimersInventory {
 				if len(lineBuf) >= maxUserCrontabLines {
 					break
 				}
-				b, err := readFileBounded(filepath.Join(dir, u))
+				b, err := shared.ReadFileBounded(filepath.Join(dir, u), shared.DefaultConfigFileReadLimit)
 				if err != nil {
 					continue
 				}

@@ -2,7 +2,11 @@
 
 package firewall
 
-import "github.com/ghostpsy/agent-linux/internal/payload"
+
+import (
+	"context"
+	"github.com/ghostpsy/agent-linux/internal/payload"
+)
 
 const collectionNoInfoPrefix = "No information extracted."
 
@@ -30,7 +34,7 @@ type firewallMetrics struct {
 
 // CollectFirewall detects iptables / nftables / ufw / firewalld and fills metrics via netlink (nftables) or go-iptables.
 // There is no fallback to parsing iptables-save snapshots for these metrics.
-func CollectFirewall() *payload.Firewall {
+func CollectFirewall(ctx context.Context) *payload.Firewall {
 	fw := &payload.Firewall{}
 	defer func() {
 		enrichFirewallDetails(fw)

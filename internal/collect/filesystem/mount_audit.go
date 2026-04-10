@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"context"
 	"bufio"
 	"os"
 	"strings"
@@ -18,7 +19,7 @@ const maxMountOptionsSchemaRunes = 512
 var mountAuditTargets = []string{"/tmp", "/var", "/home", "/boot", "/dev/shm", "/var/tmp"}
 
 // CollectMountOptionsAudit parses /etc/fstab and live mounts (gopsutil disk.Partitions) for hardening flags.
-func CollectMountOptionsAudit() *payload.MountOptionsAudit {
+func CollectMountOptionsAudit(ctx context.Context) *payload.MountOptionsAudit {
 	out := &payload.MountOptionsAudit{}
 	fstab, err := parseFstabOptions()
 	if err != nil {

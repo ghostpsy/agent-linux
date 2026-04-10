@@ -26,7 +26,7 @@ const (
 )
 
 // CollectPathPermissionsAudit samples world-writable dirs, /tmp sticky, SGID files, and unowned paths (bounded).
-func CollectPathPermissionsAudit() *payload.PathPermissionsAudit {
+func CollectPathPermissionsAudit(ctx context.Context) *payload.PathPermissionsAudit {
 	out := &payload.PathPermissionsAudit{}
 	if fi, err := os.Stat("/tmp"); err == nil {
 		m := fi.Mode()

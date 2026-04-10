@@ -3,13 +3,14 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
-	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -17,7 +18,9 @@ const maxAptSourceScanBytes = 96 * 1024
 
 // applyDistroPaidExtendedSecurityActive sets distro_paid_extended_security_active when the agent can
 // prove paid extended security (Ubuntu Pro ESM, Debian ELTS / Freexian-style apt sources).
-func applyDistroPaidExtendedSecurityActive(osReleaseID string, out *payload.OSInfo) {
+const proStatusCmdTimeout = 12 * time.Second
+
+func applyDistroPaidExtendedSecurityActive(ctx context.Context, osReleaseID string, out *payload.OSInfo) {
 	if out == nil {
 		return
 	}
@@ -25,7 +28,7 @@ func applyDistroPaidExtendedSecurityActive(osReleaseID string, out *payload.OSIn
 	t := true
 	switch id {
 	case "ubuntu":
-		if ubuntuPaidExtendedESMEnabled() {
+		if ubuntuPaidExtendedESMEnabled(ctx) {
 			out.DistroPaidExtendedSecurityActive = &t
 		}
 	case "debian":
@@ -45,12 +48,17 @@ type uaLikeStatus struct {
 	} `json:"services"`
 }
 
-func ubuntuPaidExtendedESMEnabled() bool {
+func ubuntuPaidExtendedESMEnabled(ctx context.Context) bool {
+	if err := shared.ScanContextError(ctx); err != nil {
+		return false
+	}
+	subCtx, cancel := context.WithTimeout(ctx, proStatusCmdTimeout)
+	defer cancel()
 	for _, argv := range [][]string{
 		{"pro", "status", "--format", "json"},
 		{"ubuntu-advantage", "status", "--format", "json"},
 	} {
-		cmd := exec.Command(argv[0], argv[1:]...)
+		cmd := exec.CommandContext(subCtx, argv[0], argv[1:]...)
 		out, err := cmd.Output()
 		if err != nil || len(out) == 0 {
 			continue
@@ -99,7 +107,7 @@ func debianEltsStyleSourcesPresent() bool {
 }
 
 func aptSourceFileMentionsElts(path string) bool {
-	data, err := readFileLimited(path, maxAptSourceScanBytes)
+	data, err := shared.ReadFileBounded(path, maxAptSourceScanBytes)
 	if err != nil || len(data) == 0 {
 		return false
 	}
@@ -107,13 +115,4 @@ func aptSourceFileMentionsElts(path string) bool {
 	return strings.Contains(low, "elts.debian.org") ||
 		strings.Contains(low, "freexian") ||
 		strings.Contains(low, "deb.freexian.com")
-}
-
-func readFileLimited(path string, maxBytes int64) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	return io.ReadAll(io.LimitReader(f, maxBytes))
 }

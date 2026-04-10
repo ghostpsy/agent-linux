@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"context"
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,7 +17,7 @@ import (
 var nfsClientSpec = regexp.MustCompile(`[a-zA-Z0-9._:/\-]+\(([^)]*)\)`)
 
 // CollectNfsExportsFingerprint parses /etc/exports with path hashes (no raw paths).
-func CollectNfsExportsFingerprint() *payload.NfsExportsFingerprint {
+func CollectNfsExportsFingerprint(ctx context.Context) *payload.NfsExportsFingerprint {
 	out := &payload.NfsExportsFingerprint{}
 	f, err := os.Open("/etc/exports")
 	if err != nil {

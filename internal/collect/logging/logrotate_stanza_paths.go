@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 )
 
 const maxLogrotatePathPatterns = 256
@@ -31,7 +33,7 @@ func collectLogrotatePathPatterns() []string {
 			}
 		}
 	}
-	if b, err := readFileBounded("/etc/logrotate.conf"); err == nil {
+	if b, err := shared.ReadFileBounded("/etc/logrotate.conf", shared.DefaultConfigFileReadLimit); err == nil {
 		addAll(parseLogrotatePathsFromBody(string(b)))
 	}
 	if len(out) >= maxLogrotatePathPatterns {
@@ -51,7 +53,7 @@ func collectLogrotatePathPatterns() []string {
 			continue
 		}
 		p := filepath.Join(dir, ent.Name())
-		b, err := readFileBounded(p)
+		b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			continue
 		}

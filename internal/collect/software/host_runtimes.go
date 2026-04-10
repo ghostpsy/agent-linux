@@ -32,7 +32,7 @@ var runtimeProbes = []runtimeProbe{
 }
 
 // CollectHostRuntimes probes common interpreters on PATH (capped, M1).
-func CollectHostRuntimes() *payload.HostRuntimes {
+func CollectHostRuntimes(ctx context.Context) *payload.HostRuntimes {
 	out := &payload.HostRuntimes{Items: []payload.RuntimeEntry{}}
 	seenKind := make(map[string]struct{})
 	for _, probe := range runtimeProbes {

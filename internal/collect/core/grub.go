@@ -3,6 +3,7 @@
 package core
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -17,7 +18,7 @@ const (
 )
 
 // CollectGrubSnapshot parses /etc/default/grub and optionally peeks grub.cfg (no secrets).
-func CollectGrubSnapshot() *payload.GrubSnapshot {
+func CollectGrubSnapshot(ctx context.Context) *payload.GrubSnapshot {
 	out := &payload.GrubSnapshot{}
 	data, err := os.ReadFile(defaultGrubPath)
 	if err != nil {

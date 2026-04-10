@@ -3,11 +3,12 @@
 package core
 
 import (
+	"context"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 // CollectSysctlLiveProfile reads allowlisted /proc/sys keys (bounded).
-func CollectSysctlLiveProfile() *payload.SysctlLiveBlock {
+func CollectSysctlLiveProfile(ctx context.Context) *payload.SysctlLiveBlock {
 	out := &payload.SysctlLiveBlock{Items: []payload.SysctlKV{}}
 	for _, key := range sysctlSecurityAllowlist {
 		path := sysctlDotToProcPath(key)

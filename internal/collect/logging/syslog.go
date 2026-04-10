@@ -70,7 +70,7 @@ func collectSyslogForwarding() *payload.SyslogForwardingPosture {
 			if len(ent.ConfigPathsRead) >= maxSyslogConfigPathsTracked {
 				break
 			}
-			data, err := readFileBounded(p)
+			data, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 			if err != nil {
 				continue
 			}

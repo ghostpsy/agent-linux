@@ -14,7 +14,7 @@ import (
 const efiSysfs = "/sys/firmware/efi"
 
 // CollectFirmwareBoot detects UEFI vs BIOS hints (no root required for sysfs).
-func CollectFirmwareBoot() *payload.FirmwareBoot {
+func CollectFirmwareBoot(ctx context.Context) *payload.FirmwareBoot {
 	out := &payload.FirmwareBoot{BootMode: "unknown"}
 	st, err := os.Stat(efiSysfs)
 	if err == nil && st.IsDir() {

@@ -23,7 +23,7 @@ func collectLogrotateDiskPosture() *payload.LogrotateDiskPosture {
 	mainPath := "/etc/logrotate.conf"
 	if st, err := os.Stat(mainPath); err == nil && !st.IsDir() {
 		out.MainConfPresent = true
-		if b, err := readFileBounded(mainPath); err == nil {
+		if b, err := shared.ReadFileBounded(mainPath, shared.DefaultConfigFileReadLimit); err == nil {
 			out.MainConfIncludeLinesSample = sampleLogrotateLines(string(b), func(s string) bool {
 				t := strings.ToLower(strings.TrimSpace(s))
 				return strings.HasPrefix(t, "include ") || strings.HasPrefix(t, "tabooext") || strings.HasPrefix(t, "compress")
@@ -72,7 +72,7 @@ func scanLogrotateForVarLog() bool {
 			continue
 		}
 		p := filepath.Join(dir, ent.Name())
-		b, err := readFileBounded(p)
+		b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			continue
 		}

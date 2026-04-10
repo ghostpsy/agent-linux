@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ import (
 const maxPathEntries = 64
 
 // CollectHostPath enumerates PATH directories with exists and world-writable flags (skips dirs under /home).
-func CollectHostPath() *payload.HostPath {
+func CollectHostPath(ctx context.Context) *payload.HostPath {
 	out := &payload.HostPath{Entries: []payload.PathEntry{}}
 	raw := os.Getenv("PATH")
 	if strings.TrimSpace(raw) == "" {

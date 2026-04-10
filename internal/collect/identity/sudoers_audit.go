@@ -3,6 +3,7 @@
 package identity
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 const sudoersMaxFileBytes = 512 * 1024
 
 // CollectSudoersAudit performs a structural sudoers scan without transmitting full rule bodies.
-func CollectSudoersAudit() *payload.SudoersAudit {
+func CollectSudoersAudit(ctx context.Context) *payload.SudoersAudit {
 	out := &payload.SudoersAudit{}
 	mainPath := "/etc/sudoers"
 	b, err := readSudoersFileLimited(mainPath)

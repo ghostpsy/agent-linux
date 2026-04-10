@@ -3,6 +3,7 @@
 package firewall
 
 import (
+	"context"
 	"net"
 	"strings"
 
@@ -13,7 +14,8 @@ import (
 
 // ApplyFirewallRuleToListeners sets listener.firewall_rule using iptables INPUT (preferred) or
 // nftables filter INPUT hook rules. Uses IPv4 or IPv6 iptables based on the listener bind address.
-func ApplyFirewallRuleToListeners(listeners []payload.Listener, fw *payload.Firewall) []payload.Listener {
+func ApplyFirewallRuleToListeners(ctx context.Context, listeners []payload.Listener, fw *payload.Firewall) []payload.Listener {
+	_ = ctx
 	if len(listeners) == 0 {
 		return listeners
 	}

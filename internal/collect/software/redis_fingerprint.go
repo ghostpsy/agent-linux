@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -21,12 +22,12 @@ var (
 )
 
 // CollectRedisExposureFingerprint parses redis.conf candidates and redis-server unit state.
-func CollectRedisExposureFingerprint() *payload.RedisExposureFingerprint {
+func CollectRedisExposureFingerprint(ctx context.Context) *payload.RedisExposureFingerprint {
 	out := &payload.RedisExposureFingerprint{}
 	out.UnitActiveState = systemdUnitActiveState([]string{"redis-server.service", "redis.service", "valkey.service"})
 	paths := []string{"/etc/redis/redis.conf", "/etc/redis.conf", "/usr/local/etc/redis.conf"}
 	for _, p := range paths {
-		b, err := readFileBounded(p)
+		b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
 		if err != nil {
 			continue
 		}

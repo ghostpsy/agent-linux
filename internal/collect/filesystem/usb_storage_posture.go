@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"context"
 	"bufio"
 	"os"
 	"path/filepath"
@@ -15,7 +16,7 @@ import (
 const maxModprobeLines = 16
 
 // CollectUsbStoragePosture reports usb_storage load state and modprobe blacklist hints.
-func CollectUsbStoragePosture() *payload.UsbStoragePosture {
+func CollectUsbStoragePosture(ctx context.Context) *payload.UsbStoragePosture {
 	out := &payload.UsbStoragePosture{}
 	out.UsbStorageLoaded = moduleLoaded("usb_storage")
 	out.BlacklistUsbStorageLinePresent, out.ModprobeFragmentLinesSample = scanModprobeUsbBlacklist()

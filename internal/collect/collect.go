@@ -193,6 +193,12 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 	notifyStart("collect_host_time")
 	hostTime := crypto_time.CollectHostTime()
 	notifyDone("collect_host_time", 1, "")
+	notifyStart("collect_cryptography")
+	cryptoComp := payload.CryptographyComponent{}
+	if inv := crypto_time.CollectLocalTlsCertInventory(); inv != nil {
+		cryptoComp.LocalTlsCertInventory = inv
+	}
+	notifyDone("collect_cryptography", cryptographyNotifyCount(cryptoComp), "")
 	notifyStart("collect_listeners")
 	listeners := firewall.ApplyFirewallRuleToListeners(network.CollectListeners(hn), fw)
 	if listeners == nil {
@@ -256,8 +262,8 @@ func StubWithObserver(machineUUID string, scanSeq int, observe ActionEventObserv
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
 			HostRuntimes: containerCloudHostRuntimes(hr),
 		},
-		LoggingAndSystemAuditing: logAudit,
-		Cryptography:                        payload.CryptographyComponent{},
+		LoggingAndSystemAuditing:            logAudit,
+		Cryptography:                        cryptoComp,
 		SecurityFrameworksAndMalwareDefense: payload.SecurityFrameworksAndMalwareDefenseComponent{},
 		Other:                               payload.OtherComponent{},
 	}
@@ -575,6 +581,20 @@ func loggingAuditNotifyCount(c payload.LoggingAndSystemAuditingComponent) int {
 		n++
 	}
 	return n
+}
+
+func cryptographyNotifyCount(c payload.CryptographyComponent) int {
+	inv := c.LocalTlsCertInventory
+	if inv == nil {
+		return 0
+	}
+	if len(inv.Items) > 0 {
+		return len(inv.Items)
+	}
+	if inv.FilesScanned > 0 || inv.Error != "" {
+		return 1
+	}
+	return 0
 }
 
 func loggingAuditFirstError(c payload.LoggingAndSystemAuditingComponent) string {

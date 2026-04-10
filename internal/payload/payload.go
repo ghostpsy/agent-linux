@@ -95,17 +95,35 @@ type ContainerNativeHostRuntimes struct {
 }
 
 type LoggingAndSystemAuditingComponent struct {
-	AuditSections       []AuditSection               `json:"audit_sections,omitempty"`
-	SyslogForwarding    *SyslogForwardingPosture     `json:"syslog_forwarding,omitempty"`
-	Journald            *JournaldPosture             `json:"journald,omitempty"`
-	Auditd              *AuditdPosture               `json:"auditd,omitempty"`
-	LogrotateDisk       *LogrotateDiskPosture        `json:"logrotate_disk,omitempty"`
-	AtBatch             *AtBatchPosture              `json:"at_batch,omitempty"`
-	ProcessAccounting   *ProcessAccountingPosture    `json:"process_accounting,omitempty"`
+	AuditSections     []AuditSection            `json:"audit_sections,omitempty"`
+	SyslogForwarding  *SyslogForwardingPosture  `json:"syslog_forwarding,omitempty"`
+	Journald          *JournaldPosture          `json:"journald,omitempty"`
+	Auditd            *AuditdPosture            `json:"auditd,omitempty"`
+	LogrotateDisk     *LogrotateDiskPosture     `json:"logrotate_disk,omitempty"`
+	AtBatch           *AtBatchPosture           `json:"at_batch,omitempty"`
+	ProcessAccounting *ProcessAccountingPosture `json:"process_accounting,omitempty"`
 }
 
-// CryptographyComponent is reserved for TLS/cert inventory; time lives under core_system_and_kernel.host_time.
-type CryptographyComponent struct{}
+// CryptographyComponent holds TLS/cert inventory; clock baseline lives under core_system_and_kernel.host_time.
+type CryptographyComponent struct {
+	LocalTlsCertInventory *LocalTlsCertInventory `json:"local_tls_cert_inventory,omitempty"`
+}
+
+// LocalTlsCertInventory is a bounded scan of PEM leaf material from known paths (NotAfter and signature algorithm hints only).
+type LocalTlsCertInventory struct {
+	Items                  []LocalTlsCertFileEntry `json:"items,omitempty"`
+	Sha1SignatureCertCount int                     `json:"sha1_signature_cert_count,omitempty"`
+	FilesScanned           int                     `json:"files_scanned,omitempty"`
+	Error                  string                  `json:"error,omitempty"`
+}
+
+// LocalTlsCertFileEntry describes one certificate (first PEM block per file, typically the leaf).
+type LocalTlsCertFileEntry struct {
+	Path                string `json:"path"`
+	NotAfter            string `json:"not_after"`
+	ExpiresWithin30Days *bool  `json:"expires_within_30_days,omitempty"`
+	UsesSha1Signature   *bool  `json:"uses_sha1_signature,omitempty"`
+}
 
 // SecurityFrameworksAndMalwareDefenseComponent is reserved for AV/EDR/fim product signals; process inventory lives under core_system_and_kernel.host_process.
 type SecurityFrameworksAndMalwareDefenseComponent struct{}
@@ -119,21 +137,21 @@ type ServicesBlock struct {
 }
 
 type OSInfo struct {
-	Pretty             string `json:"pretty"`
-	Kernel             string `json:"kernel"`
-	KernelArch         string `json:"kernel_arch,omitempty"`
-	DistroID           string `json:"distro_id,omitempty"`
-	DistroName         string `json:"distro_name,omitempty"`
-	DistroVersionID    string `json:"distro_version_id,omitempty"`
+	Pretty          string `json:"pretty"`
+	Kernel          string `json:"kernel"`
+	KernelArch      string `json:"kernel_arch,omitempty"`
+	DistroID        string `json:"distro_id,omitempty"`
+	DistroName      string `json:"distro_name,omitempty"`
+	DistroVersionID string `json:"distro_version_id,omitempty"`
 	// True when agent detects Ubuntu Pro ESM or Debian ELTS-style apt; API uses this for ESM/ELTS posture.
-	DistroPaidExtendedSecurityActive *bool `json:"distro_paid_extended_security_active,omitempty"`
-	OSReleaseID        string `json:"os_release_id,omitempty"`
-	OSReleaseVersionID string `json:"os_release_version_id,omitempty"`
-	OSReleaseVersion   string `json:"os_release_version,omitempty"`
-	OSReleaseName      string `json:"os_release_name,omitempty"`
-	Platform           string `json:"platform,omitempty"`
-	PlatformFamily     string `json:"platform_family,omitempty"`
-	PlatformVersion    string `json:"platform_version,omitempty"`
+	DistroPaidExtendedSecurityActive *bool  `json:"distro_paid_extended_security_active,omitempty"`
+	OSReleaseID                      string `json:"os_release_id,omitempty"`
+	OSReleaseVersionID               string `json:"os_release_version_id,omitempty"`
+	OSReleaseVersion                 string `json:"os_release_version,omitempty"`
+	OSReleaseName                    string `json:"os_release_name,omitempty"`
+	Platform                         string `json:"platform,omitempty"`
+	PlatformFamily                   string `json:"platform_family,omitempty"`
+	PlatformVersion                  string `json:"platform_version,omitempty"`
 }
 
 const (

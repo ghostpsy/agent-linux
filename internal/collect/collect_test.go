@@ -55,6 +55,19 @@ func TestContainerCloudHostRuntimesWithKubelet(t *testing.T) {
 	}
 }
 
+func TestCryptographyNotifyCount(t *testing.T) {
+	c := payload.CryptographyComponent{}
+	if cryptographyNotifyCount(c) != 0 {
+		t.Fatalf("expected 0, got %d", cryptographyNotifyCount(c))
+	}
+	c.LocalTlsCertInventory = &payload.LocalTlsCertInventory{
+		Items: []payload.LocalTlsCertFileEntry{{Path: "/x.pem", NotAfter: "2099-01-01T00:00:00Z"}},
+	}
+	if cryptographyNotifyCount(c) != 1 {
+		t.Fatalf("expected 1, got %d", cryptographyNotifyCount(c))
+	}
+}
+
 func TestLoggingAuditNotifyCount(t *testing.T) {
 	pct := 50
 	journalActive := true

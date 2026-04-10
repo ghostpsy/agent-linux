@@ -3,9 +3,11 @@
 package firewall
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 func commandOnPath(name string) bool {
@@ -13,13 +15,18 @@ func commandOnPath(name string) bool {
 	return err == nil
 }
 
-func firewalldRunning() bool {
-	out, err := exec.Command("firewall-cmd", "--state").Output()
+const firewalldStateCmdTimeout = 4 * time.Second
+const ufwStatusCmdTimeout = 8 * time.Second
+
+func firewalldRunning(ctx context.Context) bool {
+	subCtx, cancel := context.WithTimeout(ctx, firewalldStateCmdTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(subCtx, "firewall-cmd", "--state").Output()
 	return err == nil && strings.TrimSpace(strings.ToLower(string(out))) == "running"
 }
 
-func ufwStatusActive() bool {
-	return ufwStatusActiveWithPath(ufwExecutablePath())
+func ufwStatusActive(ctx context.Context) bool {
+	return ufwStatusActiveWithPath(ctx, ufwExecutablePath())
 }
 
 // ufwPersistedEnabled is true when the ufw CLI exists and /etc/ufw/ufw.conf sets ENABLED=yes.
@@ -80,11 +87,13 @@ func ufwStatusMeansActive(statusOutputLower string) bool {
 	return strings.Contains(statusOutputLower, "firewall is active") || strings.Contains(statusOutputLower, "firewall loaded")
 }
 
-func ufwStatusActiveWithPath(ufwPath string) bool {
+func ufwStatusActiveWithPath(ctx context.Context, ufwPath string) bool {
 	if ufwPath == "" {
 		return false
 	}
-	out, err := exec.Command(ufwPath, "status").Output()
+	subCtx, cancel := context.WithTimeout(ctx, ufwStatusCmdTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(subCtx, ufwPath, "status").Output()
 	if err != nil {
 		return false
 	}

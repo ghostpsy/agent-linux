@@ -3,12 +3,16 @@
 package firewall
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-iptables/iptables"
 )
+
+const iptablesFilterSaveTimeout = 15 * time.Second
 
 func filterChainsIndicateUfwBackend(chainNames []string) bool {
 	for _, name := range chainNames {
@@ -45,15 +49,17 @@ func iptablesExecutablePath() string {
 
 // filterTableFullSaveOutputMentionsUfw reads the entire filter table (`iptables -t filter -S`).
 // go-iptables ListChains is incomplete when -A lines precede -N lines; per-chain List can miss UFW on some hosts.
-func filterTableFullSaveOutputMentionsUfw() bool {
-	out, err := exec.Command(iptablesExecutablePath(), "-t", "filter", "-S").Output()
+func filterTableFullSaveOutputMentionsUfw(ctx context.Context) bool {
+	subCtx, cancel := context.WithTimeout(ctx, iptablesFilterSaveTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(subCtx, iptablesExecutablePath(), "-t", "filter", "-S").Output()
 	if err != nil {
 		return false
 	}
 	return strings.Contains(strings.ToLower(string(out)), "ufw")
 }
 
-func collectIptablesMetrics() (firewallMetrics, int, bool, error) {
+func collectIptablesMetrics(ctx context.Context) (firewallMetrics, int, bool, error) {
 	ipt, err := iptables.New()
 	if err != nil {
 		return firewallMetrics{}, 0, false, err
@@ -73,7 +79,7 @@ func collectIptablesMetrics() (firewallMetrics, int, bool, error) {
 			ufwBackend = true
 		}
 	}
-	if !ufwBackend && filterTableFullSaveOutputMentionsUfw() {
+	if !ufwBackend && filterTableFullSaveOutputMentionsUfw(ctx) {
 		ufwBackend = true
 	}
 	n := 0

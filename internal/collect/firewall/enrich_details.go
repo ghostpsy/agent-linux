@@ -20,21 +20,25 @@ const (
 	rulesetCaptureMillis = 3500
 )
 
+const firewalldHintsCmdTimeout = 5 * time.Second
+
 // enrichFirewallDetails adds firewalld/ufw hints and a bounded ruleset hash + excerpt (best-effort).
-func enrichFirewallDetails(fw *payload.Firewall) {
+func enrichFirewallDetails(ctx context.Context, fw *payload.Firewall) {
 	if fw == nil {
 		return
 	}
-	fillFirewalldHints(fw)
-	fillUfwVerbose(fw)
-	fillBackendRulesetFingerprint(fw)
+	fillFirewalldHints(ctx, fw)
+	fillUfwVerbose(ctx, fw)
+	fillBackendRulesetFingerprint(ctx, fw)
 }
 
-func fillFirewalldHints(fw *payload.Firewall) {
+func fillFirewalldHints(ctx context.Context, fw *payload.Firewall) {
 	if !commandOnPath("firewall-cmd") {
 		return
 	}
-	zOut, err := exec.Command("firewall-cmd", "--get-default-zone").Output()
+	subCtx, cancel := context.WithTimeout(ctx, firewalldHintsCmdTimeout)
+	zOut, err := exec.CommandContext(subCtx, "firewall-cmd", "--get-default-zone").Output()
+	cancel()
 	if err != nil {
 		return
 	}
@@ -43,20 +47,22 @@ func fillFirewalldHints(fw *payload.Firewall) {
 		return
 	}
 	fw.FirewalldDefaultZone = shared.TruncateRunes(zone, 64)
-	tOut, err := exec.Command("firewall-cmd", "--get-zone-target", "--zone", zone).Output()
+	subCtx2, cancel2 := context.WithTimeout(ctx, firewalldHintsCmdTimeout)
+	tOut, err := exec.CommandContext(subCtx2, "firewall-cmd", "--get-zone-target", "--zone", zone).Output()
+	cancel2()
 	if err == nil {
 		fw.FirewalldZoneTarget = shared.TruncateRunes(strings.TrimSpace(string(tOut)), 64)
 	}
 }
 
-func fillUfwVerbose(fw *payload.Firewall) {
+func fillUfwVerbose(ctx context.Context, fw *payload.Firewall) {
 	path := ufwExecutablePath()
 	if path == "" {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	subCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "status", "verbose")
+	cmd := exec.CommandContext(subCtx, path, "status", "verbose")
 	b, err := cmd.Output()
 	if err != nil {
 		return
@@ -76,10 +82,10 @@ func fillUfwVerbose(fw *payload.Firewall) {
 	fw.UfwStatusVerboseSample = lines
 }
 
-func fillBackendRulesetFingerprint(fw *payload.Firewall) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(rulesetCaptureMillis)*time.Millisecond)
+func fillBackendRulesetFingerprint(ctx context.Context, fw *payload.Firewall) {
+	subCtx, cancel := context.WithTimeout(ctx, time.Duration(rulesetCaptureMillis)*time.Millisecond)
 	defer cancel()
-	raw, _ := captureRuleset(ctx)
+	raw, _ := captureRuleset(subCtx)
 	if len(raw) == 0 {
 		return
 	}

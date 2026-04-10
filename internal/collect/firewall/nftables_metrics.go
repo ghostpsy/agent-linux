@@ -3,6 +3,8 @@
 package firewall
 
 import (
+	"context"
+
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
 )
@@ -20,7 +22,8 @@ func isIptablesParityFilterTable(t *nftables.Table) bool {
 	}
 }
 
-func collectNftablesMetrics() (firewallMetrics, int, error) {
+func collectNftablesMetrics(ctx context.Context) (firewallMetrics, int, error) {
+	_ = ctx
 	c, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return firewallMetrics{}, 0, err

@@ -2,7 +2,6 @@
 
 package firewall
 
-
 import (
 	"context"
 	"github.com/ghostpsy/agent-linux/internal/payload"
@@ -37,25 +36,25 @@ type firewallMetrics struct {
 func CollectFirewall(ctx context.Context) *payload.Firewall {
 	fw := &payload.Firewall{}
 	defer func() {
-		enrichFirewallDetails(fw)
+		enrichFirewallDetails(ctx, fw)
 		applyFirewallActive(fw)
 	}()
-	if firewalldRunning() {
+	if firewalldRunning(ctx) {
 		fw.Family = fwFirewalld
-		if m, _, _, err := collectIptablesMetrics(); err == nil {
+		if m, _, _, err := collectIptablesMetrics(ctx); err == nil {
 			applyMetrics(fw, m)
 			return fw
 		}
-		if m, _, err := collectNftablesMetrics(); err == nil {
+		if m, _, err := collectNftablesMetrics(ctx); err == nil {
 			applyMetrics(fw, m)
 			return fw
 		}
 		fw.Error = collectionNote("Firewall metrics could not be read (nftables and iptables).")
 		return fw
 	}
-	if ufwStatusActive() || ufwPersistedEnabled() {
+	if ufwStatusActive(ctx) || ufwPersistedEnabled() {
 		fw.Family = fwUfw
-		if m, _, _, err := collectIptablesMetrics(); err == nil {
+		if m, _, _, err := collectIptablesMetrics(ctx); err == nil {
 			applyMetrics(fw, m)
 			return fw
 		}
@@ -63,7 +62,7 @@ func CollectFirewall(ctx context.Context) *payload.Firewall {
 		return fw
 	}
 	// Prefer iptables when the CLI works: metrics match `iptables` / iptables-nft; pure nft-only hosts still use netlink below.
-	mIpt, iptChainCount, iptablesIndicatesUfwBackend, errIpt := collectIptablesMetrics()
+	mIpt, iptChainCount, iptablesIndicatesUfwBackend, errIpt := collectIptablesMetrics(ctx)
 	if errIpt == nil && (iptChainCount > 0 || mIpt.RuleCount > 0) {
 		if iptablesIndicatesUfwBackend {
 			fw.Family = fwUfw
@@ -73,7 +72,7 @@ func CollectFirewall(ctx context.Context) *payload.Firewall {
 		applyMetrics(fw, mIpt)
 		return fw
 	}
-	mNft, nftChainCount, errNft := collectNftablesMetrics()
+	mNft, nftChainCount, errNft := collectNftablesMetrics(ctx)
 	if errNft == nil && (nftChainCount > 0 || mNft.RuleCount > 0) {
 		fw.Family = fwNftables
 		applyMetrics(fw, mNft)

@@ -27,7 +27,7 @@ func CollectNginxPosture(ctx context.Context, services []payload.ServiceEntry) *
 	out := &payload.NginxPosture{
 		Detected:     true,
 		BinPath:      bin,
-		ServiceState: nginxServiceStateFromInventory(services),
+		ServiceState: nginxServiceStateFromInventory(ctx, services),
 	}
 	subCtx, cancel := context.WithTimeout(ctx, nginxCmdTimeout)
 	defer cancel()
@@ -145,7 +145,7 @@ func trimNginxErr(prefix string, err error, combined []byte) string {
 	return prefix + msg
 }
 
-func nginxServiceStateFromInventory(services []payload.ServiceEntry) string {
+func nginxServiceStateFromInventory(ctx context.Context, services []payload.ServiceEntry) string {
 	want := map[string]struct{}{
 		"nginx.service":     {},
 		"openresty.service": {},
@@ -154,15 +154,14 @@ func nginxServiceStateFromInventory(services []payload.ServiceEntry) string {
 		if _, ok := want[e.Name]; !ok {
 			continue
 		}
-		switch strings.ToLower(strings.TrimSpace(e.ActiveState)) {
-		case "active":
-			return "running"
-		case "inactive", "failed":
-			return "stopped"
-		default:
-			if e.ActiveState != "" {
-				return "unknown"
-			}
+		st := mapSystemdActiveStateForPosture(e.ActiveState)
+		if st == "running" || st == "stopped" {
+			return st
+		}
+	}
+	for _, unit := range []string{"nginx.service", "openresty.service"} {
+		if st := systemctlIsActiveState(ctx, unit); st == "running" || st == "stopped" {
+			return st
 		}
 	}
 	return "unknown"

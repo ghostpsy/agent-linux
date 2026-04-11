@@ -36,7 +36,7 @@ func collectApacheHttpdPostureWithBinary(ctx context.Context, invokeBin, reportB
 	out := &payload.ApacheHttpdPosture{
 		Detected:     true,
 		BinPath:      reportBin,
-		ServiceState: apacheServiceStateFromInventory(services),
+		ServiceState: apacheServiceState(ctx, services),
 	}
 	out.HardeningHints = collectApacheHardeningHints(ctx)
 	subCtx, cancel := context.WithTimeout(ctx, apacheCmdTimeout)
@@ -130,7 +130,8 @@ func trimApacheErr(prefix string, err error, combined []byte) string {
 	return prefix + msg
 }
 
-func apacheServiceStateFromInventory(services []payload.ServiceEntry) string {
+// apacheServiceState uses the services inventory when the unit appears there, then systemctl is-active for apache2/httpd/apache units (stopped units are omitted from the active-only list).
+func apacheServiceState(ctx context.Context, services []payload.ServiceEntry) string {
 	want := map[string]struct{}{
 		"apache2.service": {},
 		"httpd.service":   {},
@@ -140,15 +141,14 @@ func apacheServiceStateFromInventory(services []payload.ServiceEntry) string {
 		if _, ok := want[e.Name]; !ok {
 			continue
 		}
-		switch strings.ToLower(strings.TrimSpace(e.ActiveState)) {
-		case "active":
-			return "running"
-		case "inactive", "failed":
-			return "stopped"
-		default:
-			if e.ActiveState != "" {
-				return "unknown"
-			}
+		st := mapSystemdActiveStateForPosture(e.ActiveState)
+		if st == "running" || st == "stopped" {
+			return st
+		}
+	}
+	for _, unit := range []string{"apache2.service", "httpd.service", "apache.service"} {
+		if st := systemctlIsActiveState(ctx, unit); st == "running" || st == "stopped" {
+			return st
 		}
 	}
 	return "unknown"

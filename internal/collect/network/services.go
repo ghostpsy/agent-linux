@@ -86,7 +86,7 @@ func detectServiceCollector() string {
 	return ""
 }
 
-// collectSystemdServices lists running .service units with optional unit-file state (capped).
+// collectSystemdServices lists active .service units (active/activating/reloading ActiveState) with optional unit-file state (capped).
 func collectSystemdServices(parent context.Context) ([]payload.ServiceEntry, string) {
 	ctx, cancel := context.WithTimeout(parent, serviceCollectTimeout)
 	defer cancel()
@@ -98,7 +98,8 @@ func collectSystemdServices(parent context.Context) ([]payload.ServiceEntry, str
 	}
 	defer conn.Close()
 
-	units, err := conn.ListUnitsByPatternsContext(ctx, []string{"running"}, []string{"*.service"})
+	// ActiveState values are active|inactive|failed|… — not SubState "running". Wrong filters yield empty lists and break posture correlation.
+	units, err := conn.ListUnitsByPatternsContext(ctx, []string{"active", "activating", "reloading"}, []string{"*.service"})
 	if err != nil {
 		slog.Warn("systemd ListUnitsByPatterns failed", "error", err)
 		return nil, shared.CollectionNote("systemd could not list running service units.")

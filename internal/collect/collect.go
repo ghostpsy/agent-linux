@@ -323,6 +323,34 @@ func mtaNotifyCount(m *payload.MtaFingerprint) int {
 	return 0
 }
 
+func apacheHttpdNotifyCount(a *payload.ApacheHttpdPosture) int {
+	if a == nil || !a.Detected {
+		return 0
+	}
+	return 1
+}
+
+func apacheHttpdError(a *payload.ApacheHttpdPosture) string {
+	if a == nil {
+		return ""
+	}
+	return a.Error
+}
+
+func nginxPostureNotifyCount(n *payload.NginxPosture) int {
+	if n == nil || !n.Detected {
+		return 0
+	}
+	return 1
+}
+
+func nginxPostureError(n *payload.NginxPosture) string {
+	if n == nil {
+		return ""
+	}
+	return n.Error
+}
+
 // softwarePackagesHostRuntimes is §5 only: interpreter `items` (and optional collection error).
 // Docker/kubelet fingerprints are emitted only under container_and_cloud_native_linux.
 func softwarePackagesHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntimes {
@@ -371,6 +399,42 @@ func loggingAuditNotifyCount(c payload.LoggingAndSystemAuditingComponent) int {
 		n++
 	}
 	return n
+}
+
+func securityFrameworksNotifyCount(c payload.SecurityFrameworksAndMalwareDefenseComponent) int {
+	n := 0
+	if p := c.MacDeepPosture; p != nil {
+		if p.SelinuxPsZLineSampleCap != nil || len(p.SelinuxSemanagePermissiveSample) > 0 ||
+			p.ApparmorProfilesEnforceCount != nil || p.ApparmorProfilesComplainCount != nil ||
+			p.SelinuxSemanageUnavailable != "" || p.ApparmorStatusUnavailable != "" || p.Error != "" {
+			n++
+		}
+	}
+	if c.MalwareScannersPosture != nil {
+		n += len(c.MalwareScannersPosture.Scanners)
+		if c.MalwareScannersPosture.Error != "" {
+			n++
+		}
+	}
+	if f := c.Fail2banPosture; f != nil {
+		if f.Present || f.Error != "" {
+			n++
+		}
+	}
+	return n
+}
+
+func securityFrameworksFirstError(c payload.SecurityFrameworksAndMalwareDefenseComponent) string {
+	if c.MacDeepPosture != nil && c.MacDeepPosture.Error != "" {
+		return c.MacDeepPosture.Error
+	}
+	if c.MalwareScannersPosture != nil && c.MalwareScannersPosture.Error != "" {
+		return c.MalwareScannersPosture.Error
+	}
+	if c.Fail2banPosture != nil && c.Fail2banPosture.Error != "" {
+		return c.Fail2banPosture.Error
+	}
+	return ""
 }
 
 func cryptographyNotifyCount(c payload.CryptographyComponent) int {

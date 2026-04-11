@@ -50,6 +50,83 @@ type CupsExposureFingerprint struct {
 	Error                   string   `json:"error,omitempty"`
 }
 
+// ApacheHttpdPosture is allowlisted httpd/apache2 metadata (no full config, no secrets).
+type ApacheHttpdPosture struct {
+	Detected       bool                  `json:"detected"`
+	Version        string                `json:"version,omitempty"`
+	BinPath        string                `json:"bin_path,omitempty"`
+	ServiceState   string                `json:"service_state,omitempty"`
+	VhostsSummary  *ApacheVhostsSummary  `json:"vhosts_summary,omitempty"`
+	ListenBindings []ApacheListenBinding `json:"listen_bindings,omitempty"`
+	HardeningHints *ApacheHardeningHints `json:"hardening_hints,omitempty"`
+	Error          string                `json:"error,omitempty"`
+}
+
+// ApacheHardeningHints summarizes security-relevant directives from bounded main config + module stubs (no full tree walk).
+type ApacheHardeningHints struct {
+	TraceEnable             string   `json:"trace_enable,omitempty"`
+	SSLProtocolSummary      string   `json:"ssl_protocol_summary,omitempty"`
+	SSLCipherSuiteSummary   string   `json:"ssl_cipher_suite_summary,omitempty"`
+	AllowOverrideMain       string   `json:"allow_override_main,omitempty"`
+	OptionsLinesSample      []string `json:"options_lines_sample,omitempty"`
+	IndexesInOptionsHint    *bool    `json:"indexes_in_options_hint,omitempty"`
+	SecurityRelevantModules []string `json:"security_relevant_modules,omitempty"`
+}
+
+// ApacheVhostsSummary is vhost count plus capped server names from apache/httpd -S.
+type ApacheVhostsSummary struct {
+	VhostCount  int      `json:"vhost_count"`
+	ServerNames []string `json:"server_names,omitempty"`
+}
+
+// ApacheListenBinding is one Listen / VirtualHost binding from -S output.
+type ApacheListenBinding struct {
+	Bind string `json:"bind"`
+	Port int    `json:"port"`
+}
+
+// NginxPosture is allowlisted nginx metadata from -v/-V/-T (no full config, no secrets).
+type NginxPosture struct {
+	Detected     bool   `json:"detected"`
+	Version      string `json:"version,omitempty"`
+	BinPath      string `json:"bin_path,omitempty"`
+	ServiceState string `json:"service_state,omitempty"`
+	// ModulesSample is security-relevant nginx -V compile flags only (not full configure args); see parseNginxSecurityRelevantModules.
+	ModulesSample  []string             `json:"modules_sample,omitempty"`
+	SiteMapSummary *NginxSiteMapSummary `json:"site_map_summary,omitempty"`
+	ListenBindings []NginxListenBinding `json:"listen_bindings,omitempty"`
+	HardeningHints *NginxHardeningHints `json:"hardening_hints,omitempty"`
+	Error          string               `json:"error,omitempty"`
+}
+
+// NginxSiteMapSummary counts server blocks and caps server_name tokens from parsed -T output.
+type NginxSiteMapSummary struct {
+	ServerBlockCount int      `json:"server_block_count"`
+	ServerNames      []string `json:"server_names,omitempty"`
+}
+
+// NginxListenBinding is one listen directive (address, port, TLS-related listen flag).
+type NginxListenBinding struct {
+	Bind string `json:"bind"`
+	Port int    `json:"port"`
+	SSL  bool   `json:"ssl,omitempty"`
+}
+
+// NginxHardeningHints summarizes common hardening directives (OWASP/operator guides); no header values.
+type NginxHardeningHints struct {
+	ServerTokensSummary           string   `json:"server_tokens_summary,omitempty"`
+	TlsProtocolsSummary           string   `json:"tls_protocols_summary,omitempty"`
+	TlsLegacyProtocolsPresent     *bool    `json:"tls_legacy_protocols_present,omitempty"`
+	SslPreferServerCiphersSummary string   `json:"ssl_prefer_server_ciphers_summary,omitempty"`
+	SslSessionTicketsSummary      string   `json:"ssl_session_tickets_summary,omitempty"`
+	SslStaplingEnabled            *bool    `json:"ssl_stapling_enabled,omitempty"`
+	SecurityHeaderNamesPresent    []string `json:"security_header_names_present,omitempty"`
+	RateLimitingPresent           bool     `json:"rate_limiting_present,omitempty"`
+	ClientBufferLimitsPresent     bool     `json:"client_buffer_limits_present,omitempty"`
+	AutoindexOnSeen               bool     `json:"autoindex_on_seen,omitempty"`
+	HttpMethodRestrictionSeen     bool     `json:"http_method_restriction_seen,omitempty"`
+}
+
 // MtaFingerprint is MTA presence and bounded relay/bind hints (no queue contents).
 type MtaFingerprint struct {
 	DetectedMta                              string   `json:"detected_mta,omitempty"`

@@ -15,6 +15,7 @@ func TestHumanMessageForCollectionAction_knownActions(t *testing.T) {
 		"collect_os_info",
 		"collect_listeners",
 		"collect_logging_and_system_auditing",
+		"collect_nginx_posture",
 	}
 	for _, a := range actions {
 		msg := humanMessageForCollectionAction(a)
@@ -33,6 +34,8 @@ func TestHumanDoneMessage_knownActions(t *testing.T) {
 		{"collect_host_network", 2},
 		{"collect_services", 5},
 		{"collect_listeners", 3},
+		{"collect_nginx_posture", 0},
+		{"collect_nginx_posture", 1},
 	}
 	for _, tc := range cases {
 		msg := humanDoneMessage(tc.action, tc.items)

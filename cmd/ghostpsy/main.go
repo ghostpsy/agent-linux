@@ -283,6 +283,10 @@ func humanMessageForCollectionAction(action string) string {
 		return "Reading CUPS unit state and bounded cupsd Listen/WebInterface lines"
 	case "collect_mta_fingerprint":
 		return "Fingerprinting Postfix, Exim, or Sendmail with bounded relay hints"
+	case "collect_apache_httpd_posture":
+		return "Collecting Apache httpd metadata (version, vhost summary, listen bindings) via allowlisted commands"
+	case "collect_nginx_posture":
+		return "Collecting nginx metadata (version, modules sample, listen bindings, hardening hints) via allowlisted commands"
 	case "collect_services":
 		return "Extracting enabled/active service states from systemd and init services"
 	case "collect_os_info":
@@ -355,6 +359,16 @@ func humanDoneMessage(action string, items int) string {
 			return "Done: no MTA fingerprint collected."
 		}
 		return "Done: collected MTA fingerprint."
+	case "collect_apache_httpd_posture":
+		if items == 0 {
+			return "Done: no Apache httpd binary detected."
+		}
+		return "Done: collected Apache httpd posture."
+	case "collect_nginx_posture":
+		if items == 0 {
+			return "Done: no nginx binary detected."
+		}
+		return "Done: collected nginx posture."
 	case "collect_host_ssh":
 		return fmt.Sprintf("Done: extracted %d SSH listen address entries.", items)
 	case "collect_shadow_account_summary":

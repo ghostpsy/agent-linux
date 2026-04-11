@@ -12,6 +12,7 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/collect/identity"
 	"github.com/ghostpsy/agent-linux/internal/collect/logging"
 	"github.com/ghostpsy/agent-linux/internal/collect/network"
+	"github.com/ghostpsy/agent-linux/internal/collect/security"
 	"github.com/ghostpsy/agent-linux/internal/collect/software"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
@@ -53,6 +54,8 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 	var cti *payload.CronTimersInventory
 	var cupsF *payload.CupsExposureFingerprint
 	var mtaF *payload.MtaFingerprint
+	var apachePosture *payload.ApacheHttpdPosture
+	var nginxPosture *payload.NginxPosture
 	var servicesBlock payload.ServicesBlock
 	var osInfo payload.OSInfo
 	var hostname string
@@ -82,6 +85,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 	var cryptoComp payload.CryptographyComponent
 	var listeners []payload.Listener
 	var logAudit payload.LoggingAndSystemAuditingComponent
+	var secFW payload.SecurityFrameworksAndMalwareDefenseComponent
 
 	steps := []stubStep{
 		{"collect_host_network", func() (int, string) {
@@ -155,6 +159,14 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			servicesBlock = network.CollectServices(ctx)
 			return len(servicesBlock.Items), servicesBlock.Error
 		}},
+		{"collect_apache_httpd_posture", func() (int, string) {
+			apachePosture = software.CollectApacheHttpdPosture(ctx, servicesBlock.Items)
+			return apacheHttpdNotifyCount(apachePosture), apacheHttpdError(apachePosture)
+		}},
+		{"collect_nginx_posture", func() (int, string) {
+			nginxPosture = software.CollectNginxPosture(ctx, servicesBlock.Items)
+			return nginxPostureNotifyCount(nginxPosture), nginxPostureError(nginxPosture)
+		}},
 		{"collect_os_info", func() (int, string) {
 			osInfo, hostname = core.CollectOSInfo(ctx)
 			fqdn = core.CollectFqdn(ctx, hostname)
@@ -187,6 +199,10 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 		{"collect_selinux_apparmor", func() (int, string) {
 			mac = core.CollectSelinuxApparmor(ctx)
 			return selinuxNotifyCount(mac), mac.Error
+		}},
+		{"collect_security_frameworks_and_malware", func() (int, string) {
+			secFW = security.Collect(ctx, mac)
+			return securityFrameworksNotifyCount(secFW), securityFrameworksFirstError(secFW)
 		}},
 		{"collect_high_risk_process", func() (int, string) {
 			hrisk = core.CollectHighRiskProcessSurface(ctx)
@@ -327,13 +343,15 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			CronTimersInventory:      cti,
 			CupsExposureFingerprint:  cupsF,
 			MtaFingerprint:           mtaF,
+			ApacheHttpdPosture:       apachePosture,
+			NginxPosture:             nginxPosture,
 		},
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
 			HostRuntimes: containerCloudHostRuntimes(hr),
 		},
 		LoggingAndSystemAuditing:            logAudit,
 		Cryptography:                        cryptoComp,
-		SecurityFrameworksAndMalwareDefense: payload.SecurityFrameworksAndMalwareDefenseComponent{},
+		SecurityFrameworksAndMalwareDefense: secFW,
 		Other:                               payload.OtherComponent{},
 	}
 	return payload.V1{

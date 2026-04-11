@@ -81,6 +81,8 @@ type SoftwarePackagesAndApplicationsComponent struct {
 	CronTimersInventory      *CronTimersInventory      `json:"cron_timers_inventory,omitempty"`
 	CupsExposureFingerprint  *CupsExposureFingerprint  `json:"cups_exposure_fingerprint,omitempty"`
 	MtaFingerprint           *MtaFingerprint           `json:"mta_fingerprint,omitempty"`
+	ApacheHttpdPosture       *ApacheHttpdPosture       `json:"apache_httpd_posture,omitempty"`
+	NginxPosture             *NginxPosture             `json:"nginx_posture,omitempty"`
 }
 
 type ContainerAndCloudNativeLinuxComponent struct {
@@ -124,9 +126,6 @@ type LocalTlsCertFileEntry struct {
 	ExpiresWithin30Days *bool  `json:"expires_within_30_days,omitempty"`
 	UsesSha1Signature   *bool  `json:"uses_sha1_signature,omitempty"`
 }
-
-// SecurityFrameworksAndMalwareDefenseComponent is reserved for AV/EDR/fim product signals; process inventory lives under core_system_and_kernel.host_process.
-type SecurityFrameworksAndMalwareDefenseComponent struct{}
 
 // OtherComponent is reserved; send {} until extensions are defined.
 type OtherComponent struct{}

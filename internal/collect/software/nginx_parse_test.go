@@ -3,7 +3,7 @@
 package software
 
 import (
-	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -143,16 +143,25 @@ func TestParseNginxTestDump_LegacyTls(t *testing.T) {
 	}
 }
 
+func nginxDumpAnalysisLeakString(a nginxDumpAnalysis) string {
+	parts := append([]string{}, a.serverNames...)
+	for _, lk := range a.listenKeys {
+		parts = append(parts, lk.bind, strconv.Itoa(lk.port))
+	}
+	parts = append(parts, a.hardening.sslProtocolTokens...)
+	for k := range a.hardening.securityHeaderNames {
+		parts = append(parts, k)
+	}
+	return strings.Join(parts, "\x00")
+}
+
 func TestParseNginxTestDump_SkipsSecretLines(t *testing.T) {
 	t.Parallel()
 	in := "ssl_certificate_key /etc/nginx/supersecret.key;\nlisten 80;\nserver_name safe.example;\n"
 	a := parseNginxTestDump(in)
-	raw, err := json.Marshal(a)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(strings.ToLower(string(raw)), "supersecret") {
-		t.Fatalf("analysis leaked secret: %s", raw)
+	probe := nginxDumpAnalysisLeakString(a)
+	if strings.Contains(strings.ToLower(probe), "supersecret") {
+		t.Fatalf("analysis leaked secret: %s", probe)
 	}
 	if len(a.serverNames) != 1 || a.serverNames[0] != "safe.example" {
 		t.Fatalf("server names: %#v", a.serverNames)

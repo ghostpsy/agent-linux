@@ -297,9 +297,7 @@ func applyNginxHardeningLine(trim string, h *nginxHardeningAnalysis) {
 		return
 	}
 	if m := reNginxSslProtocols.FindStringSubmatch(trim); len(m) == 2 {
-		for _, tok := range strings.Fields(m[1]) {
-			h.sslProtocolTokens = append(h.sslProtocolTokens, tok)
-		}
+		h.sslProtocolTokens = append(h.sslProtocolTokens, strings.Fields(m[1])...)
 		return
 	}
 	if m := reNginxSslPrefer.FindStringSubmatch(trim); len(m) == 2 {

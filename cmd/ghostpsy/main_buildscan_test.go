@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ghostpsy/agent-linux/internal/actionlog"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
 func TestBuildScanPayload_ContextCancelled(t *testing.T) {
@@ -29,7 +31,7 @@ func TestBuildScanPayload_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	logger := actionlog.New(false, io.Discard)
-	_, _, _, err := buildScanPayload(ctx, logger)
+	_, _, _, _, err := buildScanPayload(ctx, logger)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -48,7 +50,7 @@ func TestBuildScanPayload_ReturnsJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := actionlog.New(false, io.Discard)
-	_, _, body, err := buildScanPayload(context.Background(), logger)
+	_, _, _, body, err := buildScanPayload(context.Background(), logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,5 +60,20 @@ func TestBuildScanPayload_ReturnsJSON(t *testing.T) {
 	}
 	if m["schema_version"].(float64) != 1 {
 		t.Fatalf("schema_version want 1 got %v", m["schema_version"])
+	}
+}
+
+func TestWritePayloadPreview_JSONRoundTrip(t *testing.T) {
+	var buf bytes.Buffer
+	p := payload.V1{SchemaVersion: 1, MachineUUID: "mid", ScanSeq: 3}
+	if err := writePayloadPreview(&buf, p); err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("preview output: %v", err)
+	}
+	if int(decoded["schema_version"].(float64)) != 1 {
+		t.Fatalf("schema_version: %v", decoded["schema_version"])
 	}
 }

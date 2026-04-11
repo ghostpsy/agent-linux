@@ -19,9 +19,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/neilotoole/jsoncolor"
 
 	"github.com/ghostpsy/agent-linux/internal/actionlog"
 	"github.com/ghostpsy/agent-linux/internal/collect"
+	"github.com/ghostpsy/agent-linux/internal/payload"
 	"github.com/ghostpsy/agent-linux/internal/state"
 	"github.com/ghostpsy/agent-linux/internal/version"
 )
@@ -109,14 +111,17 @@ func runScan() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	st, nextSeq, body, err := buildScanPayload(ctx, logger)
+	st, nextSeq, p, body, err := buildScanPayload(ctx, logger)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "scan: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("--- Outbound payload (review before any send) ---")
-	fmt.Println(string(body))
+	if err := writePayloadPreview(os.Stdout, p); err != nil {
+		fmt.Fprintf(os.Stderr, "scan: preview payload: %v\n", err)
+		os.Exit(1)
+	}
 	fmt.Println("--- End payload ---")
 	if *savePayloadPath != "" {
 		if err := os.WriteFile(*savePayloadPath, body, 0o600); err != nil {
@@ -174,7 +179,16 @@ func runScan() {
 	}
 }
 
-func buildScanPayload(ctx context.Context, logger *actionlog.Logger) (*state.AgentState, int, []byte, error) {
+func writePayloadPreview(w io.Writer, p payload.V1) error {
+	enc := jsoncolor.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if jsoncolor.IsColorTerminal(w) {
+		enc.SetColors(jsoncolor.DefaultColors())
+	}
+	return enc.Encode(p)
+}
+
+func buildScanPayload(ctx context.Context, logger *actionlog.Logger) (*state.AgentState, int, payload.V1, []byte, error) {
 	logger.Step("local-read-only", "~/.config/ghostpsy/agent.json", "Reading local agent state from ~/.config/ghostpsy/agent.json", nil)
 	st := ensureState(logger)
 	nextSeq := st.ScanSeq + 1
@@ -191,15 +205,15 @@ func buildScanPayload(ctx context.Context, logger *actionlog.Logger) (*state.Age
 		logger.Note(humanDoneMessage(event.Action, event.Items), nil)
 	})
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, payload.V1{}, nil, err
 	}
 	logger.Step("local-compute", "payload.v1", "Preparing JSON payload preview before any network send", nil)
 	body, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, payload.V1{}, nil, err
 	}
 	logger.Note("Payload prepared successfully", map[string]string{"payload_bytes": fmt.Sprintf("%d", len(body))})
-	return st, nextSeq, body, nil
+	return st, nextSeq, p, body, nil
 }
 
 func envOr(k, def string) string {

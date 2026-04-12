@@ -14,6 +14,11 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/collect/network"
 	"github.com/ghostpsy/agent-linux/internal/collect/security"
 	"github.com/ghostpsy/agent-linux/internal/collect/software"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/apache"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/packages"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/mysql"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/nginx"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/postfix"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -56,6 +61,9 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 	var mtaF *payload.MtaFingerprint
 	var apachePosture *payload.ApacheHttpdPosture
 	var nginxPosture *payload.NginxPosture
+	var postfixPosture *payload.PostfixPosture
+	var mysqlPosture *payload.MysqlPosture
+	var postgresPosture *payload.PostgresPosture
 	var servicesBlock payload.ServicesBlock
 	var osInfo payload.OSInfo
 	var hostname string
@@ -128,7 +136,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			return len(sau.FilesScanned), sau.Error
 		}},
 		{"collect_packages_updates", func() (int, string) {
-			pu = software.CollectPackagesUpdates(ctx)
+			pu = packages.CollectPackagesUpdates(ctx)
 			return packagesPendingUpdatesCount(pu), packagesUpdatesErr(pu)
 		}},
 		{"collect_host_backup", func() (int, string) {
@@ -159,13 +167,21 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			servicesBlock = network.CollectServices(ctx)
 			return len(servicesBlock.Items), servicesBlock.Error
 		}},
-		{"collect_apache_httpd_posture", func() (int, string) {
-			apachePosture = software.CollectApacheHttpdPosture(ctx, servicesBlock.Items)
-			return apacheHttpdNotifyCount(apachePosture), apacheHttpdError(apachePosture)
-		}},
 		{"collect_nginx_posture", func() (int, string) {
-			nginxPosture = software.CollectNginxPosture(ctx, servicesBlock.Items)
+			nginxPosture = nginx.CollectNginxPosture(ctx, servicesBlock.Items)
 			return nginxPostureNotifyCount(nginxPosture), nginxPostureError(nginxPosture)
+		}},
+		{"collect_postfix_posture", func() (int, string) {
+			postfixPosture = postfix.CollectPostfixPosture(ctx, servicesBlock.Items)
+			return postfixPostureNotifyCount(postfixPosture), postfixPostureError(postfixPosture)
+		}},
+		{"collect_mysql_posture", func() (int, string) {
+			mysqlPosture = mysql.CollectMysqlPosture(ctx, servicesBlock.Items)
+			return mysqlPostureNotifyCount(mysqlPosture), mysqlPostureError(mysqlPosture)
+		}},
+		{"collect_postgres_posture", func() (int, string) {
+			postgresPosture = software.CollectPostgresPosture(ctx, servicesBlock.Items)
+			return postgresPostureNotifyCount(postgresPosture), postgresPostureError(postgresPosture)
 		}},
 		{"collect_os_info", func() (int, string) {
 			osInfo, hostname = core.CollectOSInfo(ctx)
@@ -278,6 +294,10 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			}
 			return len(listeners), ""
 		}},
+		{"collect_apache_httpd_posture", func() (int, string) {
+			apachePosture = apache.CollectApacheHttpdPosture(ctx, servicesBlock.Items, listeners)
+			return apacheHttpdNotifyCount(apachePosture), apacheHttpdError(apachePosture)
+		}},
 		{"collect_logging_and_system_auditing", func() (int, string) {
 			logAudit = logging.CollectLoggingAndSystemAuditing(ctx)
 			return loggingAuditNotifyCount(logAudit), loggingAuditFirstError(logAudit)
@@ -345,6 +365,9 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			MtaFingerprint:           mtaF,
 			ApacheHttpdPosture:       apachePosture,
 			NginxPosture:             nginxPosture,
+			PostfixPosture:           postfixPosture,
+			MysqlPosture:             mysqlPosture,
+			PostgresPosture:          postgresPosture,
 		},
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
 			HostRuntimes: containerCloudHostRuntimes(hr),

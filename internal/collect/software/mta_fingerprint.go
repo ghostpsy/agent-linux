@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/postfix"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
@@ -18,14 +19,14 @@ const mtaTimeout = 12 * time.Second
 // CollectMtaFingerprint detects Postfix / Exim / Sendmail and collects bounded relay hints.
 func CollectMtaFingerprint(ctx context.Context) *payload.MtaFingerprint {
 	out := &payload.MtaFingerprint{}
-	if _, err := exec.LookPath("postfix"); err == nil || fileExists("/usr/sbin/postfix") || fileExists("/usr/bin/postfix") {
+	if _, err := exec.LookPath("postfix"); err == nil || shared.FileExistsRegular("/usr/sbin/postfix") || shared.FileExistsRegular("/usr/bin/postfix") {
 		out.DetectedMta = "postfix"
 		fillPostfix(out)
 		return out
 	}
 	eximPaths := []string{"/etc/exim4/exim4.conf.template", "/etc/exim/exim.conf", "/usr/local/etc/exim/exim.conf"}
 	for _, p := range eximPaths {
-		if fileExists(p) {
+		if shared.FileExistsRegular(p) {
 			out.DetectedMta = "exim"
 			out.EximConfigPath = p
 			b, err := shared.ReadFileBounded(p, shared.DefaultConfigFileReadLimit)
@@ -57,31 +58,19 @@ func CollectMtaFingerprint(ctx context.Context) *payload.MtaFingerprint {
 func fillPostfix(out *payload.MtaFingerprint) {
 	ctx, cancel := context.WithTimeout(context.Background(), mtaTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "postconf", "-n")
-	raw, err := cmd.Output()
+	vals, err := postfix.QueryPostconf(ctx, postfix.MtaPostconfKeys)
 	if err != nil {
 		return
 	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		kv := strings.SplitN(line, "=", 2)
-		if len(kv) != 2 {
-			continue
-		}
-		k := strings.TrimSpace(kv[0])
-		v := strings.TrimSpace(kv[1])
-		switch k {
-		case "inet_interfaces":
-			out.PostfixInetInterfaces = shared.TruncateRunes(v, 256)
-		case "mynetworks_style":
-			out.PostfixMynetworksStyle = shared.TruncateRunes(v, 128)
-		case "smtpd_recipient_restrictions":
-			t := true
-			out.PostfixSmtpdRecipientRestrictionsPresent = &t
-		}
+	if v, ok := vals["inet_interfaces"]; ok {
+		out.PostfixInetInterfaces = shared.TruncateRunes(v, 256)
+	}
+	if v, ok := vals["mynetworks_style"]; ok {
+		out.PostfixMynetworksStyle = shared.TruncateRunes(v, 128)
+	}
+	if v, ok := vals["smtpd_recipient_restrictions"]; ok && strings.TrimSpace(v) != "" {
+		t := true
+		out.PostfixSmtpdRecipientRestrictionsPresent = &t
 	}
 }
 

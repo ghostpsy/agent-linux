@@ -49,7 +49,7 @@ func collectDockerHostFingerprint() *payload.DockerHostFingerprint {
 	dockerPath, err := exec.LookPath("docker")
 	hasDockerCLI := err == nil && dockerPath != ""
 	sockPath := resolveDockerSocketPath()
-	hasDaemonJSON := fileExists(dockerDaemonJSON)
+	hasDaemonJSON := shared.FileExistsRegular(dockerDaemonJSON)
 	if !hasDockerCLI && sockPath == "" && !hasDaemonJSON {
 		return nil
 	}
@@ -84,12 +84,12 @@ func resolveDockerSocketPath() string {
 			return ""
 		}
 		p := u.Path
-		if p != "" && fileExists(p) {
+		if p != "" && shared.FileExistsRegular(p) {
 			return p
 		}
 	}
 	for _, c := range []string{dockerSockDefault, dockerSockRun} {
-		if fileExists(c) {
+		if shared.FileExistsRegular(c) {
 			return c
 		}
 	}

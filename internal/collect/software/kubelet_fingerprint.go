@@ -44,7 +44,7 @@ func collectKubeletFingerprint() *payload.KubeletNodeFingerprint {
 	}
 	var merged kubeletHints
 	for _, path := range kubeletConfigPathCandidates() {
-		if !fileExists(path) {
+		if !shared.FileExistsRegular(path) {
 			continue
 		}
 		if len(out.ConfigSourcePaths) >= maxKubeletConfigPaths {

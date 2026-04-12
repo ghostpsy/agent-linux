@@ -351,6 +351,48 @@ func nginxPostureError(n *payload.NginxPosture) string {
 	return n.Error
 }
 
+func postfixPostureNotifyCount(p *payload.PostfixPosture) int {
+	if p == nil || !p.Detected {
+		return 0
+	}
+	return 1
+}
+
+func postfixPostureError(p *payload.PostfixPosture) string {
+	if p == nil {
+		return ""
+	}
+	return p.Error
+}
+
+func mysqlPostureNotifyCount(m *payload.MysqlPosture) int {
+	if m == nil || !m.Detected {
+		return 0
+	}
+	return 1
+}
+
+func mysqlPostureError(m *payload.MysqlPosture) string {
+	if m == nil {
+		return ""
+	}
+	return m.Error
+}
+
+func postgresPostureNotifyCount(p *payload.PostgresPosture) int {
+	if p == nil || !p.Detected {
+		return 0
+	}
+	return 1
+}
+
+func postgresPostureError(p *payload.PostgresPosture) string {
+	if p == nil {
+		return ""
+	}
+	return p.Error
+}
+
 // softwarePackagesHostRuntimes is §5 only: interpreter `items` (and optional collection error).
 // Docker/kubelet fingerprints are emitted only under container_and_cloud_native_linux.
 func softwarePackagesHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntimes {

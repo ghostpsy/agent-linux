@@ -83,6 +83,9 @@ type SoftwarePackagesAndApplicationsComponent struct {
 	MtaFingerprint           *MtaFingerprint           `json:"mta_fingerprint,omitempty"`
 	ApacheHttpdPosture       *ApacheHttpdPosture       `json:"apache_httpd_posture,omitempty"`
 	NginxPosture             *NginxPosture             `json:"nginx_posture,omitempty"`
+	PostfixPosture           *PostfixPosture           `json:"postfix_posture,omitempty"`
+	MysqlPosture             *MysqlPosture             `json:"mysql_posture,omitempty"`
+	PostgresPosture          *PostgresPosture          `json:"postgres_posture,omitempty"`
 }
 
 type ContainerAndCloudNativeLinuxComponent struct {

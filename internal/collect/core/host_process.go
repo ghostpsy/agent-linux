@@ -112,7 +112,7 @@ func countProcessSignals(samples []procSample) *payload.ProcessSignals {
 
 func mergeProcessTop(samples []procSample) []payload.ProcessTopEntry {
 	if len(samples) == 0 {
-		return nil
+		return []payload.ProcessTopEntry{}
 	}
 	byCPU := append([]procSample(nil), samples...)
 	sort.Slice(byCPU, func(i, j int) bool {

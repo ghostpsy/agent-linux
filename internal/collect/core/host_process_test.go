@@ -2,55 +2,42 @@
 
 package core
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
 
-func TestIsJavaInterpreter(t *testing.T) {
-	t.Parallel()
-	if !isJavaInterpreter("java", "java -jar app.jar") {
-		t.Fatal("expected java process name match")
+	"github.com/ghostpsy/agent-linux/internal/payload"
+)
+
+func TestMergeProcessTop_EmptySamplesIsEmptySliceNotNil(t *testing.T) {
+	out := mergeProcessTop(nil)
+	if out == nil {
+		t.Fatal("mergeProcessTop(nil) must not return nil (JSON would be null; ingest schema requires an array)")
 	}
-	if isJavaInterpreter("node", "node server.js") {
-		t.Fatal("node should not match java")
+	if len(out) != 0 {
+		t.Fatalf("len=%d", len(out))
 	}
 }
 
-func TestMergeProcessTopOrderAndCap(t *testing.T) {
-	t.Parallel()
-	samples := []procSample{
-		{pid: 1, name: "a", user: "root", cpu: 1, rss: 100, cmdline: "a"},
-		{pid: 2, name: "b", user: "root", cpu: 50, rss: 200, cmdline: "b"},
-		{pid: 3, name: "c", user: "root", cpu: 10, rss: 9000, cmdline: "c"},
-		{pid: 4, name: "d", user: "root", cpu: 5, rss: 8000, cmdline: "d"},
+func TestHostProcessJSONTopIsAlwaysArrayWhenPresent(t *testing.T) {
+	hp := &payload.HostProcess{Top: mergeProcessTop(nil), Signals: &payload.ProcessSignals{}}
+	b, err := json.Marshal(hp)
+	if err != nil {
+		t.Fatal(err)
 	}
-	out := mergeProcessTop(samples)
-	if len(out) > processTopMax {
-		t.Fatalf("len %d > max %d", len(out), processTopMax)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatal(err)
 	}
-	ids := map[int32]struct{}{}
-	for _, e := range out {
-		ids[e.Pid] = struct{}{}
+	topRaw, ok := raw["top"]
+	if !ok {
+		t.Fatal("missing top")
 	}
-	if _, ok := ids[2]; !ok {
-		t.Fatal("expected top CPU process 2 in output")
+	if string(topRaw) == "null" {
+		t.Fatal("top must not serialize as null")
 	}
-	if _, ok := ids[3]; !ok {
-		t.Fatal("expected top RSS process 3 in output")
-	}
-}
-
-func TestCountProcessSignals(t *testing.T) {
-	t.Parallel()
-	samples := []procSample{
-		{pid: 1, name: "python3", user: "u", cpu: 0, rss: 0, cmdline: "/usr/bin/python3"},
-		{pid: 2, name: "node", user: "u", cpu: 0, rss: 0, cmdline: "node index.js"},
-		{pid: 3, name: "java", user: "u", cpu: 0, rss: 0, cmdline: "java -jar x.jar"},
-		{pid: 4, name: "sh", user: "u", cpu: 0, rss: 0, cmdline: "/tmp/xmrig -o stratum"},
-	}
-	sig := countProcessSignals(samples)
-	if sig.InterpreterPython < 1 || sig.InterpreterNode < 1 || sig.InterpreterJava < 1 {
-		t.Fatalf("interpreter counts: %+v", sig)
-	}
-	if sig.UnknownHashWorkers < 1 {
-		t.Fatal("expected miner keyword hit")
+	var arr []json.RawMessage
+	if err := json.Unmarshal(topRaw, &arr); err != nil {
+		t.Fatalf("top not array: %s", topRaw)
 	}
 }

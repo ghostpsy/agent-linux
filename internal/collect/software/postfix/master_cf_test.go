@@ -21,7 +21,7 @@ pickup    unix  n       -       n       60      1       pickup
 	for _, ln := range lines {
 		joined += ln + "\n"
 	}
-	if !strings.Contains(joined, "smtp_tls_security_level=may") {
+	if !strings.Contains(joined, "smtpd_tls_security_level=may") {
 		t.Fatalf("continuation not merged: %q", joined)
 	}
 	if strings.Contains(joined, "# comment") {

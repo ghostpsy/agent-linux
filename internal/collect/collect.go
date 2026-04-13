@@ -416,8 +416,12 @@ func softwarePackagesHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntime
 	if len(hr.Items) == 0 && hr.Error == "" {
 		return nil
 	}
+	items := hr.Items
+	if items == nil {
+		items = []payload.RuntimeEntry{}
+	}
 	return &payload.HostRuntimes{
-		Items: hr.Items,
+		Items: items,
 		Error: hr.Error,
 	}
 }

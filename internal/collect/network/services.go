@@ -41,7 +41,10 @@ func CollectServices(ctx context.Context) payload.ServicesBlock {
 		items, err := collectFromServiceStatusAll(ctx, serviceBin)
 		return servicesBlockFrom(items, err)
 	default:
-		return payload.ServicesBlock{Error: shared.CollectionNote("no supported service collector detected.")}
+		return payload.ServicesBlock{
+			Items: []payload.ServiceEntry{},
+			Error: shared.CollectionNote("no supported service collector detected."),
+		}
 	}
 }
 

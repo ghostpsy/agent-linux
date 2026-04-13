@@ -36,10 +36,25 @@ exit 1
 }
 
 func TestPostgresServiceState_FromInventory(t *testing.T) {
-	t.Parallel()
+	dir := t.TempDir()
+	script := `#!/bin/sh
+if [ "$1" = "-V" ]; then
+  echo "postgres (PostgreSQL) 16.2"
+  exit 0
+fi
+exit 1
+`
+	p := filepath.Join(dir, "postgres")
+	if err := os.WriteFile(p, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	services := []payload.ServiceEntry{{Name: "postgresql@16-main.service", ActiveState: "active"}}
 	out := CollectPostgresPosture(context.Background(), services, nil)
-	if out == nil || out.ServiceState == nil || *out.ServiceState != "running" {
+	if out == nil {
+		t.Fatal("expected non-nil posture")
+	}
+	if out.ServiceState == nil || *out.ServiceState != "running" {
 		t.Fatalf("got %v", out.ServiceState)
 	}
 }

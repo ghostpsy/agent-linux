@@ -173,9 +173,7 @@ func (o *hbaOutcome) applyRule(r hbaRule, ordered *[]hbaRule) {
 	case "peer", "ident":
 		o.peerIdentN++
 	default:
-		if strings.Contains(r.method, "-") || r.method == "" {
-			// ldap, gss, etc. — ignore counts for password family
-		}
+		// ldap, gss, etc. — no separate counter (password family handled in other cases)
 	}
 	if r.broad && (r.typ == "host" || r.typ == "hostssl" || r.typ == "hostnossl") {
 		if len(o.wideOpenLines) < maxHbaRuleSamples {

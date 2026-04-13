@@ -384,9 +384,7 @@ func tcpListenersFromStrings(hosts []string) []string {
 	var out []string
 	for _, h := range hosts {
 		h = strings.TrimSpace(h)
-		if strings.HasPrefix(h, "tcp://") {
-			h = strings.TrimPrefix(h, "tcp://")
-		}
+		h = strings.TrimPrefix(h, "tcp://")
 		if strings.HasPrefix(h, "unix://") || h == "" {
 			continue
 		}
@@ -639,7 +637,7 @@ func hasHealthcheckDefined(raw json.RawMessage) bool {
 	if err := json.Unmarshal(t, &tests); err != nil {
 		return true
 	}
-	return len(tests) > 0 && !(len(tests) == 1 && tests[0] == "NONE")
+	return len(tests) > 0 && (len(tests) != 1 || tests[0] != "NONE")
 }
 
 func buildContainerRisk(c dockerInspectPosture, name, idShort, dataRoot string) *payload.DockerContainerRisk {

@@ -8,10 +8,11 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
-func TestSoftwarePackagesHostRuntimesNilWhenEmpty(t *testing.T) {
+func TestSoftwarePackagesHostRuntimesEmptyItemsStillEmitted(t *testing.T) {
 	hr := &payload.HostRuntimes{Items: []payload.RuntimeEntry{}}
-	if got := softwarePackagesHostRuntimes(hr); got != nil {
-		t.Fatalf("expected nil when no items and no error, got %+v", got)
+	got := softwarePackagesHostRuntimes(hr)
+	if got == nil || len(got.Items) != 0 {
+		t.Fatalf("expected empty items slice, got %+v", got)
 	}
 }
 

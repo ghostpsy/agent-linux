@@ -409,11 +409,9 @@ func dockerPostureError(d *payload.DockerPosture) string {
 
 // softwarePackagesHostRuntimes is §5 only: interpreter `items` (and optional collection error).
 // Docker/kubelet fingerprints are emitted only under container_and_cloud_native_linux.
+// Always emit host_runtimes when the collector ran (including items: [] on minimal hosts) for stable ingest and CI payload checks.
 func softwarePackagesHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntimes {
 	if hr == nil {
-		return nil
-	}
-	if len(hr.Items) == 0 && hr.Error == "" {
 		return nil
 	}
 	items := hr.Items

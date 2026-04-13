@@ -64,6 +64,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 	var postfixPosture *payload.PostfixPosture
 	var mysqlPosture *payload.MysqlPosture
 	var postgresPosture *payload.PostgresPosture
+	var dockerPosture *payload.DockerPosture
 	var servicesBlock payload.ServicesBlock
 	var osInfo payload.OSInfo
 	var hostname string
@@ -167,10 +168,6 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			servicesBlock = network.CollectServices(ctx)
 			return len(servicesBlock.Items), servicesBlock.Error
 		}},
-		{"collect_nginx_posture", func() (int, string) {
-			nginxPosture = nginx.CollectNginxPosture(ctx, servicesBlock.Items)
-			return nginxPostureNotifyCount(nginxPosture), nginxPostureError(nginxPosture)
-		}},
 		{"collect_postfix_posture", func() (int, string) {
 			postfixPosture = postfix.CollectPostfixPosture(ctx, servicesBlock.Items)
 			return postfixPostureNotifyCount(postfixPosture), postfixPostureError(postfixPosture)
@@ -178,10 +175,6 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 		{"collect_mysql_posture", func() (int, string) {
 			mysqlPosture = mysql.CollectMysqlPosture(ctx, servicesBlock.Items)
 			return mysqlPostureNotifyCount(mysqlPosture), mysqlPostureError(mysqlPosture)
-		}},
-		{"collect_postgres_posture", func() (int, string) {
-			postgresPosture = software.CollectPostgresPosture(ctx, servicesBlock.Items)
-			return postgresPostureNotifyCount(postgresPosture), postgresPostureError(postgresPosture)
 		}},
 		{"collect_os_info", func() (int, string) {
 			osInfo, hostname = core.CollectOSInfo(ctx)
@@ -294,6 +287,18 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			}
 			return len(listeners), ""
 		}},
+		{"collect_postgres_posture", func() (int, string) {
+			postgresPosture = software.CollectPostgresPosture(ctx, servicesBlock.Items, listeners)
+			return postgresPostureNotifyCount(postgresPosture), postgresPostureError(postgresPosture)
+		}},
+		{"collect_docker_posture", func() (int, string) {
+			dockerPosture = software.CollectDockerPosture(ctx)
+			return dockerPostureNotifyCount(dockerPosture), dockerPostureError(dockerPosture)
+		}},
+		{"collect_nginx_posture", func() (int, string) {
+			nginxPosture = nginx.CollectNginxPosture(ctx, servicesBlock.Items, listeners)
+			return nginxPostureNotifyCount(nginxPosture), nginxPostureError(nginxPosture)
+		}},
 		{"collect_apache_httpd_posture", func() (int, string) {
 			apachePosture = apache.CollectApacheHttpdPosture(ctx, servicesBlock.Items, listeners)
 			return apacheHttpdNotifyCount(apachePosture), apacheHttpdError(apachePosture)
@@ -368,6 +373,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			PostfixPosture:           postfixPosture,
 			MysqlPosture:             mysqlPosture,
 			PostgresPosture:          postgresPosture,
+			DockerPosture:            dockerPosture,
 		},
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
 			HostRuntimes: containerCloudHostRuntimes(hr),

@@ -105,18 +105,61 @@ type ApacheListenBinding struct {
 	Port int    `json:"port"`
 }
 
-// NginxPosture is allowlisted nginx metadata from -v/-V/-T (no full config, no secrets).
+// NginxPosture is allowlisted nginx security posture from -v/-V/-T (no raw secrets).
 type NginxPosture struct {
-	Detected     bool   `json:"detected"`
-	Version      string `json:"version,omitempty"`
-	BinPath      string `json:"bin_path,omitempty"`
-	ServiceState string `json:"service_state,omitempty"`
-	// ModulesSample is security-relevant nginx -V compile flags only (not full configure args); see parseNginxSecurityRelevantModules.
-	ModulesSample  []string             `json:"modules_sample,omitempty"`
+	Detected     bool    `json:"detected"`
+	BinPath      string  `json:"bin_path,omitempty"`
+	Version      *string `json:"version,omitempty"`
+	ServiceState *string `json:"service_state,omitempty"` // running | stopped | not_installed
+
 	SiteMapSummary *NginxSiteMapSummary `json:"site_map_summary,omitempty"`
 	ListenBindings []NginxListenBinding `json:"listen_bindings,omitempty"`
-	HardeningHints *NginxHardeningHints `json:"hardening_hints,omitempty"`
-	Error          string               `json:"error,omitempty"`
+	// ListenBindingDiscrepancies compares config listens to same-scan TCP listeners (nginx/openresty process) when available.
+	ListenBindingDiscrepancies []string `json:"listen_binding_discrepancies,omitempty"`
+
+	// ModulesSample is security-relevant nginx -V flags (broad); RiskyModulesCompiled is the high-risk subset only.
+	ModulesSample         []string `json:"modules_sample,omitempty"`
+	RiskyModulesCompiled  []string `json:"risky_modules_compiled,omitempty"`
+	TlsLegacyProtocolsPresent *bool `json:"tls_legacy_protocols_present,omitempty"`
+
+	SslConfigured            *bool   `json:"ssl_configured,omitempty"`
+	SslProtocols             *string `json:"ssl_protocols,omitempty"`
+	SslCiphers               *string `json:"ssl_ciphers,omitempty"`
+	SslCiphersWeakPatterns   *bool   `json:"ssl_ciphers_weak_patterns,omitempty"`
+	SslPreferServerCiphers   *string `json:"ssl_prefer_server_ciphers,omitempty"`
+	HstsHeader               *string `json:"hsts_header,omitempty"`
+	HttpToHttpsRedirect      *bool   `json:"http_to_https_redirect,omitempty"`
+	SslStapling              *bool   `json:"ssl_stapling,omitempty"`
+	SslSessionTicketsSummary *string `json:"ssl_session_tickets_summary,omitempty"`
+
+	ServerTokens *string `json:"server_tokens,omitempty"`
+
+	StubStatusUnrestricted *bool `json:"stub_status_unrestricted,omitempty"`
+	ServerHeaderHidden     *bool `json:"server_header_hidden,omitempty"`
+	ErrorPageCustom        *bool `json:"error_page_custom,omitempty"`
+
+	MissingSecurityHeaders          []string `json:"missing_security_headers,omitempty"`
+	LocationsDroppingParentHeaders  []string `json:"locations_dropping_parent_headers,omitempty"`
+
+	AutoindexEnabledPaths      []string `json:"autoindex_enabled_paths,omitempty"`
+	SensitivePathsUnrestricted   []string `json:"sensitive_paths_unrestricted,omitempty"`
+	LimitReqConfigured         *bool    `json:"limit_req_configured,omitempty"`
+	ClientMaxBodySize          *string  `json:"client_max_body_size,omitempty"`
+
+	ProxyPassOrUpstreamSeen *bool `json:"proxy_pass_or_upstream_seen,omitempty"`
+	ProxyHeadersForwarded     *bool `json:"proxy_headers_forwarded,omitempty"`
+	ProxyHostHeader           *bool `json:"proxy_host_header,omitempty"`
+	UpstreamPlaintext         *bool `json:"upstream_plaintext,omitempty"`
+	ProxyInterceptErrors      *bool `json:"proxy_intercept_errors,omitempty"`
+
+	RunUser                 *string `json:"run_user,omitempty"`
+	RunUserWorkersNonRoot   *bool   `json:"run_user_workers_non_root,omitempty"`
+	ConfigFilePermissions   *string `json:"config_file_permissions,omitempty"`
+	DocrootWorldWritable    *bool   `json:"docroot_world_writable,omitempty"`
+	IsContainerized         *bool   `json:"is_containerized,omitempty"`
+
+	CollectorWarnings []string `json:"collector_warnings,omitempty"`
+	Error             string   `json:"error,omitempty"`
 }
 
 // NginxSiteMapSummary counts server blocks and caps server_name tokens from parsed -T output.
@@ -230,53 +273,148 @@ type MysqlPosture struct {
 	Error                   string   `json:"error,omitempty"`
 }
 
-// PostgresPosture is bounded PostgreSQL server metadata (no SQL; pg_hba as aggregate counts only).
+// PostgresPosture is PostgreSQL security posture without SQL (merged postgresql.conf, pg_hba rules, process/fs checks).
 type PostgresPosture struct {
-	Detected     bool                 `json:"detected"`
-	Version      string               `json:"version,omitempty"`
-	BinPath      string               `json:"bin_path,omitempty"`
-	ServiceState string               `json:"service_state,omitempty"`
-	ListenHints  *PostgresListenHints `json:"listen_hints,omitempty"`
-	HbaHints     *PostgresHbaHints    `json:"hba_hints,omitempty"`
-	Error        string               `json:"error,omitempty"`
+	Detected     bool    `json:"detected"`
+	Version      *string `json:"version,omitempty"`
+	BinPath      string  `json:"bin_path,omitempty"`
+	ServiceState *string `json:"service_state,omitempty"`
+
+	ListenAddresses             *string  `json:"listen_addresses,omitempty"`
+	Port                        *int     `json:"port,omitempty"`
+	ListenImpliesAllAddresses   *bool    `json:"listen_implies_all_addresses,omitempty"`
+	PortListenerDiscrepancies   []string `json:"port_listener_discrepancies,omitempty"`
+	ConfigFilePath              *string  `json:"config_file_path,omitempty"`
+	PgHbaFilePath               *string  `json:"pg_hba_file_path,omitempty"`
+
+	TrustRules             []string `json:"trust_rules,omitempty"`
+	PasswordCleartextRules []string `json:"password_cleartext_rules,omitempty"`
+	Md5RulesCount          *int     `json:"md5_rules_count,omitempty"`
+	ScramSha256RulesCount  *int     `json:"scram_sha_256_rules_count,omitempty"`
+	WideOpenRules          []string `json:"wide_open_rules,omitempty"`
+	HostnosslRulesCount    *int     `json:"hostnossl_rules_count,omitempty"`
+	HostRuleCount          *int     `json:"host_rule_count,omitempty"`
+	HostsslRuleCount       *int     `json:"hostssl_rule_count,omitempty"`
+	LocalRuleCount         *int     `json:"local_rule_count,omitempty"`
+	RejectMethodCount      *int     `json:"reject_method_count,omitempty"`
+	PeerOrIdentMethodCount *int     `json:"peer_or_ident_method_count,omitempty"`
+	RuleOrderRisk          *bool    `json:"rule_order_risk,omitempty"`
+	HbaLinesScanned        *int     `json:"hba_lines_scanned,omitempty"`
+
+	Ssl                       *string `json:"ssl,omitempty"`
+	SslCertFile               *string `json:"ssl_cert_file,omitempty"`
+	SslKeyFile                *string `json:"ssl_key_file,omitempty"`
+	SslMinProtocolVersion     *string `json:"ssl_min_protocol_version,omitempty"`
+	SslCiphers                *string `json:"ssl_ciphers,omitempty"`
+	SslCiphersWeakPatterns    *bool   `json:"ssl_ciphers_weak_patterns,omitempty"`
+	SslKeyPermissions         *string `json:"ssl_key_permissions,omitempty"`
+	SslMinProtocolWeakOrUnset *bool   `json:"ssl_min_protocol_weak_or_unset,omitempty"`
+
+	LogConnections            *string `json:"log_connections,omitempty"`
+	LogDisconnections         *string `json:"log_disconnections,omitempty"`
+	LogStatement              *string `json:"log_statement,omitempty"`
+	PasswordEncryption        *string `json:"password_encryption,omitempty"`
+	SharedPreloadLibraries    *string `json:"shared_preload_libraries,omitempty"`
+	PreloadAuditTrailPresent  *bool   `json:"preload_audit_trail_present,omitempty"`
+	PasswordEncryptionWeakMd5 *bool   `json:"password_encryption_weak_md5,omitempty"`
+
+	MaxConnections                  *int    `json:"max_connections,omitempty"`
+	SuperuserReservedConnections    *int    `json:"superuser_reserved_connections,omitempty"`
+	TcpKeepalivesIdle               *string `json:"tcp_keepalives_idle,omitempty"`
+	StatementTimeout                *string `json:"statement_timeout,omitempty"`
+	IdleInTransactionSessionTimeout *string `json:"idle_in_transaction_session_timeout,omitempty"`
+
+	RunUser               *string `json:"run_user,omitempty"`
+	DataDirectory         *string `json:"data_directory,omitempty"`
+	DatadirPermissions    *string `json:"datadir_permissions,omitempty"`
+	PgHbaPermissions      *string `json:"pg_hba_permissions,omitempty"`
+	ConfigFilePermissions *string `json:"config_file_permissions,omitempty"`
+	IsContainerized       *bool   `json:"is_containerized,omitempty"`
+
+	CollectorWarnings       []string `json:"collector_warnings,omitempty"`
+	LimitedWithoutSQLAccess []string `json:"limited_without_sql_access,omitempty"`
+	Error                   string   `json:"error,omitempty"`
 }
 
-// PostgresListenHints summarizes postgresql.conf keys from a bounded read.
-type PostgresListenHints struct {
-	ListenAddresses           string `json:"listen_addresses,omitempty"`
-	Port                      *int   `json:"port,omitempty"`
-	Ssl                       string `json:"ssl,omitempty"`
-	ConfigPathUsed            string `json:"config_path_used,omitempty"`
-	ListenImpliesAllAddresses *bool  `json:"listen_implies_all_addresses,omitempty"`
+// DockerPosture is Docker engine security posture from read-only docker CLI and filesystem checks.
+type DockerPosture struct {
+	Detected bool `json:"detected"`
+
+	DockerCliPath   *string `json:"docker_cli_path,omitempty"`
+	Version         *string `json:"version,omitempty"`
+	APIVersion      *string `json:"api_version,omitempty"`
+	StorageDriver   *string `json:"storage_driver,omitempty"`
+	ContainerCount  *int    `json:"container_count,omitempty"`
+	DockerRootDir   *string `json:"docker_root_dir,omitempty"`
+
+	RootlessMode        *bool   `json:"rootless_mode,omitempty"`
+	DockerSockPath      *string `json:"docker_sock_path,omitempty"`
+	DockerSockModeOctal *string `json:"docker_sock_mode_octal,omitempty"`
+	DockerSockOwnerUID  *int    `json:"docker_sock_owner_uid,omitempty"`
+	DockerSockGroupGID  *int    `json:"docker_sock_group_gid,omitempty"`
+
+	DockerSockMountedInContainers []string `json:"docker_sock_mounted_in_containers,omitempty"`
+
+	TCPAPIExposed    *bool   `json:"tcp_api_exposed,omitempty"`
+	TCPAPIAddress    *string `json:"tcp_api_address,omitempty"`
+	TCPAPITLSEnabled *bool   `json:"tcp_api_tls_enabled,omitempty"`
+
+	UsernsRemap     *string `json:"userns_remap,omitempty"`
+	NoNewPrivileges *bool   `json:"no_new_privileges,omitempty"`
+	IccEnabled      *bool   `json:"icc_enabled,omitempty"`
+	LiveRestore     *bool   `json:"live_restore,omitempty"`
+	LogDriver       *string `json:"log_driver,omitempty"`
+	SeccompProfile  *string `json:"seccomp_profile,omitempty"`
+	DefaultUlimits  *string `json:"default_ulimits,omitempty"`
+
+	ContainerRisks []DockerContainerRisk `json:"container_risks,omitempty"`
+
+	ImagesRunningAsLatest    []string `json:"images_running_as_latest,omitempty"`
+	ImagesWithoutHealthcheck []string `json:"images_without_healthcheck,omitempty"`
+
+	PublishedPorts          []DockerPublishedPort            `json:"published_ports,omitempty"`
+	CustomNetworksEncrypted []DockerOverlayNetworkEncryption `json:"custom_networks_encrypted,omitempty"`
+
+	DockerGroupMembers    []string `json:"docker_group_members,omitempty"`
+	DockerDataPermissions *string  `json:"docker_data_permissions,omitempty"`
+	KernelVersion         *string  `json:"kernel_version,omitempty"`
+	IsSwarmActive         *bool    `json:"is_swarm_active,omitempty"`
+
+	CollectorWarnings []string `json:"collector_warnings,omitempty"`
+	Error             string   `json:"error,omitempty"`
 }
 
-// PostgresHbaHints summarizes pg_hba.conf rule types and auth methods (counts only—no DB/user/address literals).
-type PostgresHbaHints struct {
-	FilePathUsed              string `json:"file_path_used,omitempty"`
-	LinesScanned              int    `json:"lines_scanned"`
-	HostRuleCount             int    `json:"host_rule_count"`
-	HostsslRuleCount          int    `json:"hostssl_rule_count"`
-	HostnosslRuleCount        int    `json:"hostnossl_rule_count"`
-	LocalRuleCount            int    `json:"local_rule_count"`
-	TrustMethodCount          int    `json:"trust_method_count"`
-	RejectMethodCount         int    `json:"reject_method_count"`
-	PasswordFamilyMethodCount int    `json:"password_family_method_count"`
-	PeerOrIdentMethodCount    int    `json:"peer_or_ident_method_count"`
+// DockerContainerRisk is one running container with at least one security flag (omit clean containers from the list).
+type DockerContainerRisk struct {
+	Name                   string   `json:"name"`
+	ID                     string   `json:"id"`
+	Privileged             *bool    `json:"privileged,omitempty"`
+	PidModeHost            *bool    `json:"pid_mode_host,omitempty"`
+	NetworkModeHost        *bool    `json:"network_mode_host,omitempty"`
+	CapabilitiesAdded      []string `json:"capabilities_added,omitempty"`
+	CapabilitiesNotDropped *bool    `json:"capabilities_not_dropped,omitempty"`
+	RunsAsRoot             *bool    `json:"runs_as_root,omitempty"`
+	WritableRootfs         *bool    `json:"writable_rootfs,omitempty"`
+	SensitiveMounts        []string `json:"sensitive_mounts,omitempty"`
+	NoSecurityProfile      *bool    `json:"no_security_profile,omitempty"`
+	NoResourceLimits       *bool    `json:"no_resource_limits,omitempty"`
 }
 
-// NginxHardeningHints summarizes common hardening directives (OWASP/operator guides); no header values.
-type NginxHardeningHints struct {
-	ServerTokensSummary           string   `json:"server_tokens_summary,omitempty"`
-	TlsProtocolsSummary           string   `json:"tls_protocols_summary,omitempty"`
-	TlsLegacyProtocolsPresent     *bool    `json:"tls_legacy_protocols_present,omitempty"`
-	SslPreferServerCiphersSummary string   `json:"ssl_prefer_server_ciphers_summary,omitempty"`
-	SslSessionTicketsSummary      string   `json:"ssl_session_tickets_summary,omitempty"`
-	SslStaplingEnabled            *bool    `json:"ssl_stapling_enabled,omitempty"`
-	SecurityHeaderNamesPresent    []string `json:"security_header_names_present,omitempty"`
-	RateLimitingPresent           bool     `json:"rate_limiting_present,omitempty"`
-	ClientBufferLimitsPresent     bool     `json:"client_buffer_limits_present,omitempty"`
-	AutoindexOnSeen               bool     `json:"autoindex_on_seen,omitempty"`
-	HttpMethodRestrictionSeen     bool     `json:"http_method_restriction_seen,omitempty"`
+// DockerPublishedPort is one published port binding from a running container.
+type DockerPublishedPort struct {
+	Container           string `json:"container"`
+	ContainerID         string `json:"container_id"`
+	HostIP              string `json:"host_ip"`
+	HostPort            string `json:"host_port"`
+	ContainerPort       string `json:"container_port"`
+	Protocol            string `json:"protocol"`
+	BindAllInterfaces   bool   `json:"bind_all_interfaces"`
+}
+
+// DockerOverlayNetworkEncryption records overlay driver encryption hint for a user-defined network.
+type DockerOverlayNetworkEncryption struct {
+	NetworkName string `json:"network_name"`
+	Encrypted   bool   `json:"encrypted"`
 }
 
 // MtaFingerprint is MTA presence and bounded relay/bind hints (no queue contents).

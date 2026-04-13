@@ -86,6 +86,7 @@ type SoftwarePackagesAndApplicationsComponent struct {
 	PostfixPosture           *PostfixPosture           `json:"postfix_posture,omitempty"`
 	MysqlPosture             *MysqlPosture             `json:"mysql_posture,omitempty"`
 	PostgresPosture          *PostgresPosture          `json:"postgres_posture,omitempty"`
+	DockerPosture            *DockerPosture            `json:"docker_posture,omitempty"`
 }
 
 type ContainerAndCloudNativeLinuxComponent struct {

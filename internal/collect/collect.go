@@ -393,6 +393,20 @@ func postgresPostureError(p *payload.PostgresPosture) string {
 	return p.Error
 }
 
+func dockerPostureNotifyCount(d *payload.DockerPosture) int {
+	if d == nil || !d.Detected {
+		return 0
+	}
+	return 1
+}
+
+func dockerPostureError(d *payload.DockerPosture) string {
+	if d == nil {
+		return ""
+	}
+	return d.Error
+}
+
 // softwarePackagesHostRuntimes is §5 only: interpreter `items` (and optional collection error).
 // Docker/kubelet fingerprints are emitted only under container_and_cloud_native_linux.
 func softwarePackagesHostRuntimes(hr *payload.HostRuntimes) *payload.HostRuntimes {

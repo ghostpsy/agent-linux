@@ -102,34 +102,37 @@ http {
 }
 `
 	a := parseNginxTestDump(in)
-	h := buildNginxHardeningPayload(a.hardening)
-	if h == nil {
-		t.Fatal("expected hardening hints")
+	if summarizeServerTokens(a.hardening.serverTokensModes) != "off" {
+		t.Fatalf("server_tokens: got %q", summarizeServerTokens(a.hardening.serverTokensModes))
 	}
-	if h.ServerTokensSummary != "off" {
-		t.Fatalf("server_tokens: got %q", h.ServerTokensSummary)
+	tlsSum, leg := summarizeTlsProtocols(a.hardening.sslProtocolTokens)
+	if tlsSum == "" || leg == nil || *leg {
+		t.Fatalf("tls: summary=%q legacy=%v", tlsSum, leg)
 	}
-	if h.TlsProtocolsSummary == "" || h.TlsLegacyProtocolsPresent == nil || *h.TlsLegacyProtocolsPresent {
-		t.Fatalf("tls: summary=%q legacy=%v", h.TlsProtocolsSummary, h.TlsLegacyProtocolsPresent)
+	if summarizeBoolModes(a.hardening.sslPreferModes) != "on" || summarizeBoolModes(a.hardening.sslSessionTicketModes) != "off" {
+		t.Fatalf(
+			"ssl toggles: prefer=%q tickets=%q",
+			summarizeBoolModes(a.hardening.sslPreferModes),
+			summarizeBoolModes(a.hardening.sslSessionTicketModes),
+		)
 	}
-	if h.SslPreferServerCiphersSummary != "on" || h.SslSessionTicketsSummary != "off" {
-		t.Fatalf("ssl toggles: prefer=%q tickets=%q", h.SslPreferServerCiphersSummary, h.SslSessionTicketsSummary)
+	st := summarizeSslStapling(a.hardening.sslStaplingModes)
+	if st == nil || !*st {
+		t.Fatalf("stapling: %v", st)
 	}
-	if h.SslStaplingEnabled == nil || !*h.SslStaplingEnabled {
-		t.Fatalf("stapling: %v", h.SslStaplingEnabled)
+	if !a.hardening.rateLimitingSeen || !a.hardening.clientLimitsSeen || !a.hardening.httpMethodRestrictSeen || !a.hardening.autoindexOnSeen {
+		t.Fatalf(
+			"flags: rl=%v buf=%v meth=%v ai=%v",
+			a.hardening.rateLimitingSeen,
+			a.hardening.clientLimitsSeen,
+			a.hardening.httpMethodRestrictSeen,
+			a.hardening.autoindexOnSeen,
+		)
 	}
-	if !h.RateLimitingPresent || !h.ClientBufferLimitsPresent || !h.HttpMethodRestrictionSeen || !h.AutoindexOnSeen {
-		t.Fatalf("flags: rl=%v buf=%v meth=%v ai=%v", h.RateLimitingPresent, h.ClientBufferLimitsPresent, h.HttpMethodRestrictionSeen, h.AutoindexOnSeen)
-	}
-	found := 0
-	for _, n := range h.SecurityHeaderNamesPresent {
-		switch n {
-		case "x_frame_options", "strict_transport_security", "content_security_policy":
-			found++
+	for _, want := range []string{"x_frame_options", "strict_transport_security", "content_security_policy"} {
+		if _, ok := a.hardening.securityHeaderNames[want]; !ok {
+			t.Fatalf("headers: missing %q in %v", want, securityHeaderList(a.hardening.securityHeaderNames))
 		}
-	}
-	if found < 3 {
-		t.Fatalf("headers: got %v", h.SecurityHeaderNamesPresent)
 	}
 }
 

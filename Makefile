@@ -1,7 +1,7 @@
 # Ghost Server Autopsy — Linux-only Go agent (module github.com/ghostpsy/agent-linux)
 # Run from this directory: make help
 
-.PHONY: help tidy build install clean test vet lint fmt run-help run-version scan-dry scan
+.PHONY: help tidy build install clean test vet lint fmt run-help run-version scan-dry scan install-git-hook pre-commit-check
 
 GO       ?= go
 # Default off: links a static binary so builds on newer glibc (e.g. GitHub ubuntu-latest) still run on older distros.
@@ -29,6 +29,8 @@ help:
 	@echo "  make test        go test ./..."
 	@echo "  make vet         go vet ./..."
 	@echo "  make lint        golangci-lint run ./...  (install: https://golangci-lint.run/welcome/install/)"
+	@echo "  make pre-commit-check  make lint && make test"
+	@echo "  make install-git-hook  installs .git/hooks/pre-commit for this repo"
 	@echo "  make fmt         go fmt ./..."
 	@echo "  make clean       rm -rf $(BIN_DIR)"
 
@@ -59,6 +61,14 @@ vet:
 
 lint:
 	$(LINUX_GO_ENV) golangci-lint run ./...
+
+pre-commit-check: lint test
+
+install-git-hook:
+	@HOOKS_DIR="$$(git rev-parse --git-path hooks)"; mkdir -p "$$HOOKS_DIR"
+	@HOOK_PATH="$$(git rev-parse --git-path hooks)/pre-commit"; cp scripts/pre-commit "$$HOOK_PATH"
+	@HOOK_PATH="$$(git rev-parse --git-path hooks)/pre-commit"; chmod +x "$$HOOK_PATH"
+	@echo "Installed pre-commit hook at $$(git rev-parse --git-path hooks)/pre-commit"
 
 fmt:
 	$(GO) fmt ./...

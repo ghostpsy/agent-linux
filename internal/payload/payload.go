@@ -176,6 +176,7 @@ type Listener struct {
 	FirewallRule       string `json:"firewall_rule,omitempty"`
 	LanFirewallRule    string `json:"lan_firewall_rule,omitempty"`
 	WanFirewallRule    string `json:"wan_firewall_rule,omitempty"`
+	WanProbeOpen       *bool  `json:"wan_probe_open,omitempty"`
 }
 
 type HostTime struct {

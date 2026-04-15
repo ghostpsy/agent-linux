@@ -287,6 +287,16 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			}
 			return len(listeners), ""
 		}},
+		{"probe_wan_listeners", func() (int, string) {
+			listeners = network.ProbeInternetListeners(ctx, listeners, hn)
+			probed := 0
+			for _, l := range listeners {
+				if l.WanProbeOpen != nil {
+					probed++
+				}
+			}
+			return probed, ""
+		}},
 		{"collect_postgres_posture", func() (int, string) {
 			postgresPosture = software.CollectPostgresPosture(ctx, servicesBlock.Items, listeners)
 			return postgresPostureNotifyCount(postgresPosture), postgresPostureError(postgresPosture)

@@ -56,6 +56,10 @@ func collectRawPublicIPs() []net.IP {
 	return out
 }
 
+// collectPublicIPs is the function used to discover public IPs for probing.
+// Tests can replace it to inject known IPs.
+var collectPublicIPs = collectRawPublicIPs
+
 // ProbeInternetListeners performs TCP connect probes against internet-exposed listeners
 // via the machine's own public IPs. Only listeners with exposure_risk == "internet_exposed"
 // are probed. The result is a copy of the input slice with WanProbeOpen set.
@@ -64,7 +68,7 @@ func ProbeInternetListeners(ctx context.Context, listeners []payload.Listener, h
 		return listeners
 	}
 
-	publicIPs := collectRawPublicIPs()
+	publicIPs := collectPublicIPs()
 	if len(publicIPs) == 0 {
 		slog.Debug("probe_wan: no public IPs found for probing")
 		return listeners

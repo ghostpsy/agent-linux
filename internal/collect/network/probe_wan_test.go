@@ -77,6 +77,11 @@ func TestProbeInternetListeners_OnlyProbesInternetExposed(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 
+	// Override IP collector so the probe targets the loopback listener.
+	original := collectPublicIPs
+	collectPublicIPs = func() []net.IP { return []net.IP{net.ParseIP("127.0.0.1")} }
+	defer func() { collectPublicIPs = original }()
+
 	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
 	port, _ := strconv.Atoi(portStr)
 

@@ -109,11 +109,13 @@ func CollectHostNetwork(ctx context.Context) *payload.HostNetwork {
 		return &payload.HostNetwork{Error: shared.CollectionNote("no network interfaces were reported.")}
 	}
 	var (
-		out        []payload.NetworkIface
-		public     []string
-		hasPub4    bool
-		hasPub6    bool
-		seenPublic = make(map[string]struct{})
+		out          []payload.NetworkIface
+		public       []string
+		probeTargets []string
+		hasPub4      bool
+		hasPub6      bool
+		seenPublic   = make(map[string]struct{})
+		seenProbe    = make(map[string]struct{})
 	)
 	for _, iface := range ifs {
 		if len(out) >= maxNetworkIfaces {
@@ -150,6 +152,11 @@ func CollectHostNetwork(ctx context.Context) *payload.HostNetwork {
 				} else {
 					hasPub6 = true
 				}
+				real := ip.String()
+				if _, dup := seenProbe[real]; !dup {
+					seenProbe[real] = struct{}{}
+					probeTargets = append(probeTargets, real)
+				}
 				red := redactIPForDisplay(ip)
 				if red != "" && len(public) < maxPublicIPCandidates {
 					if _, dup := seenPublic[red]; !dup {
@@ -177,6 +184,7 @@ func CollectHostNetwork(ctx context.Context) *payload.HostNetwork {
 	hn := &payload.HostNetwork{
 		Interfaces:         out,
 		PublicIPCandidates: public,
+		ProbeTargets:       probeTargets,
 	}
 	if hasPub4 {
 		hn.HasPublicIPv4 = &hasPub4

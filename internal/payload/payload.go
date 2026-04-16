@@ -240,6 +240,7 @@ type HostNetwork struct {
 	HasPublicIPv4           *bool          `json:"has_public_ipv4,omitempty"`
 	HasPublicIPv6           *bool          `json:"has_public_ipv6,omitempty"`
 	PublicIPCandidates      []string       `json:"public_ip_candidates,omitempty"` // redacted: IPv4 a.b.x.x / IPv6 h:h:x:x:x:x:x:x
+	ProbeTargets            []string       `json:"probe_targets,omitempty"`         // real public IPs for API-side WAN probing
 	Interfaces              []NetworkIface `json:"interfaces,omitempty"`
 	ResolvConfNameservers   []string       `json:"resolv_conf_nameservers,omitempty"`
 	ResolvConfSearchDomains []string       `json:"resolv_conf_search_domains,omitempty"`

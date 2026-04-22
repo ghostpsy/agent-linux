@@ -14,6 +14,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -28,7 +34,22 @@ const (
 	workloadsDockerCap      = 40
 	workloadsKubeletCap     = 40
 	workloadsWarningCap     = 8
+	// Docker HTTP API version we pin — 1.41 ships with Docker 20.10+, which
+	// covers every supported release. Older daemons will negotiate down.
+	dockerAPIVersion = "1.41"
+	// Kubelet read-only port (bindings default to 0 in modern clusters but
+	// many kubeadm / k3s / operator setups still expose it on localhost).
+	kubeletReadOnlyPort = 10255
+	kubeletDialTimeout  = 1500 * time.Millisecond
+	httpCallTimeout     = 5 * time.Second
 )
+
+// dockerSocketCandidates are the standard Unix-socket paths we probe
+// when `docker` CLI is not on PATH. Ordered from most common to least.
+var dockerSocketCandidates = []string{
+	"/var/run/docker.sock",
+	"/run/docker.sock",
+}
 
 // allowedWorkloadLabelPrefixes is the whitelist of Docker/Kubernetes label
 // namespaces we are willing to ship back. Arbitrary user labels are
@@ -104,6 +125,15 @@ type crictlContainerList struct {
 // CollectContainerWorkloads runs the Docker + kubelet workload inventory.
 // Returns nil when no container engine signal is detected on the host so
 // the component serializes as {} rather than an empty object wrapping.
+//
+// Each engine has a CLI path and an HTTP fallback:
+//
+//   - Docker: `docker` CLI (preferred) → Unix socket at /var/run/docker.sock
+//     or /run/docker.sock (fallback). Hosts that talk to dockerd through a
+//     socket without shipping the CLI still report their workloads.
+//   - Kubernetes: `crictl` CLI (preferred) → kubelet read-only HTTP on port
+//     10255 (fallback). Managed-node layouts that do not install crictl
+//     still report their pods when the read-only port is enabled.
 func CollectContainerWorkloads(ctx context.Context) *payload.ContainerWorkloads {
 	subCtx, cancel := context.WithTimeout(ctx, workloadsOverallTimeout)
 	defer cancel()
@@ -117,16 +147,35 @@ func CollectContainerWorkloads(ctx context.Context) *payload.ContainerWorkloads 
 	if path, err := exec.LookPath("docker"); err == nil && path != "" {
 		ran = true
 		collectDockerWorkloads(subCtx, path, out)
+	} else if sock := findDockerSocket(); sock != "" {
+		ran = true
+		collectDockerWorkloadsHTTP(subCtx, sock, out)
 	}
+
 	if path, err := exec.LookPath("crictl"); err == nil && path != "" {
 		ran = true
 		collectCrictlWorkloads(subCtx, path, out)
+	} else if kubeletReadOnlyReachable(subCtx) {
+		ran = true
+		collectKubeletReadOnlyWorkloads(subCtx, out)
 	}
 
 	if !ran {
 		return nil
 	}
 	return out
+}
+
+// findDockerSocket returns the path to a Unix socket dockerd is listening
+// on, or "" when none is found. Purely filesystem-level — no handshake,
+// so this is safe to call even when dockerd is not running.
+func findDockerSocket() string {
+	for _, p := range dockerSocketCandidates {
+		if st, err := os.Stat(p); err == nil && (st.Mode()&os.ModeSocket) != 0 {
+			return p
+		}
+	}
+	return ""
 }
 
 func collectDockerWorkloads(ctx context.Context, dockerPath string, out *payload.ContainerWorkloads) {
@@ -399,4 +448,225 @@ func appendWarning(out *payload.ContainerWorkloads, msg string) {
 		return
 	}
 	out.CollectorWarnings = append(out.CollectorWarnings, shared.TruncateRunes(msg, 256))
+}
+
+// ─── Docker HTTP fallback (gap #2 — no `docker` CLI on PATH) ───────────
+
+// dockerHTTPClient returns an *http.Client that talks HTTP over the Unix
+// socket at ``socketPath``. The dockerd Engine API speaks HTTP 1.1 over
+// that socket; the standard library handles the rest.
+func dockerHTTPClient(socketPath string) *http.Client {
+	return &http.Client{
+		Timeout: httpCallTimeout,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				d := net.Dialer{Timeout: httpCallTimeout}
+				return d.DialContext(ctx, "unix", socketPath)
+			},
+		},
+	}
+}
+
+// dockerHTTPGet issues GET http://unix/<path> and returns the response
+// body. The hostname is a placeholder — the dialer points at a Unix
+// socket, ignoring hostname entirely.
+func dockerHTTPGet(ctx context.Context, client *http.Client, pathAndQuery string) ([]byte, error) {
+	u := fmt.Sprintf("http://unix/v%s%s", dockerAPIVersion, pathAndQuery)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("docker API %s returned status %d", pathAndQuery, resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// dockerContainersListEntry mirrors the subset of GET /containers/json we need.
+type dockerContainersListEntry struct {
+	ID string `json:"Id"`
+}
+
+func collectDockerWorkloadsHTTP(ctx context.Context, socketPath string, out *payload.ContainerWorkloads) {
+	client := dockerHTTPClient(socketPath)
+	// GET /containers/json — running containers only by default.
+	raw, err := dockerHTTPGet(ctx, client, "/containers/json")
+	if err != nil {
+		appendWarning(out, "docker HTTP /containers/json: "+err.Error())
+		return
+	}
+	var listing []dockerContainersListEntry
+	if err := json.Unmarshal(raw, &listing); err != nil {
+		appendWarning(out, "docker HTTP list JSON parse failed")
+		return
+	}
+	if len(listing) > workloadsDockerCap {
+		listing = listing[:workloadsDockerCap]
+		out.DockerContainersTruncated = true
+	}
+	for _, entry := range listing {
+		if strings.TrimSpace(entry.ID) == "" {
+			continue
+		}
+		// GET /containers/{id}/json — per-container inspect.
+		rawOne, err := dockerHTTPGet(ctx, client, "/containers/"+url.PathEscape(entry.ID)+"/json")
+		if err != nil {
+			appendWarning(out, "docker HTTP inspect "+entry.ID[:12]+": "+err.Error())
+			continue
+		}
+		var one dockerInspectShape
+		if err := json.Unmarshal(rawOne, &one); err != nil {
+			appendWarning(out, "docker HTTP inspect JSON parse failed for "+entry.ID[:12])
+			continue
+		}
+		if !one.State.Running {
+			continue
+		}
+		out.DockerContainers = append(out.DockerContainers, buildDockerWorkload(one))
+	}
+	sort.SliceStable(out.DockerContainers, func(i, j int) bool {
+		return out.DockerContainers[i].Name < out.DockerContainers[j].Name
+	})
+}
+
+// ─── Kubelet read-only HTTP fallback (gap #3 — no `crictl` on PATH) ────
+
+// kubeletReadOnlyReachable does a cheap TCP dial to 127.0.0.1:10255 so we
+// only attempt the HTTP fallback on nodes where the port is actually
+// enabled. Modern clusters disable the read-only port by default, so
+// silently skipping is the right default.
+func kubeletReadOnlyReachable(ctx context.Context) bool {
+	if err := shared.ScanContextError(ctx); err != nil {
+		return false
+	}
+	d := net.Dialer{Timeout: kubeletDialTimeout}
+	conn, err := d.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", kubeletReadOnlyPort))
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+// kubeletPodsListShape mirrors the subset of the kubelet /pods endpoint
+// we need. The endpoint returns a full PodList{items[]} with K8s-native
+// shape (metadata/spec/status).
+type kubeletPodsListShape struct {
+	Items []struct {
+		Metadata struct {
+			Name              string `json:"name"`
+			Namespace         string `json:"namespace"`
+			CreationTimestamp string `json:"creationTimestamp"`
+		} `json:"metadata"`
+		Spec struct {
+			Containers []struct {
+				Name  string `json:"name"`
+				Image string `json:"image"`
+			} `json:"containers"`
+		} `json:"spec"`
+		Status struct {
+			Phase             string `json:"phase"`
+			ContainerStatuses []struct {
+				Name         string `json:"name"`
+				Image        string `json:"image"`
+				ImageID      string `json:"imageID"`
+				RestartCount int    `json:"restartCount"`
+				Ready        bool   `json:"ready"`
+			} `json:"containerStatuses"`
+		} `json:"status"`
+	} `json:"items"`
+}
+
+func collectKubeletReadOnlyWorkloads(ctx context.Context, out *payload.ContainerWorkloads) {
+	client := &http.Client{Timeout: httpCallTimeout}
+	u := fmt.Sprintf("http://127.0.0.1:%d/pods", kubeletReadOnlyPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		appendWarning(out, "kubelet GET /pods: "+err.Error())
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		appendWarning(out, "kubelet GET /pods: "+err.Error())
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		appendWarning(out, fmt.Sprintf("kubelet GET /pods returned status %d", resp.StatusCode))
+		return
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		appendWarning(out, "kubelet GET /pods body read: "+err.Error())
+		return
+	}
+	var list kubeletPodsListShape
+	if err := json.Unmarshal(raw, &list); err != nil {
+		appendWarning(out, "kubelet /pods JSON parse failed")
+		return
+	}
+	for _, p := range list.Items {
+		if len(out.KubeletPods) >= workloadsKubeletCap {
+			out.KubeletPodsTruncated = true
+			break
+		}
+		containers := make([]payload.KubeletContainerWorkload, 0, len(p.Spec.Containers))
+		// status.containerStatuses is the source of truth for restart /
+		// image-digest info. When it is missing (pod still pending) we
+		// fall back to spec.containers for basic identity.
+		statusByName := map[string]int{}
+		for i, cs := range p.Status.ContainerStatuses {
+			statusByName[cs.Name] = i
+		}
+		for _, c := range p.Spec.Containers {
+			imageRef := c.Image
+			restart := 0
+			state := strings.ToUpper(p.Status.Phase)
+			// Prefer status.image / imageID when present: the spec image is
+			// often a tag reference ("nginx:1.27") while status carries the
+			// resolved digest ("nginx@sha256:…").
+			if i, ok := statusByName[c.Name]; ok {
+				cs := p.Status.ContainerStatuses[i]
+				if strings.TrimSpace(cs.Image) != "" {
+					imageRef = cs.Image
+				}
+				restart = cs.RestartCount
+				if cs.Ready {
+					state = "RUNNING"
+				}
+				if strings.TrimSpace(cs.ImageID) != "" && !strings.Contains(imageRef, "@") {
+					imageRef = imageRef + strings.TrimPrefix(cs.ImageID, "docker-pullable://")
+				}
+			}
+			tag, digest := splitImageRef(imageRef)
+			containers = append(containers, payload.KubeletContainerWorkload{
+				Name:              shared.TruncateRunes(c.Name, 128),
+				Image:             shared.TruncateRunes(imageRef, 512),
+				ImageTag:          shared.TruncateRunes(tag, 128),
+				ImageDigest:       shared.TruncateRunes(digest, 128),
+				ImageTagLatest:    isLatestTag(tag),
+				ImageDigestPinned: digest != "",
+				RestartCount:      restart,
+				State:             shared.TruncateRunes(state, 32),
+			})
+		}
+		out.KubeletPods = append(out.KubeletPods, payload.KubeletPodWorkload{
+			Name:       shared.TruncateRunes(p.Metadata.Name, 256),
+			Namespace:  shared.TruncateRunes(p.Metadata.Namespace, 128),
+			Phase:      shared.TruncateRunes(strings.ToUpper(p.Status.Phase), 32),
+			CreatedAt:  shared.TruncateRunes(p.Metadata.CreationTimestamp, 64),
+			Containers: containers,
+		})
+	}
+	sort.SliceStable(out.KubeletPods, func(i, j int) bool {
+		if out.KubeletPods[i].Namespace != out.KubeletPods[j].Namespace {
+			return out.KubeletPods[i].Namespace < out.KubeletPods[j].Namespace
+		}
+		return out.KubeletPods[i].Name < out.KubeletPods[j].Name
+	})
 }

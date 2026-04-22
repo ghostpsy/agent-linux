@@ -77,9 +77,11 @@ type dockerInspectShape struct {
 	Name            string `json:"Name"`
 	RestartCount    int    `json:"RestartCount"`
 	State           struct {
-		Status    string `json:"Status"`
-		Running   bool   `json:"Running"`
-		StartedAt string `json:"StartedAt"`
+		Status     string `json:"Status"`
+		Running    bool   `json:"Running"`
+		StartedAt  string `json:"StartedAt"`
+		ExitCode   int    `json:"ExitCode"`
+		FinishedAt string `json:"FinishedAt"`
 	} `json:"State"`
 	Image  string `json:"Image"`
 	Config struct {
@@ -228,7 +230,7 @@ func collectDockerWorkloads(ctx context.Context, dockerPath string, out *payload
 	// Collect unique image refs to batch-inspect for created-at (P2 #8).
 	uniqueImages := make(map[string]struct{})
 	for _, c := range list {
-		if !c.State.Running {
+		if !includeDockerContainer(c) {
 			continue
 		}
 		if ref := strings.TrimSpace(c.Config.Image); ref != "" {
@@ -237,7 +239,7 @@ func collectDockerWorkloads(ctx context.Context, dockerPath string, out *payload
 	}
 	imageMeta := inspectUniqueImagesCLI(ctx, dockerPath, uniqueImages)
 	for _, c := range list {
-		if !c.State.Running {
+		if !includeDockerContainer(c) {
 			continue
 		}
 		w := buildDockerWorkload(c)
@@ -247,6 +249,28 @@ func collectDockerWorkloads(ctx context.Context, dockerPath string, out *payload
 	sort.SliceStable(out.DockerContainers, func(i, j int) bool {
 		return out.DockerContainers[i].Name < out.DockerContainers[j].Name
 	})
+}
+
+// includeDockerContainer decides whether a docker-inspect entry ships.
+// Running: always. Anything that did NOT stop cleanly: include —
+// operators need to see it. Cleanly-stopped containers (exited with
+// status 0) are skipped because they represent intended one-shot runs.
+// Deliberately-paused and being-removed are also skipped.
+func includeDockerContainer(c dockerInspectShape) bool {
+	if c.State.Running {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(c.State.Status)) {
+	case "restarting", "dead":
+		// Crashloop in progress or runtime could not clean up.
+		return true
+	case "exited":
+		// Stopped — include only when it was NOT a clean exit.
+		return c.State.ExitCode != 0
+	default:
+		// "created" (never started), "paused", "removing" → skip.
+		return false
+	}
 }
 
 // inspectUniqueImagesCLI dispatches one `docker image inspect` call per
@@ -342,7 +366,11 @@ func looksLikeDistroless(imageRef string, labels map[string]string) bool {
 }
 
 func dockerRunningIDsForWorkloads(ctx context.Context, dockerPath string) (ids []string, truncated bool, err error) {
-	raw, err := runCmd(ctx, dockerPath, "ps", "-q", "--no-trunc")
+	// `-qa` lists ALL containers (including exited / dead / restarting).
+	// The per-container filter in includeDockerContainer() then drops the
+	// ones that stopped cleanly — so the report covers workloads that
+	// crashed as well as workloads that are still running.
+	raw, err := runCmd(ctx, dockerPath, "ps", "-qa", "--no-trunc")
 	if err != nil {
 		return nil, false, err
 	}
@@ -819,8 +847,10 @@ type dockerContainersListEntry struct {
 
 func collectDockerWorkloadsHTTP(ctx context.Context, socketPath string, out *payload.ContainerWorkloads) {
 	client := dockerHTTPClient(socketPath)
-	// GET /containers/json — running containers only by default.
-	raw, err := dockerHTTPGet(ctx, client, "/containers/json")
+	// GET /containers/json?all=true — includes stopped / dead / restarting
+	// so we can report workloads that crashed. The per-container filter
+	// includeDockerContainer() drops the ones that exited cleanly.
+	raw, err := dockerHTTPGet(ctx, client, "/containers/json?all=true")
 	if err != nil {
 		appendWarning(out, "docker HTTP /containers/json: "+err.Error())
 		return
@@ -850,7 +880,7 @@ func collectDockerWorkloadsHTTP(ctx context.Context, socketPath string, out *pay
 			appendWarning(out, "docker HTTP inspect JSON parse failed for "+entry.ID[:12])
 			continue
 		}
-		if !one.State.Running {
+		if !includeDockerContainer(one) {
 			continue
 		}
 		inspected = append(inspected, one)

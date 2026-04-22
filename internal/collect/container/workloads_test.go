@@ -658,6 +658,124 @@ func TestLooksLikeDistroless(t *testing.T) {
 	}
 }
 
+// ─── Non-cleanly-stopped containers (ticket follow-up) ─────────────────
+
+func TestIncludeDockerContainer_FiltersByState(t *testing.T) {
+	mk := func(status string, running bool, exit int) dockerInspectShape {
+		var s dockerInspectShape
+		s.State.Status = status
+		s.State.Running = running
+		s.State.ExitCode = exit
+		return s
+	}
+	cases := []struct {
+		name string
+		in   dockerInspectShape
+		want bool
+	}{
+		{"running is included", mk("running", true, 0), true},
+		{"restarting (crashloop in progress) included", mk("restarting", false, 137), true},
+		{"dead (runtime cannot clean up) included", mk("dead", false, 0), true},
+		{"exited with non-zero status included", mk("exited", false, 1), true},
+		{"exited cleanly is skipped", mk("exited", false, 0), false},
+		{"paused is skipped (deliberate)", mk("paused", false, 0), false},
+		{"created but never started is skipped", mk("created", false, 0), false},
+		{"removing in progress is skipped", mk("removing", false, 0), false},
+	}
+	for _, tc := range cases {
+		if got := includeDockerContainer(tc.in); got != tc.want {
+			t.Errorf("%s: includeDockerContainer = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestCollect_DockerOnly_IncludesCrashedContainer(t *testing.T) {
+	dir := t.TempDir()
+	// Stub emits THREE containers: one running (nginx), one that
+	// exited with code 137 (OOM-killed — must appear), and one that
+	// exited cleanly (must NOT appear).
+	script := `#!/bin/sh
+case "$1" in
+  ps)
+    printf '1111111111111111111111111111111111111111111111111111111111111111\n'
+    printf '2222222222222222222222222222222222222222222222222222222222222222\n'
+    printf '3333333333333333333333333333333333333333333333333333333333333333\n'
+    ;;
+  inspect)
+    cat <<'EOF'
+[
+  {
+    "Id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "Name": "/running-web",
+    "RestartCount": 0,
+    "State": {"Status": "running", "Running": true, "StartedAt": "2026-04-01T00:00:00Z", "ExitCode": 0},
+    "Image": "sha256:deadbeef",
+    "Config": {"Image": "nginx:1-alpine", "Labels": {}},
+    "HostConfig": {}
+  },
+  {
+    "Id": "2222222222222222222222222222222222222222222222222222222222222222",
+    "Name": "/oom-killed",
+    "RestartCount": 5,
+    "State": {"Status": "exited", "Running": false, "StartedAt": "2026-04-01T00:00:00Z", "ExitCode": 137, "FinishedAt": "2026-04-22T00:00:00Z"},
+    "Image": "sha256:cafebabe",
+    "Config": {"Image": "worker:1.0", "Labels": {}},
+    "HostConfig": {}
+  },
+  {
+    "Id": "3333333333333333333333333333333333333333333333333333333333333333",
+    "Name": "/cleanly-stopped",
+    "RestartCount": 0,
+    "State": {"Status": "exited", "Running": false, "StartedAt": "2026-04-01T00:00:00Z", "ExitCode": 0, "FinishedAt": "2026-04-22T00:00:00Z"},
+    "Image": "sha256:deadbeef",
+    "Config": {"Image": "migrate:1.0", "Labels": {}},
+    "HostConfig": {}
+  }
+]
+EOF
+    ;;
+  image)
+    cat <<'EOF'
+[]
+EOF
+    ;;
+  *) exit 1 ;;
+esac
+`
+	writeStubBin(t, dir, "docker", script)
+	defer prependPATH(t, dir)()
+
+	out := CollectContainerWorkloads(context.Background())
+	if out == nil {
+		t.Fatal("expected non-nil workloads")
+	}
+	// Running + OOM-killed → 2 entries. Cleanly-stopped migrate → excluded.
+	if len(out.DockerContainers) != 2 {
+		t.Fatalf("expected 2 containers (running + crashed), got %d: %+v",
+			len(out.DockerContainers), out.DockerContainers)
+	}
+	names := make([]string, 0, len(out.DockerContainers))
+	for _, c := range out.DockerContainers {
+		names = append(names, c.Name)
+	}
+	hasRunning := false
+	hasCrashed := false
+	for _, n := range names {
+		if n == "running-web" {
+			hasRunning = true
+		}
+		if n == "oom-killed" {
+			hasCrashed = true
+		}
+		if n == "cleanly-stopped" {
+			t.Errorf("cleanly-stopped container must NOT appear: %v", names)
+		}
+	}
+	if !hasRunning || !hasCrashed {
+		t.Fatalf("expected both running-web and oom-killed in: %v", names)
+	}
+}
+
 func TestDaysSinceRFC3339(t *testing.T) {
 	// Empty or unparseable → -1.
 	if got := daysSinceRFC3339(""); got != -1 {

@@ -90,7 +90,73 @@ type SoftwarePackagesAndApplicationsComponent struct {
 }
 
 type ContainerAndCloudNativeLinuxComponent struct {
-	HostRuntimes *ContainerNativeHostRuntimes `json:"host_runtimes,omitempty"`
+	HostRuntimes      *ContainerNativeHostRuntimes `json:"host_runtimes,omitempty"`
+	ContainerWorkloads *ContainerWorkloads         `json:"container_workloads,omitempty"`
+}
+
+// ContainerWorkloads is a bounded inventory of running Docker containers and
+// Kubernetes pods on the host. Distinct from DockerPosture (security posture)
+// and ContainerNativeHostRuntimes (daemon/kubelet fingerprints): this block
+// surfaces what workloads are actually running so the report can talk about
+// them as business assets (like apps in #134).
+type ContainerWorkloads struct {
+	// DockerContainers is the list of running Docker containers, capped.
+	DockerContainers []DockerContainerWorkload `json:"docker_containers"`
+	// DockerContainersTruncated is true when the host had more running
+	// containers than the collector's cap.
+	DockerContainersTruncated bool `json:"docker_containers_truncated"`
+	// KubeletPods is the list of pods observed on this node via the
+	// kubelet read-only port or crictl, capped. Empty when neither signal
+	// is available.
+	KubeletPods []KubeletPodWorkload `json:"kubelet_pods"`
+	// KubeletPodsTruncated is true when the node had more pods than the cap.
+	KubeletPodsTruncated bool `json:"kubelet_pods_truncated"`
+	// CollectorWarnings surfaces transient issues (CLI missing, parse errors).
+	CollectorWarnings []string `json:"collector_warnings,omitempty"`
+}
+
+// DockerContainerWorkload describes one running Docker container, workload-first.
+// No env vars, no command-line flags (may carry secrets) — only image identity,
+// runtime state, and whitelisted labels.
+type DockerContainerWorkload struct {
+	Name           string   `json:"name"`
+	ContainerID    string   `json:"container_id"`
+	Image          string   `json:"image"`
+	ImageTag       string   `json:"image_tag,omitempty"`
+	ImageDigest    string   `json:"image_digest,omitempty"`
+	ImageTagLatest bool     `json:"image_tag_is_latest"`
+	ImageDigestPinned bool  `json:"image_digest_pinned"`
+	State          string   `json:"state"`
+	StartedAt      string   `json:"started_at,omitempty"`
+	RestartCount   int      `json:"restart_count"`
+	User           string   `json:"user,omitempty"`
+	EntrypointHint string   `json:"entrypoint_hint,omitempty"`
+	WorkloadHint   string   `json:"workload_hint,omitempty"`
+	NetworkMode    string   `json:"network_mode,omitempty"`
+	// WorkloadLabels carries only allow-listed compose/kubernetes/OCI labels
+	// that identify the workload to the operator. Never arbitrary user labels.
+	WorkloadLabels map[string]string `json:"workload_labels,omitempty"`
+}
+
+// KubeletPodWorkload describes one pod observed via kubelet / crictl on this node.
+type KubeletPodWorkload struct {
+	Name        string                        `json:"name"`
+	Namespace   string                        `json:"namespace"`
+	Phase       string                        `json:"phase,omitempty"`
+	CreatedAt   string                        `json:"created_at,omitempty"`
+	Containers  []KubeletContainerWorkload    `json:"containers"`
+}
+
+// KubeletContainerWorkload is a single container inside a pod.
+type KubeletContainerWorkload struct {
+	Name              string `json:"name"`
+	Image             string `json:"image"`
+	ImageTag          string `json:"image_tag,omitempty"`
+	ImageDigest       string `json:"image_digest,omitempty"`
+	ImageTagLatest    bool   `json:"image_tag_is_latest"`
+	ImageDigestPinned bool   `json:"image_digest_pinned"`
+	RestartCount      int    `json:"restart_count"`
+	State             string `json:"state,omitempty"`
 }
 
 // ContainerNativeHostRuntimes is §6 host_runtimes: Docker daemon and kubelet hints only (no language runtime items).

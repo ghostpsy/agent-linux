@@ -5,6 +5,7 @@ package collect
 import (
 	"context"
 
+	"github.com/ghostpsy/agent-linux/internal/collect/container"
 	"github.com/ghostpsy/agent-linux/internal/collect/core"
 	"github.com/ghostpsy/agent-linux/internal/collect/crypto_time"
 	"github.com/ghostpsy/agent-linux/internal/collect/filesystem"
@@ -90,6 +91,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 	var nfsx *payload.NfsExportsFingerprint
 	var hproc *payload.HostProcess
 	var hr *payload.HostRuntimes
+	var containerWorkloads *payload.ContainerWorkloads
 	var hostTime *payload.HostTime
 	var cryptoComp payload.CryptographyComponent
 	var listeners []payload.Listener
@@ -296,6 +298,10 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			dockerPosture = software.CollectDockerPosture(ctx)
 			return dockerPostureNotifyCount(dockerPosture), dockerPostureError(dockerPosture)
 		}},
+		{"collect_container_workloads", func() (int, string) {
+			containerWorkloads = container.CollectContainerWorkloads(ctx)
+			return containerWorkloadsNotifyCount(containerWorkloads), ""
+		}},
 		{"collect_nginx_posture", func() (int, string) {
 			nginxPosture = nginx.CollectNginxPosture(ctx, servicesBlock.Items, listeners)
 			return nginxPostureNotifyCount(nginxPosture), nginxPostureError(nginxPosture)
@@ -377,7 +383,8 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			DockerPosture:            dockerPosture,
 		},
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
-			HostRuntimes: containerCloudHostRuntimes(hr),
+			HostRuntimes:      containerCloudHostRuntimes(hr),
+			ContainerWorkloads: containerWorkloads,
 		},
 		LoggingAndSystemAuditing:            logAudit,
 		Cryptography:                        cryptoComp,

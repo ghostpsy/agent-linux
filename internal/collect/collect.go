@@ -436,6 +436,16 @@ func containerCloudHostRuntimes(hr *payload.HostRuntimes) *payload.ContainerNati
 	}
 }
 
+// containerWorkloadsNotifyCount totals the Docker + kubelet workload rows
+// for the action notify log, so the scan pipeline can surface "N workloads"
+// alongside other inventory counts.
+func containerWorkloadsNotifyCount(w *payload.ContainerWorkloads) int {
+	if w == nil {
+		return 0
+	}
+	return len(w.DockerContainers) + len(w.KubeletPods)
+}
+
 func loggingAuditNotifyCount(c payload.LoggingAndSystemAuditingComponent) int {
 	n := 0
 	if c.SyslogForwarding != nil {

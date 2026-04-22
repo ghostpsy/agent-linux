@@ -30,11 +30,27 @@ func writeStubBin(t *testing.T, dir, name, script string) string {
 }
 
 // prependPATH inserts dir at the front of PATH so exec.LookPath picks
-// up our stub binaries before the real ones.
+// up our stub binaries before the real ones. Use this when the test
+// runs stub shell scripts that need coreutils (cat, printf) to stay on
+// PATH. Use isolatePATH when the test wants exec.LookPath to miss
+// real docker/crictl entirely.
 func prependPATH(t *testing.T, dir string) func() {
 	t.Helper()
 	orig := os.Getenv("PATH")
 	if err := os.Setenv("PATH", dir+":"+orig); err != nil {
+		t.Fatalf("setenv PATH: %v", err)
+	}
+	return func() { _ = os.Setenv("PATH", orig) }
+}
+
+// isolatePATH replaces PATH with just dir so exec.LookPath never
+// finds real docker/crictl on the host. Tests that rely on "no engines
+// present" must use this; prependPATH would still fall through to the
+// rest of PATH on CI runners that ship docker and fail non-obviously.
+func isolatePATH(t *testing.T, dir string) func() {
+	t.Helper()
+	orig := os.Getenv("PATH")
+	if err := os.Setenv("PATH", dir); err != nil {
 		t.Fatalf("setenv PATH: %v", err)
 	}
 	return func() { _ = os.Setenv("PATH", orig) }
@@ -118,7 +134,14 @@ exit 1
 func TestCollect_NeitherEngineReturnsNil(t *testing.T) {
 	dir := t.TempDir()
 	// Empty PATH so neither docker nor crictl is found.
-	defer prependPATH(t, dir)()
+	defer isolatePATH(t, dir)()
+	// Also neutralize the socket-fallback candidates. CI runners
+	// (GitHub Actions ubuntu-latest) ship a real /var/run/docker.sock
+	// — without this guard the HTTP fallback kicks in and the test
+	// gets a non-nil (empty) struct instead of nil.
+	orig := dockerSocketCandidates
+	defer func() { dockerSocketCandidates = orig }()
+	dockerSocketCandidates = nil
 
 	if got := CollectContainerWorkloads(context.Background()); got != nil {
 		t.Fatalf("expected nil when neither docker nor crictl is present, got: %+v", got)
@@ -365,7 +388,7 @@ func newDockerUnixStubServer(t *testing.T) (string, func()) {
 func TestCollect_DockerHTTPSocketFallback(t *testing.T) {
 	// No `docker` CLI in PATH: empty override.
 	dir := t.TempDir()
-	defer prependPATH(t, dir)()
+	defer isolatePATH(t, dir)()
 
 	sock, stop := newDockerUnixStubServer(t)
 	defer stop()

@@ -117,7 +117,7 @@ type ContainerWorkloads struct {
 
 // DockerContainerWorkload describes one running Docker container, workload-first.
 // No env vars, no command-line flags (may carry secrets) — only image identity,
-// runtime state, and whitelisted labels.
+// runtime state, whitelisted labels, and workload-risk flags.
 type DockerContainerWorkload struct {
 	Name           string   `json:"name"`
 	ContainerID    string   `json:"container_id"`
@@ -136,6 +136,65 @@ type DockerContainerWorkload struct {
 	// WorkloadLabels carries only allow-listed compose/kubernetes/OCI labels
 	// that identify the workload to the operator. Never arbitrary user labels.
 	WorkloadLabels map[string]string `json:"workload_labels,omitempty"`
+
+	// ── P1 security insights (present in docker inspect, no extra call) ──
+
+	// SecretEnvCount is the count of environment variables whose NAME matches
+	// a secret-like pattern (PASSWORD/SECRET/TOKEN/API_KEY). Values and
+	// full key names are NEVER shipped; this is a risk signal only.
+	SecretEnvCount int  `json:"secret_env_count"`
+	HasSecretEnvRisk bool `json:"has_secret_env_risk"`
+
+	// IpcModeHost is true when `--ipc=host` was used (cross-container attack
+	// surface via /dev/shm).
+	IpcModeHost bool `json:"ipc_mode_host"`
+	// UtsModeHost is true when `--uts=host` (shares hostname namespace, can
+	// confuse logging / audit).
+	UtsModeHost bool `json:"uts_mode_host"`
+	// NoNewPrivileges is true when ``no-new-privileges`` is present in the
+	// container's SecurityOpt list. Default false when the flag is absent —
+	// processes inside can escalate via setuid binaries.
+	NoNewPrivileges bool `json:"no_new_privileges"`
+	// DevicesExposed are host device paths bind-mounted into the container
+	// (e.g. `/dev/sda`, `/dev/kvm`). Capped for bounded output.
+	DevicesExposed []string `json:"devices_exposed,omitempty"`
+	// TmpfsMounts are target paths backed by tmpfs. A writable tmpfs can
+	// bypass a read-only rootfs at the target path.
+	TmpfsMounts []string `json:"tmpfs_mounts,omitempty"`
+	// LogDriverNone is true when this container's log driver is ``none``.
+	// Daemon default may be overridden per container; if none, no forensics.
+	LogDriverNone bool `json:"log_driver_none"`
+
+	// ── P2 insights (extra data, de-dupable) ────────────────────────────
+
+	// ImageCreatedAt is the RFC3339 timestamp the image was built. Populated
+	// from ``docker image inspect`` (or the HTTP equivalent) once per unique
+	// image id, then repeated on every container that runs that image.
+	ImageCreatedAt string `json:"image_created_at,omitempty"`
+	// ImageAgeDays is the integer number of days between ImageCreatedAt and
+	// the agent scan. -1 when unknown.
+	ImageAgeDays int `json:"image_age_days,omitempty"`
+	// ImageRegistry is the parsed registry hostname of the image reference
+	// (``docker.io`` for bare / library images, else the explicit host).
+	ImageRegistry string `json:"image_registry,omitempty"`
+	// ImageIsPublicRegistry is true when the image pulls from one of the
+	// well-known public registries (Docker Hub, ghcr.io, quay.io). Signals
+	// supply-chain context, not an automatic risk.
+	ImageIsPublicRegistry bool `json:"image_is_public_registry"`
+
+	// ── P3 insights (derived heuristics) ─────────────────────────────────
+
+	// UptimeDays is the integer number of days since StartedAt. -1 when
+	// unknown. Long-running containers drift from their image.
+	UptimeDays int `json:"uptime_days,omitempty"`
+	// SuspectedManualCommit is true when the image reference looks like a
+	// bare digest with no repository/tag — a signal the image was built via
+	// ``docker commit`` rather than a reproducible build pipeline.
+	SuspectedManualCommit bool `json:"suspected_manual_commit"`
+	// SuspectedDistroless is true when the image ref or a known OCI label
+	// hints at a distroless / scratch base. Positive signal — smaller
+	// attack surface.
+	SuspectedDistroless bool `json:"suspected_distroless"`
 }
 
 // KubeletPodWorkload describes one pod observed via kubelet / crictl on this node.

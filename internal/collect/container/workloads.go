@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -86,11 +87,37 @@ type dockerInspectShape struct {
 		User       string            `json:"User"`
 		Entrypoint json.RawMessage   `json:"Entrypoint"`
 		Cmd        json.RawMessage   `json:"Cmd"`
+		Env        []string          `json:"Env"`
 		Labels     map[string]string `json:"Labels"`
 	} `json:"Config"`
 	HostConfig struct {
-		NetworkMode string `json:"NetworkMode"`
+		NetworkMode string            `json:"NetworkMode"`
+		IpcMode     string            `json:"IpcMode"`
+		UTSMode     string            `json:"UTSMode"`
+		SecurityOpt []string          `json:"SecurityOpt"`
+		Devices     []dockerDeviceRef `json:"Devices"`
+		Tmpfs       map[string]string `json:"Tmpfs"`
+		LogConfig   struct {
+			Type string `json:"Type"`
+		} `json:"LogConfig"`
 	} `json:"HostConfig"`
+}
+
+// dockerDeviceRef is one entry in HostConfig.Devices.
+type dockerDeviceRef struct {
+	PathOnHost        string `json:"PathOnHost"`
+	PathInContainer   string `json:"PathInContainer"`
+	CgroupPermissions string `json:"CgroupPermissions"`
+}
+
+// dockerImageInspectShape is the subset of `docker image inspect` we need
+// for P2 #8 (image age). One call per unique image id, cached.
+type dockerImageInspectShape struct {
+	ID      string `json:"Id"`
+	Created string `json:"Created"`
+	Config  struct {
+		Labels map[string]string `json:"Labels"`
+	} `json:"Config"`
 }
 
 // crictlPod is the shape we read from `crictl pods --output json`.
@@ -198,15 +225,120 @@ func collectDockerWorkloads(ctx context.Context, dockerPath string, out *payload
 		appendWarning(out, "docker inspect JSON parse failed")
 		return
 	}
+	// Collect unique image refs to batch-inspect for created-at (P2 #8).
+	uniqueImages := make(map[string]struct{})
 	for _, c := range list {
 		if !c.State.Running {
 			continue
 		}
-		out.DockerContainers = append(out.DockerContainers, buildDockerWorkload(c))
+		if ref := strings.TrimSpace(c.Config.Image); ref != "" {
+			uniqueImages[ref] = struct{}{}
+		}
+	}
+	imageMeta := inspectUniqueImagesCLI(ctx, dockerPath, uniqueImages)
+	for _, c := range list {
+		if !c.State.Running {
+			continue
+		}
+		w := buildDockerWorkload(c)
+		applyImageMetadata(&w, imageMeta)
+		out.DockerContainers = append(out.DockerContainers, w)
 	}
 	sort.SliceStable(out.DockerContainers, func(i, j int) bool {
 		return out.DockerContainers[i].Name < out.DockerContainers[j].Name
 	})
+}
+
+// inspectUniqueImagesCLI dispatches one `docker image inspect` call per
+// unique image reference, deduplicating across containers that share an
+// image. Returns a map keyed by image reference → parsed metadata.
+// Failures for a single image do not abort the batch.
+func inspectUniqueImagesCLI(ctx context.Context, dockerPath string, refs map[string]struct{}) map[string]dockerImageInspectShape {
+	out := make(map[string]dockerImageInspectShape, len(refs))
+	if len(refs) == 0 {
+		return out
+	}
+	args := []string{"image", "inspect"}
+	ordered := make([]string, 0, len(refs))
+	for r := range refs {
+		ordered = append(ordered, r)
+	}
+	sort.Strings(ordered)
+	raw, execErr := runCmd(ctx, dockerPath, append(args, ordered...)...)
+	// Best effort — an image may have been removed between ps and inspect.
+	// Even on partial failure docker may emit partial JSON on stdout, so we
+	// still attempt to unmarshal whatever came back.
+	_ = execErr
+	var list []dockerImageInspectShape
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return out
+	}
+	for i, meta := range list {
+		if i < len(ordered) {
+			out[ordered[i]] = meta
+		}
+	}
+	return out
+}
+
+// applyImageMetadata fills the image-level fields (ImageCreatedAt,
+// ImageAgeDays, SuspectedDistroless) on a workload entry using a
+// pre-fetched per-image metadata map. Also computes UptimeDays from
+// StartedAt. Invoked after buildDockerWorkload so the container-level
+// parsing stays self-contained.
+func applyImageMetadata(w *payload.DockerContainerWorkload, meta map[string]dockerImageInspectShape) {
+	w.UptimeDays = daysSinceRFC3339(w.StartedAt)
+	w.ImageAgeDays = -1
+	// Key the lookup by the Config.Image reference that we stored in w.Image.
+	if m, ok := meta[w.Image]; ok {
+		if strings.TrimSpace(m.Created) != "" {
+			w.ImageCreatedAt = shared.TruncateRunes(m.Created, 64)
+			w.ImageAgeDays = daysSinceRFC3339(m.Created)
+		}
+		if looksLikeDistroless(w.Image, m.Config.Labels) {
+			w.SuspectedDistroless = true
+		}
+	}
+}
+
+// daysSinceRFC3339 returns the integer number of days between ts and
+// now. Returns -1 when ts is empty or unparseable.
+func daysSinceRFC3339(ts string) int {
+	s := strings.TrimSpace(ts)
+	if s == "" {
+		return -1
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		if t2, err2 := time.Parse(time.RFC3339Nano, s); err2 == nil {
+			t = t2
+		} else {
+			return -1
+		}
+	}
+	d := time.Since(t).Hours() / 24
+	if d < 0 {
+		return 0
+	}
+	return int(d)
+}
+
+// looksLikeDistroless is a positive-signal heuristic: smaller attack
+// surface. Checks common distroless / scratch naming hints on the image
+// reference and the OCI label set.
+func looksLikeDistroless(imageRef string, labels map[string]string) bool {
+	ref := strings.ToLower(imageRef)
+	if strings.Contains(ref, "distroless") || strings.HasSuffix(ref, ":scratch") {
+		return true
+	}
+	// Some buildpacks set org.opencontainers.image.base.name to a distroless
+	// or scratch reference.
+	if base := strings.ToLower(strings.TrimSpace(labels["org.opencontainers.image.base.name"])); base != "" {
+		if strings.Contains(base, "distroless") || strings.HasSuffix(base, ":scratch") {
+			return true
+		}
+	}
+	return false
 }
 
 func dockerRunningIDsForWorkloads(ctx context.Context, dockerPath string) (ids []string, truncated bool, err error) {
@@ -239,6 +371,8 @@ func buildDockerWorkload(c dockerInspectShape) payload.DockerContainerWorkload {
 		imageRef = strings.TrimSpace(c.Image)
 	}
 	tag, digest := splitImageRef(imageRef)
+	registry, publicRegistry := classifyImageRegistry(imageRef)
+	secretCount := countSecretLikeEnvKeys(c.Config.Env)
 	w := payload.DockerContainerWorkload{
 		Name:              shared.TruncateRunes(name, 256),
 		ContainerID:       shared.TruncateRunes(idShort, 64),
@@ -253,12 +387,203 @@ func buildDockerWorkload(c dockerInspectShape) payload.DockerContainerWorkload {
 		User:              shared.TruncateRunes(strings.TrimSpace(c.Config.User), 64),
 		EntrypointHint:    entrypointHint(c.Config.Entrypoint, c.Config.Cmd),
 		NetworkMode:       shared.TruncateRunes(strings.TrimSpace(c.HostConfig.NetworkMode), 64),
+		// ── P1 security flags ────────────────────────────────────────
+		SecretEnvCount:   secretCount,
+		HasSecretEnvRisk: secretCount > 0,
+		IpcModeHost:      strings.EqualFold(strings.TrimSpace(c.HostConfig.IpcMode), "host"),
+		UtsModeHost:      strings.EqualFold(strings.TrimSpace(c.HostConfig.UTSMode), "host"),
+		NoNewPrivileges:  hasNoNewPrivileges(c.HostConfig.SecurityOpt),
+		DevicesExposed:   devicePathsSorted(c.HostConfig.Devices),
+		TmpfsMounts:      tmpfsTargetsSorted(c.HostConfig.Tmpfs),
+		LogDriverNone:    strings.EqualFold(strings.TrimSpace(c.HostConfig.LogConfig.Type), "none"),
+		// ── P2 registry classification ───────────────────────────────
+		ImageRegistry:         registry,
+		ImageIsPublicRegistry: publicRegistry,
+		// ── P3 manual-commit heuristic ───────────────────────────────
+		SuspectedManualCommit: looksLikeManualCommit(imageRef, c.Config.Image),
 	}
 	if labels := filterWorkloadLabels(c.Config.Labels); len(labels) > 0 {
 		w.WorkloadLabels = labels
 	}
 	w.WorkloadHint = deriveWorkloadHint(imageRef, w.WorkloadLabels)
 	return w
+}
+
+// ── P1 security-flag helpers ─────────────────────────────────────────
+
+// secretEnvRegex is deliberately conservative — we flag by name only,
+// never by value, and never expose the matched key. Matches common
+// secret-carrying env names across stacks.
+var secretEnvRegex = regexp.MustCompile(`(?i)(PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|PASSPHRASE|CREDENTIAL)`)
+
+// countSecretLikeEnvKeys counts env vars whose NAME matches
+// secretEnvRegex. Values are never inspected; key names are never
+// returned. The caller gets a risk signal only.
+func countSecretLikeEnvKeys(env []string) int {
+	n := 0
+	for _, entry := range env {
+		// docker inspect returns env entries as "KEY=value".
+		eq := strings.IndexByte(entry, '=')
+		key := entry
+		if eq >= 0 {
+			key = entry[:eq]
+		}
+		if secretEnvRegex.MatchString(key) {
+			n++
+		}
+	}
+	return n
+}
+
+// hasNoNewPrivileges returns true when ``no-new-privileges`` appears in
+// the container's SecurityOpt list. Default Docker behaviour is to NOT
+// set this, so absence = risk.
+func hasNoNewPrivileges(opts []string) bool {
+	for _, o := range opts {
+		lo := strings.ToLower(strings.TrimSpace(o))
+		if lo == "no-new-privileges" || strings.HasPrefix(lo, "no-new-privileges:") {
+			// Docker normalizes either form to "on" when enabled.
+			if strings.HasSuffix(lo, ":false") {
+				return false
+			}
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	maxDevicesReported = 16
+	maxTmpfsReported   = 16
+)
+
+// devicePathsSorted returns up to maxDevicesReported unique host device
+// paths, alphabetically sorted for stable output.
+func devicePathsSorted(devs []dockerDeviceRef) []string {
+	if len(devs) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(devs))
+	out := make([]string, 0, len(devs))
+	for _, d := range devs {
+		p := strings.TrimSpace(d.PathOnHost)
+		if p == "" {
+			continue
+		}
+		if _, dup := seen[p]; dup {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, shared.TruncateRunes(p, 256))
+		if len(out) >= maxDevicesReported {
+			break
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// tmpfsTargetsSorted extracts the target (in-container) paths from the
+// HostConfig.Tmpfs map — keys are the target paths.
+func tmpfsTargetsSorted(tmpfs map[string]string) []string {
+	if len(tmpfs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(tmpfs))
+	for target := range tmpfs {
+		t := strings.TrimSpace(target)
+		if t == "" {
+			continue
+		}
+		out = append(out, shared.TruncateRunes(t, 256))
+		if len(out) >= maxTmpfsReported {
+			break
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ── P2 registry classification ───────────────────────────────────────
+
+// knownPublicRegistries lists registries we consider "public" for the
+// purpose of supply-chain context. An image from anywhere else is
+// treated as private (self-hosted or vendor-managed).
+var knownPublicRegistries = map[string]struct{}{
+	"docker.io":                          {},
+	"index.docker.io":                    {},
+	"registry-1.docker.io":               {},
+	"ghcr.io":                            {},
+	"quay.io":                            {},
+	"mcr.microsoft.com":                  {},
+	"public.ecr.aws":                     {},
+	"registry.gitlab.com":                {},
+	"gcr.io":                             {},
+	"k8s.gcr.io":                         {},
+	"registry.k8s.io":                    {},
+}
+
+// classifyImageRegistry parses the registry hostname from a container
+// image reference. Canonical Docker references omit the hostname for
+// images on Docker Hub (``nginx:1.27`` == ``docker.io/library/nginx:1.27``)
+// — we treat anything without a "." or ":" in the first path segment as
+// Docker Hub.
+func classifyImageRegistry(imageRef string) (registry string, isPublic bool) {
+	ref := strings.TrimSpace(imageRef)
+	if ref == "" {
+		return "", false
+	}
+	// Strip digest / tag so they don't confuse the parse.
+	if at := strings.Index(ref, "@"); at >= 0 {
+		ref = ref[:at]
+	}
+	// The host part is the chunk before the first "/" — but only if it
+	// contains a "." or ":" (port) or is literally "localhost".
+	first, rest, hasSlash := strings.Cut(ref, "/")
+	if !hasSlash {
+		return "docker.io", true
+	}
+	if strings.ContainsAny(first, ".:") || first == "localhost" {
+		host := first
+		// Drop port.
+		if colon := strings.LastIndex(host, ":"); colon >= 0 {
+			host = host[:colon]
+		}
+		host = strings.ToLower(host)
+		_, pub := knownPublicRegistries[host]
+		return host, pub
+	}
+	// First segment is an org on docker.io.
+	_ = rest
+	return "docker.io", true
+}
+
+// ── P3 manual-commit heuristic ───────────────────────────────────────
+
+// looksLikeManualCommit returns true when the container's image
+// reference is a bare digest with no repository / tag, which is the
+// shape produced by ``docker commit`` without a target name. We check
+// the resolved Image digest string (starts with "sha256:") and the
+// Config.Image ref separately — a manual commit leaves Config.Image as
+// the bare sha.
+func looksLikeManualCommit(imageRef, configImage string) bool {
+	for _, s := range []string{imageRef, configImage} {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		// "sha256:…" with no other path / tag chars.
+		if strings.HasPrefix(s, "sha256:") && !strings.ContainsAny(s, "/:@") {
+			return true
+		}
+		// Some commits produce "sha256:deadbeef" (colon separator counts
+		// once for the algo prefix); check that the only ":" is the algo
+		// separator and nothing else looks like a real ref.
+		if strings.HasPrefix(s, "sha256:") && strings.Count(s, ":") == 1 && !strings.Contains(s, "/") && !strings.Contains(s, "@") {
+			return true
+		}
+	}
+	return false
 }
 
 // splitImageRef pulls out the tag ("1.27-alpine") and digest from an
@@ -509,6 +834,7 @@ func collectDockerWorkloadsHTTP(ctx context.Context, socketPath string, out *pay
 		listing = listing[:workloadsDockerCap]
 		out.DockerContainersTruncated = true
 	}
+	inspected := make([]dockerInspectShape, 0, len(listing))
 	for _, entry := range listing {
 		if strings.TrimSpace(entry.ID) == "" {
 			continue
@@ -527,11 +853,47 @@ func collectDockerWorkloadsHTTP(ctx context.Context, socketPath string, out *pay
 		if !one.State.Running {
 			continue
 		}
-		out.DockerContainers = append(out.DockerContainers, buildDockerWorkload(one))
+		inspected = append(inspected, one)
+	}
+	// Collect unique image refs for batched image-inspect via the HTTP API.
+	uniqueImages := make(map[string]struct{}, len(inspected))
+	for _, c := range inspected {
+		if ref := strings.TrimSpace(c.Config.Image); ref != "" {
+			uniqueImages[ref] = struct{}{}
+		}
+	}
+	imageMeta := inspectUniqueImagesHTTP(ctx, client, uniqueImages)
+	for _, c := range inspected {
+		w := buildDockerWorkload(c)
+		applyImageMetadata(&w, imageMeta)
+		out.DockerContainers = append(out.DockerContainers, w)
 	}
 	sort.SliceStable(out.DockerContainers, func(i, j int) bool {
 		return out.DockerContainers[i].Name < out.DockerContainers[j].Name
 	})
+}
+
+// inspectUniqueImagesHTTP is the HTTP analogue of inspectUniqueImagesCLI
+// — one GET /images/{ref}/json per unique image reference. Failures are
+// swallowed so a missing image does not abort the whole batch.
+func inspectUniqueImagesHTTP(ctx context.Context, client *http.Client, refs map[string]struct{}) map[string]dockerImageInspectShape {
+	out := make(map[string]dockerImageInspectShape, len(refs))
+	for ref := range refs {
+		r := strings.TrimSpace(ref)
+		if r == "" {
+			continue
+		}
+		raw, err := dockerHTTPGet(ctx, client, "/images/"+url.PathEscape(r)+"/json")
+		if err != nil {
+			continue
+		}
+		var meta dockerImageInspectShape
+		if err := json.Unmarshal(raw, &meta); err != nil {
+			continue
+		}
+		out[r] = meta
+	}
+	return out
 }
 
 // ─── Kubelet read-only HTTP fallback (gap #3 — no `crictl` on PATH) ────

@@ -537,3 +537,218 @@ func TestCollect_KubeletHTTPFallback_ParsesPodsJSON(t *testing.T) {
 		t.Fatalf("imageID missing digest: %q", cs.ImageID)
 	}
 }
+
+// ─── P1/P2/P3 insight helpers (follow-up comment on issue #135) ────────
+
+func TestCountSecretLikeEnvKeys_CountsOnlyMatchingNames(t *testing.T) {
+	env := []string{
+		"PATH=/usr/bin",
+		"DATABASE_PASSWORD=hunter2",
+		"API_KEY=abc",
+		"JWT_SECRET=xyz",
+		"MY_TOKEN=xyz",
+		"DEBUG=true",
+	}
+	if got := countSecretLikeEnvKeys(env); got != 4 {
+		t.Fatalf("countSecretLikeEnvKeys = %d, want 4", got)
+	}
+	// Edge case: entry with no '=' — key is the whole string.
+	if got := countSecretLikeEnvKeys([]string{"SECRET"}); got != 1 {
+		t.Fatalf("countSecretLikeEnvKeys(no =) = %d, want 1", got)
+	}
+}
+
+func TestHasNoNewPrivileges(t *testing.T) {
+	cases := []struct {
+		opts []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"seccomp=unconfined"}, false},
+		{[]string{"no-new-privileges"}, true},
+		{[]string{"no-new-privileges:true"}, true},
+		{[]string{"no-new-privileges:false"}, false},
+	}
+	for _, tc := range cases {
+		if got := hasNoNewPrivileges(tc.opts); got != tc.want {
+			t.Errorf("hasNoNewPrivileges(%v) = %v, want %v", tc.opts, got, tc.want)
+		}
+	}
+}
+
+func TestDevicePathsSorted_DedupeAndCap(t *testing.T) {
+	devs := []dockerDeviceRef{
+		{PathOnHost: "/dev/sdb"},
+		{PathOnHost: "/dev/sda"},
+		{PathOnHost: "/dev/sda"}, // duplicate
+		{PathOnHost: ""},         // empty → skip
+	}
+	got := devicePathsSorted(devs)
+	if len(got) != 2 || got[0] != "/dev/sda" || got[1] != "/dev/sdb" {
+		t.Fatalf("devicePathsSorted = %v", got)
+	}
+}
+
+func TestTmpfsTargetsSorted_ExtractsKeysOnly(t *testing.T) {
+	tm := map[string]string{"/var/log": "size=64m", "/etc": ""}
+	got := tmpfsTargetsSorted(tm)
+	if len(got) != 2 || got[0] != "/etc" || got[1] != "/var/log" {
+		t.Fatalf("tmpfsTargetsSorted = %v", got)
+	}
+}
+
+func TestClassifyImageRegistry(t *testing.T) {
+	cases := []struct {
+		ref      string
+		wantHost string
+		wantPub  bool
+	}{
+		{"nginx:1.27", "docker.io", true},
+		{"library/nginx", "docker.io", true},
+		{"acme/app:v1", "docker.io", true},
+		{"ghcr.io/acme/app:1.2", "ghcr.io", true},
+		{"quay.io/pkg/foo", "quay.io", true},
+		{"registry.example.com:5000/foo:tag", "registry.example.com", false},
+		{"localhost/dev:tag", "localhost", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		gotH, gotP := classifyImageRegistry(tc.ref)
+		if gotH != tc.wantHost || gotP != tc.wantPub {
+			t.Errorf("classifyImageRegistry(%q) = (%q, %v), want (%q, %v)",
+				tc.ref, gotH, gotP, tc.wantHost, tc.wantPub)
+		}
+	}
+}
+
+func TestLooksLikeManualCommit(t *testing.T) {
+	cases := []struct {
+		image, cfg string
+		want       bool
+	}{
+		{"nginx:1.27", "nginx:1.27", false},
+		{"sha256:deadbeef", "sha256:deadbeef", true},
+		{"sha256:deadbeef", "", true},
+		{"nginx@sha256:abcd", "nginx@sha256:abcd", false},
+	}
+	for _, tc := range cases {
+		if got := looksLikeManualCommit(tc.image, tc.cfg); got != tc.want {
+			t.Errorf("looksLikeManualCommit(%q,%q) = %v, want %v",
+				tc.image, tc.cfg, got, tc.want)
+		}
+	}
+}
+
+func TestLooksLikeDistroless(t *testing.T) {
+	cases := []struct {
+		ref    string
+		labels map[string]string
+		want   bool
+	}{
+		{"gcr.io/distroless/static:nonroot", nil, true},
+		{"myimg:scratch", nil, true},
+		{"nginx:1.27", nil, false},
+		{"nginx:1.27", map[string]string{"org.opencontainers.image.base.name": "gcr.io/distroless/static"}, true},
+	}
+	for _, tc := range cases {
+		if got := looksLikeDistroless(tc.ref, tc.labels); got != tc.want {
+			t.Errorf("looksLikeDistroless(%q,%v) = %v, want %v",
+				tc.ref, tc.labels, got, tc.want)
+		}
+	}
+}
+
+func TestDaysSinceRFC3339(t *testing.T) {
+	// Empty or unparseable → -1.
+	if got := daysSinceRFC3339(""); got != -1 {
+		t.Errorf("empty daysSince = %d, want -1", got)
+	}
+	if got := daysSinceRFC3339("not a date"); got != -1 {
+		t.Errorf("junk daysSince = %d, want -1", got)
+	}
+	// Relative to "now" we can't pin an exact value, but far-past must be > 100.
+	if got := daysSinceRFC3339("2020-01-01T00:00:00Z"); got < 100 {
+		t.Errorf("2020 daysSince = %d, expected > 100", got)
+	}
+}
+
+// End-to-end assertion that the Docker CLI path also populates the new
+// P1 fields. The existing docker stub script already seeds Config.Env
+// + HostConfig fields below; we just grow it slightly.
+func TestCollect_DockerOnly_PopulatesP1Insights(t *testing.T) {
+	dir := t.TempDir()
+	// Stub script emits one container with every P1-relevant field.
+	script := `#!/bin/sh
+case "$1" in
+  ps)
+    printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
+    ;;
+  inspect)
+    cat <<'EOF'
+[
+  {
+    "Id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "Name": "/insight",
+    "RestartCount": 2,
+    "State": {"Status": "running", "Running": true, "StartedAt": "2026-01-01T00:00:00Z"},
+    "Image": "sha256:deadbeef",
+    "Config": {
+      "Image": "nginx:1.27",
+      "Env": ["PATH=/bin", "DB_PASSWORD=hunter2", "JWT_TOKEN=abc"],
+      "Labels": {}
+    },
+    "HostConfig": {
+      "NetworkMode": "bridge",
+      "IpcMode": "host",
+      "UTSMode": "",
+      "SecurityOpt": [],
+      "Devices": [{"PathOnHost": "/dev/kmsg", "PathInContainer": "/dev/kmsg"}],
+      "Tmpfs": {"/var/log": "size=64m"},
+      "LogConfig": {"Type": "none"}
+    }
+  }
+]
+EOF
+    ;;
+  image)
+    # docker image inspect is called with "image inspect <ref>..."
+    cat <<'EOF'
+[
+  {"Id": "sha256:deadbeef", "Created": "2023-01-01T00:00:00Z", "Config": {"Labels": {}}}
+]
+EOF
+    ;;
+  *) exit 1 ;;
+esac
+`
+	writeStubBin(t, dir, "docker", script)
+	defer prependPATH(t, dir)()
+
+	out := CollectContainerWorkloads(context.Background())
+	if out == nil || len(out.DockerContainers) != 1 {
+		t.Fatalf("expected 1 container, got %+v", out)
+	}
+	c := out.DockerContainers[0]
+	if c.SecretEnvCount != 2 || !c.HasSecretEnvRisk {
+		t.Errorf("secret env: got count=%d risk=%v; want 2/true", c.SecretEnvCount, c.HasSecretEnvRisk)
+	}
+	if !c.IpcModeHost || c.UtsModeHost {
+		t.Errorf("ipc/uts: got ipc=%v uts=%v; want ipc=true uts=false", c.IpcModeHost, c.UtsModeHost)
+	}
+	if len(c.DevicesExposed) != 1 || c.DevicesExposed[0] != "/dev/kmsg" {
+		t.Errorf("devices_exposed = %v", c.DevicesExposed)
+	}
+	if len(c.TmpfsMounts) != 1 || c.TmpfsMounts[0] != "/var/log" {
+		t.Errorf("tmpfs_mounts = %v", c.TmpfsMounts)
+	}
+	if !c.LogDriverNone {
+		t.Errorf("log_driver_none = false, want true")
+	}
+	// Image age populated from batched image inspect.
+	if c.ImageCreatedAt == "" || c.ImageAgeDays <= 0 {
+		t.Errorf("image created/age: got %q / %d", c.ImageCreatedAt, c.ImageAgeDays)
+	}
+	if c.ImageRegistry != "docker.io" || !c.ImageIsPublicRegistry {
+		t.Errorf("registry: got %q pub=%v", c.ImageRegistry, c.ImageIsPublicRegistry)
+	}
+}

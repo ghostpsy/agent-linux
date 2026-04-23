@@ -21,6 +21,7 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/collect/software/nginx"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/postfix"
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/version"
 )
 
 type stubStep struct {
@@ -397,6 +398,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 		ScanSeq:       scanSeq,
 		Hostname:      hostname,
 		Fqdn:          fqdn,
+		AgentVersion:  version.Version,
 		Components:    components,
 	}, nil
 }

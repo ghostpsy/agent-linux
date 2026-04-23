@@ -5,12 +5,18 @@ package payload
 import "time"
 
 // V1 is the only supported ingest shape for schema_version == 1.
+//
+// AgentVersion is the binary's semantic version (set at link time via
+// -ldflags). The API persists it on the Scan row so the backend can
+// gate behavior on agent age — issue #137 backward-compatibility hook
+// for schema quirks that appear between releases.
 type V1 struct {
 	SchemaVersion int        `json:"schema_version"`
 	MachineUUID   string     `json:"machine_uuid"`
 	ScanSeq       int        `json:"scan_seq"`
 	Hostname      string     `json:"hostname,omitempty"`
 	Fqdn          string     `json:"fqdn,omitempty"`
+	AgentVersion  string     `json:"agent_version,omitempty"`
 	Components    Components `json:"components"`
 }
 

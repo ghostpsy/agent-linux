@@ -31,6 +31,7 @@ Scan options honor GHOSTPSY_API_URL unless --api is set.`,
 	cmd.Flags().Bool("dry-run", false, "only print payload, do not POST")
 	cmd.Flags().String("save-payload", "", "write outbound payload JSON to this path before optional POST")
 	cmd.Flags().Bool("verbose", false, "print action-by-action runtime logs with safety summary")
+	cmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt and send immediately")
 	return cmd
 }
 
@@ -51,6 +52,11 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 		os.Exit(1)
 	}
 	verbose, err := cmd.Flags().GetBool("verbose")
+	if err != nil {
+		printErrorLine("scan: invalid flags")
+		os.Exit(1)
+	}
+	autoConfirm, err := cmd.Flags().GetBool("yes")
 	if err != nil {
 		printErrorLine("scan: invalid flags")
 		os.Exit(1)
@@ -89,15 +95,17 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 		return
 	}
 
-	fmt.Print("Send this payload to API? [y/N]: ")
-	line, err := readConfirmLine()
-	if err != nil {
-		printErrorLine(fmt.Sprintf("read confirm: %v", err))
-		os.Exit(1)
-	}
-	if strings.TrimSpace(strings.ToLower(line)) != "y" {
-		fmt.Println("Aborted.")
-		os.Exit(0)
+	if !autoConfirm {
+		fmt.Print("Send this payload to API? [y/N]: ")
+		line, err := readConfirmLine()
+		if err != nil {
+			printErrorLine(fmt.Sprintf("read confirm: %v", err))
+			os.Exit(1)
+		}
+		if strings.TrimSpace(strings.ToLower(line)) != "y" {
+			fmt.Println("Aborted.")
+			os.Exit(0)
+		}
 	}
 
 	token := os.Getenv("GHOSTPSY_INGEST_TOKEN")

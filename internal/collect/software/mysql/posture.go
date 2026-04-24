@@ -48,11 +48,10 @@ func CollectMysqlPosture(ctx context.Context, services []payload.ServiceEntry) *
 			line = strings.TrimSpace(line[:i])
 		}
 		if line != "" {
-			v := shared.TruncateRunes(line, 512)
-			out.Version = shared.StringPtr(v)
-		}
-		if out.Engine == "unknown" && out.Version != nil {
-			out.Engine = engineFromVersionString(*out.Version)
+			if out.Engine == "unknown" {
+				out.Engine = engineFromVersionString(line)
+			}
+			out.Version = shared.StringPtr(parseMysqlVersion(line))
 		}
 	}
 	defFile := discoverMysqldDefaultsFileFromProc()

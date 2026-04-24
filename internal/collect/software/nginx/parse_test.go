@@ -12,7 +12,7 @@ func TestParseNginxVersionLine(t *testing.T) {
 	t.Parallel()
 	in := "nginx version: nginx/1.24.0 (Ubuntu)\n"
 	got := parseNginxVersionLine(in)
-	if got != "nginx/1.24.0 (Ubuntu)" {
+	if got != "1.24.0" {
 		t.Fatalf("parseNginxVersionLine: got %q", got)
 	}
 }

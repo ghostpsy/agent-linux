@@ -78,7 +78,7 @@ exec sleep 60
 func TestCollectApacheHttpdPostureWithBinary_StubScriptSuccess(t *testing.T) {
 	script := `#!/bin/sh
 if [ "$1" = "-v" ]; then
-  echo "Server version: Apache/2.4.test (StubOS)"
+  echo "Server version: Apache/2.4.52 (StubOS)"
   exit 0
 fi
 if [ "$1" = "-S" ]; then
@@ -95,7 +95,7 @@ exit 1
 	if out == nil || out.Error != "" {
 		t.Fatalf("unexpected error: %+v", out)
 	}
-	if out.Version == nil || !strings.Contains(*out.Version, "Apache/2.4.test") {
+	if out.Version == nil || *out.Version != "2.4.52" {
 		t.Fatalf("version: %v", out.Version)
 	}
 	if out.VhostsSummary == nil || out.VhostsSummary.VhostCount < 1 {
@@ -109,7 +109,7 @@ exit 1
 func TestCollectApacheHttpdPostureWithBinary_StubVhostDumpFails(t *testing.T) {
 	script := `#!/bin/sh
 if [ "$1" = "-v" ]; then
-  echo "Server version: Apache/2.4.test (StubOS)"
+  echo "Server version: Apache/2.4.52 (StubOS)"
   exit 0
 fi
 if [ "$1" = "-S" ]; then

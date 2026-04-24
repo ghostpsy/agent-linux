@@ -32,21 +32,16 @@ type apacheListenKey struct {
 	port int
 }
 
-// parseApacheVersionLine extracts the Server version line from `httpd -v` / `apache2 -v` output.
+var reApacheVersion = regexp.MustCompile(`Apache/([\d.]+)`)
+
+// parseApacheVersionLine extracts the clean semver from `httpd -v` / `apache2 -v` output.
+// "Server version: Apache/2.4.57 (Ubuntu)" → "2.4.57"
 func parseApacheVersionLine(vOut string) string {
-	for _, line := range strings.Split(vOut, "\n") {
-		line = strings.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		low := strings.ToLower(line)
-		if strings.HasPrefix(low, "server version:") {
-			rest := strings.TrimSpace(line[len("Server version:"):])
-			if rest != "" {
-				return rest
-			}
-		}
+	m := reApacheVersion.FindStringSubmatch(vOut)
+	if len(m) >= 2 {
+		return m[1]
 	}
+	// Fallback: first non-empty line.
 	first := strings.TrimSpace(vOut)
 	if idx := strings.IndexByte(first, '\n'); idx >= 0 {
 		first = strings.TrimSpace(first[:idx])

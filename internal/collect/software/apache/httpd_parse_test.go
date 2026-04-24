@@ -10,7 +10,7 @@ func TestParseApacheVersionLine(t *testing.T) {
 	t.Parallel()
 	in := "Server version: Apache/2.4.52 (Ubuntu)\nServer built:   2022-01-01"
 	got := parseApacheVersionLine(in)
-	if got != "Apache/2.4.52 (Ubuntu)" {
+	if got != "2.4.52" {
 		t.Fatalf("parseApacheVersionLine: got %q", got)
 	}
 }

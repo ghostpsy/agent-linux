@@ -50,7 +50,7 @@ func CollectPostgresPosture(ctx context.Context, services []payload.ServiceEntry
 			line = strings.TrimSpace(line[:i])
 		}
 		if line != "" {
-			out.Version = shared.StringPtr(shared.TruncateRunes(line, 512))
+			out.Version = shared.StringPtr(parsePostgresVersion(line))
 		}
 	}
 	dataProc, cfProc := findPostgresProcConfigHints()

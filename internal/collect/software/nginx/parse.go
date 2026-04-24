@@ -76,21 +76,16 @@ func deniedNginxTDirectiveLine(line string) bool {
 	return false
 }
 
-// parseNginxVersionLine extracts the human-readable version from `nginx -v` combined output.
+var reNginxVersion = regexp.MustCompile(`nginx/([\d.]+)`)
+
+// parseNginxVersionLine extracts the clean semver from `nginx -v` combined output.
+// "nginx version: nginx/1.24.0" → "1.24.0"
 func parseNginxVersionLine(vOut string) string {
-	for _, line := range strings.Split(vOut, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		low := strings.ToLower(line)
-		if strings.HasPrefix(low, "nginx version:") {
-			rest := strings.TrimSpace(line[len("nginx version:"):])
-			if rest != "" {
-				return rest
-			}
-		}
+	m := reNginxVersion.FindStringSubmatch(vOut)
+	if len(m) >= 2 {
+		return m[1]
 	}
+	// Fallback: first non-empty line.
 	first := strings.TrimSpace(vOut)
 	if idx := strings.IndexByte(first, '\n'); idx >= 0 {
 		first = strings.TrimSpace(first[:idx])

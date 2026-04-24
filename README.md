@@ -72,7 +72,7 @@ Static builds for **linux/amd64**, **linux/arm64**, and **linux/i386** are publi
 
 ## Collector coverage by release
 
-Optional ingest blocks (e.g. Apache `apache_httpd_posture`) depend on what is installed on the host. A **version matrix** is maintained in the Ghostpsy docs: **[agent-linux collector coverage](https://github.com/ghostpsy/ghostpsy/blob/main/doc/agent-linux-collector-coverage.md)**.
+Optional ingest blocks (e.g. Apache `apache_httpd_posture`) depend on what is installed on the host. A **version matrix** is maintained in the Ghostpsy docs: **[agent-linux collector coverage](https://github.com/ghostpsy/ghostpsy/blob/main/internal-doc/agent-linux-collector-coverage.md)**.
 
 ## Requirements
 

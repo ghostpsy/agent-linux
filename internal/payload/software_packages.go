@@ -1,7 +1,7 @@
 package payload
 
 // Types for components.software_packages_and_applications (ingest v1, issue #106).
-// Numbering aligns with doc/competitors-audited-features-for-agent.md (§5 in that checklist).
+// Numbering aligns with internal-doc/competitors-audited-features-for-agent.md (§5 in that checklist).
 
 // WebDbServersFingerprint captures bounded web/DB server config hints (no secrets).
 type WebDbServersFingerprint struct {

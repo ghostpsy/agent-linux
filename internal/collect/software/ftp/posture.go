@@ -196,7 +196,12 @@ func parseProftpd(paths []string, out *payload.FtpPosture) {
 }
 
 func parsePureFtpd(paths []string, out *payload.FtpPosture) {
-	kv := readKeyValueConfig(paths)
+	// Debian/Ubuntu uses /etc/pure-ftpd/conf/ directory (one file per setting).
+	kv := readPureFtpdConfDir()
+	if kv == nil {
+		// Fallback to traditional config file.
+		kv = readKeyValueConfig(paths)
+	}
 	if kv == nil {
 		return
 	}
@@ -222,6 +227,31 @@ func parsePureFtpd(paths []string, out *payload.FtpPosture) {
 			out.PasvMaxPort = shared.StringPtr(parts[1])
 		}
 	}
+}
+
+// readPureFtpdConfDir reads Debian/Ubuntu-style /etc/pure-ftpd/conf/ directory
+// where each file is a setting name and its content is the value.
+func readPureFtpdConfDir() map[string]string {
+	confDir := "/etc/pure-ftpd/conf"
+	entries, err := os.ReadDir(confDir)
+	if err != nil {
+		return nil
+	}
+	kv := make(map[string]string)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		content, err := os.ReadFile(confDir + "/" + e.Name())
+		if err != nil {
+			continue
+		}
+		kv[strings.ToLower(e.Name())] = strings.TrimSpace(string(content))
+	}
+	if len(kv) == 0 {
+		return nil
+	}
+	return kv
 }
 
 // readKeyValueConfig reads the first existing config file as KEY=VALUE pairs.

@@ -223,6 +223,27 @@ type PostfixPosture struct {
 	Error             string   `json:"error,omitempty"`
 }
 
+// FtpPosture is bounded FTP server security posture (vsftpd, ProFTPD, Pure-FTPd).
+// No credentials, no user lists, no file contents.
+type FtpPosture struct {
+	Detected     bool    `json:"detected"`
+	BinPath      string  `json:"bin_path"`
+	Daemon       string  `json:"daemon"`
+	Version      *string `json:"version"`
+	ServiceState *string `json:"service_state"`
+
+	AnonymousEnabled *bool   `json:"anonymous_enabled"`
+	TlsEnabled       *bool   `json:"tls_enabled"`
+	ChrootEnabled    *bool   `json:"chroot_enabled"`
+	ListenAddress    *string `json:"listen_address"`
+	ListenPort       *string `json:"listen_port"`
+	PasvMinPort      *string `json:"pasv_min_port"`
+	PasvMaxPort      *string `json:"pasv_max_port"`
+
+	CollectorWarnings []string `json:"collector_warnings"`
+	Error             string   `json:"error,omitempty"`
+}
+
 // MysqlPosture is MySQL/MariaDB security posture from binary, bounded cnf parse (includes !include/!includedir), proc, and ss (no SQL).
 type MysqlPosture struct {
 	Detected     bool    `json:"detected"`

@@ -19,6 +19,7 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/collect/software/packages"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/mysql"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/nginx"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/ftp"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/postfix"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 	"github.com/ghostpsy/agent-linux/internal/version"
@@ -64,6 +65,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 	var apachePosture *payload.ApacheHttpdPosture
 	var nginxPosture *payload.NginxPosture
 	var postfixPosture *payload.PostfixPosture
+	var ftpPosture *payload.FtpPosture
 	var mysqlPosture *payload.MysqlPosture
 	var postgresPosture *payload.PostgresPosture
 	var dockerPosture *payload.DockerPosture
@@ -174,6 +176,13 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 		{"collect_postfix_posture", func() (int, string) {
 			postfixPosture = postfix.CollectPostfixPosture(ctx, servicesBlock.Items)
 			return postfixPostureNotifyCount(postfixPosture), postfixPostureError(postfixPosture)
+		}},
+		{"collect_ftp_posture", func() (int, string) {
+			ftpPosture = ftp.CollectFtpPosture(ctx, servicesBlock.Items)
+			if ftpPosture == nil {
+				return 0, ""
+			}
+			return 1, ftpPosture.Error
 		}},
 		{"collect_mysql_posture", func() (int, string) {
 			mysqlPosture = mysql.CollectMysqlPosture(ctx, servicesBlock.Items)
@@ -379,6 +388,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			ApacheHttpdPosture:       apachePosture,
 			NginxPosture:             nginxPosture,
 			PostfixPosture:           postfixPosture,
+			FtpPosture:               ftpPosture,
 			MysqlPosture:             mysqlPosture,
 			PostgresPosture:          postgresPosture,
 			DockerPosture:            dockerPosture,

@@ -90,6 +90,7 @@ type SoftwarePackagesAndApplicationsComponent struct {
 	ApacheHttpdPosture       *ApacheHttpdPosture       `json:"apache_httpd_posture,omitempty"`
 	NginxPosture             *NginxPosture             `json:"nginx_posture,omitempty"`
 	PostfixPosture           *PostfixPosture           `json:"postfix_posture,omitempty"`
+	FtpPosture               *FtpPosture               `json:"ftp_posture,omitempty"`
 	MysqlPosture             *MysqlPosture             `json:"mysql_posture,omitempty"`
 	PostgresPosture          *PostgresPosture          `json:"postgres_posture,omitempty"`
 	DockerPosture            *DockerPosture            `json:"docker_posture,omitempty"`

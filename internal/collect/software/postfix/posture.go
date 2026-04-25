@@ -54,6 +54,7 @@ func applyPostconfToPosture(vals map[string]string, out *payload.PostfixPosture)
 	}
 	if v := strings.TrimSpace(vals["mail_version"]); v != "" {
 		out.Version = shared.StringPtr(truncatePostconfValue("mail_version", v))
+		out.DistroVersion = shared.StringPtr(shared.QueryDistroPackageVersion([]string{"postfix"}))
 	}
 	setStr(&out.ListenAddresses, "inet_interfaces")
 	setStr(&out.ListenProtocols, "inet_protocols")

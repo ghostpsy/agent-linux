@@ -51,6 +51,7 @@ func CollectPostgresPosture(ctx context.Context, services []payload.ServiceEntry
 		}
 		if line != "" {
 			out.Version = shared.StringPtr(parsePostgresVersion(line))
+			out.DistroVersion = shared.StringPtr(shared.QueryDistroPackageVersion([]string{"postgresql", "postgresql-15", "postgresql-14", "postgresql-13", "postgresql-16"}))
 		}
 	}
 	dataProc, cfProc := findPostgresProcConfigHints()

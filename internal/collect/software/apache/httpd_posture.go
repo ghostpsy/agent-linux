@@ -45,6 +45,7 @@ func collectApacheHttpdPostureWithBinary(ctx context.Context, invokeBin, reportB
 	vTrim := strings.TrimSpace(string(truncateApacheOut(vCombined)))
 	if errV == nil && vTrim != "" {
 		out.Version = strPtr(parseApacheVersionLine(vTrim))
+		out.DistroVersion = strPtr(shared.QueryDistroPackageVersion([]string{"apache2", "httpd"}))
 	}
 	if errV != nil {
 		out.Error = trimApacheErr("version: ", errV, vCombined)

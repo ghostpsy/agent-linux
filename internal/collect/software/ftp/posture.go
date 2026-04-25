@@ -65,6 +65,7 @@ func CollectFtpPosture(ctx context.Context, services []payload.ServiceEntry) *pa
 			Daemon:   d.name,
 		}
 		out.Version = extractVersion(ctx, bin, d.name)
+		out.DistroVersion = shared.StringPtr(shared.QueryDistroPackageVersion(d.binNames))
 		out.ServiceState = serviceState(ctx, services, d.serviceNames)
 		parseConfig(d, out)
 		if out.CollectorWarnings == nil {

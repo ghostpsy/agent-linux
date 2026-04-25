@@ -52,6 +52,7 @@ func CollectNginxPosture(ctx context.Context, services []payload.ServiceEntry, l
 	}
 	vTrim := strings.TrimSpace(string(truncateNginxOut(vCombined)))
 	out.Version = nginxStrPtr(parseNginxVersionLine(vTrim))
+	out.DistroVersion = nginxStrPtr(shared.QueryDistroPackageVersion([]string{"nginx", "nginx-full", "nginx-common"}))
 
 	subCtxV, cancelV := context.WithTimeout(ctx, nginxCmdTimeout)
 	defer cancelV()

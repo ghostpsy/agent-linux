@@ -45,6 +45,7 @@ func CollectRedisPosture(ctx context.Context, services []payload.ServiceEntry) *
 		BinPath:  bin,
 	}
 	out.Version = extractVersion(ctx, bin)
+	out.DistroVersion = shared.StringPtr(shared.QueryDistroPackageVersion([]string{"redis-server", "redis"}))
 	out.ServiceState = serviceState(ctx, services)
 	parseConfig(out)
 	if out.CollectorWarnings == nil {

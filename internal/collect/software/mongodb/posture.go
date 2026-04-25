@@ -42,6 +42,7 @@ func CollectMongodbPosture(ctx context.Context, services []payload.ServiceEntry)
 		BinPath:  bin,
 	}
 	out.Version = extractVersion(ctx, bin)
+	out.DistroVersion = shared.StringPtr(shared.QueryDistroPackageVersion([]string{"mongodb-server", "mongod", "mongodb-org-server"}))
 	out.ServiceState = serviceState(ctx, services)
 	parseConfig(out)
 	if out.CollectorWarnings == nil {

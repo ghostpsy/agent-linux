@@ -52,6 +52,7 @@ func CollectMysqlPosture(ctx context.Context, services []payload.ServiceEntry) *
 				out.Engine = engineFromVersionString(line)
 			}
 			out.Version = shared.StringPtr(parseMysqlVersion(line))
+			out.DistroVersion = shared.StringPtr(shared.QueryDistroPackageVersion([]string{"mysql-server", "mysql-server-core-8.0", "mariadb-server", "mariadb-server-core"}))
 		}
 	}
 	defFile := discoverMysqldDefaultsFileFromProc()

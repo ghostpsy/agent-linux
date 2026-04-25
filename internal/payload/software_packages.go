@@ -55,7 +55,8 @@ type CupsExposureFingerprint struct {
 type ApacheHttpdPosture struct {
 	Detected     bool    `json:"detected"`
 	BinPath      string  `json:"bin_path"`
-	Version      *string `json:"version"`
+	Version        *string `json:"version"`
+	DistroVersion  *string `json:"distro_version,omitempty"`
 	ServiceState *string `json:"service_state"`
 
 	ListenBindings             []ApacheListenBinding `json:"listen_bindings"`
@@ -109,7 +110,8 @@ type ApacheListenBinding struct {
 type NginxPosture struct {
 	Detected     bool    `json:"detected"`
 	BinPath      string  `json:"bin_path,omitempty"`
-	Version      *string `json:"version,omitempty"`
+	Version        *string `json:"version,omitempty"`
+	DistroVersion  *string `json:"distro_version,omitempty"`
 	ServiceState *string `json:"service_state,omitempty"` // running | stopped | not_installed
 
 	SiteMapSummary *NginxSiteMapSummary `json:"site_map_summary,omitempty"`
@@ -179,7 +181,8 @@ type NginxListenBinding struct {
 type PostfixPosture struct {
 	Detected     bool    `json:"detected"`
 	BinPath      string  `json:"bin_path"`
-	Version      *string `json:"version"`
+	Version        *string `json:"version"`
+	DistroVersion  *string `json:"distro_version,omitempty"`
 	ServiceState *string `json:"service_state"`
 
 	ListenAddresses *string `json:"listen_addresses"`
@@ -229,7 +232,8 @@ type FtpPosture struct {
 	Detected     bool    `json:"detected"`
 	BinPath      string  `json:"bin_path"`
 	Daemon       string  `json:"daemon"`
-	Version      *string `json:"version"`
+	Version        *string `json:"version"`
+	DistroVersion  *string `json:"distro_version,omitempty"`
 	ServiceState *string `json:"service_state"`
 
 	AnonymousEnabled *bool   `json:"anonymous_enabled"`
@@ -249,7 +253,8 @@ type FtpPosture struct {
 type RedisPosture struct {
 	Detected     bool    `json:"detected"`
 	BinPath      string  `json:"bin_path"`
-	Version      *string `json:"version"`
+	Version        *string `json:"version"`
+	DistroVersion  *string `json:"distro_version,omitempty"`
 	ServiceState *string `json:"service_state"`
 
 	Bind               *string `json:"bind"`
@@ -264,10 +269,11 @@ type RedisPosture struct {
 
 // MysqlPosture is MySQL/MariaDB security posture from binary, bounded cnf parse (includes !include/!includedir), proc, and ss (no SQL).
 type MysqlPosture struct {
-	Detected     bool    `json:"detected"`
-	Engine       string  `json:"engine"`
-	Version      *string `json:"version"`
-	BinPath      string  `json:"bin_path"`
+	Detected      bool    `json:"detected"`
+	Engine        string  `json:"engine"`
+	Version       *string `json:"version"`
+	DistroVersion *string `json:"distro_version,omitempty"`
+	BinPath       string  `json:"bin_path"`
 	ServiceState *string `json:"service_state"`
 
 	BindAddress        *string `json:"bind_address"`
@@ -314,9 +320,10 @@ type MysqlPosture struct {
 
 // PostgresPosture is PostgreSQL security posture without SQL (merged postgresql.conf, pg_hba rules, process/fs checks).
 type PostgresPosture struct {
-	Detected     bool    `json:"detected"`
-	Version      *string `json:"version,omitempty"`
-	BinPath      string  `json:"bin_path,omitempty"`
+	Detected      bool    `json:"detected"`
+	Version       *string `json:"version,omitempty"`
+	DistroVersion *string `json:"distro_version,omitempty"`
+	BinPath       string  `json:"bin_path,omitempty"`
 	ServiceState *string `json:"service_state,omitempty"`
 
 	ListenAddresses             *string  `json:"listen_addresses,omitempty"`
@@ -381,6 +388,7 @@ type DockerPosture struct {
 
 	DockerCliPath   *string `json:"docker_cli_path,omitempty"`
 	Version         *string `json:"version,omitempty"`
+	DistroVersion   *string `json:"distro_version,omitempty"`
 	APIVersion      *string `json:"api_version,omitempty"`
 	StorageDriver   *string `json:"storage_driver,omitempty"`
 	ContainerCount  *int    `json:"container_count,omitempty"`
@@ -461,7 +469,8 @@ type DockerOverlayNetworkEncryption struct {
 type MongodbPosture struct {
 	Detected     bool    `json:"detected"`
 	BinPath      string  `json:"bin_path"`
-	Version      *string `json:"version"`
+	Version        *string `json:"version"`
+	DistroVersion  *string `json:"distro_version,omitempty"`
 	ServiceState *string `json:"service_state"`
 
 	BindIp         *string `json:"bind_ip"`

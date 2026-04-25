@@ -244,6 +244,24 @@ type FtpPosture struct {
 	Error             string   `json:"error,omitempty"`
 }
 
+// RedisPosture is bounded Redis server security posture.
+// No keyspace data, no ACL contents, no credential values.
+type RedisPosture struct {
+	Detected     bool    `json:"detected"`
+	BinPath      string  `json:"bin_path"`
+	Version      *string `json:"version"`
+	ServiceState *string `json:"service_state"`
+
+	Bind               *string `json:"bind"`
+	Port               *int    `json:"port"`
+	ProtectedMode      *bool   `json:"protected_mode"`
+	RequirepassPresent *bool   `json:"requirepass_present"`
+	TlsEnabled         *bool   `json:"tls_enabled"`
+
+	CollectorWarnings []string `json:"collector_warnings"`
+	Error             string   `json:"error,omitempty"`
+}
+
 // MysqlPosture is MySQL/MariaDB security posture from binary, bounded cnf parse (includes !include/!includedir), proc, and ss (no SQL).
 type MysqlPosture struct {
 	Detected     bool    `json:"detected"`
@@ -436,6 +454,25 @@ type DockerPublishedPort struct {
 type DockerOverlayNetworkEncryption struct {
 	NetworkName string `json:"network_name"`
 	Encrypted   bool   `json:"encrypted"`
+}
+
+// MongodbPosture is bounded MongoDB server security posture.
+// No database contents, user lists, or credentials.
+type MongodbPosture struct {
+	Detected     bool    `json:"detected"`
+	BinPath      string  `json:"bin_path"`
+	Version      *string `json:"version"`
+	ServiceState *string `json:"service_state"`
+
+	BindIp         *string `json:"bind_ip"`
+	Port           *int    `json:"port"`
+	TlsMode        *string `json:"tls_mode"`
+	AuthEnabled    *bool   `json:"auth_enabled"`
+	KeyFilePresent *bool   `json:"key_file_present"`
+	JournalEnabled *bool   `json:"journal_enabled"`
+
+	CollectorWarnings []string `json:"collector_warnings"`
+	Error             string   `json:"error,omitempty"`
 }
 
 // MtaFingerprint is MTA presence and bounded relay/bind hints (no queue contents).

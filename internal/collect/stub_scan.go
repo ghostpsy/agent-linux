@@ -20,6 +20,8 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/collect/software/mysql"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/nginx"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/ftp"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/mongodb"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/redis"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/postfix"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 	"github.com/ghostpsy/agent-linux/internal/version"
@@ -66,6 +68,8 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 	var nginxPosture *payload.NginxPosture
 	var postfixPosture *payload.PostfixPosture
 	var ftpPosture *payload.FtpPosture
+	var redisPosture *payload.RedisPosture
+	var mongodbPosture *payload.MongodbPosture
 	var mysqlPosture *payload.MysqlPosture
 	var postgresPosture *payload.PostgresPosture
 	var dockerPosture *payload.DockerPosture
@@ -183,6 +187,20 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 				return 0, ""
 			}
 			return 1, ftpPosture.Error
+		}},
+		{"collect_redis_posture", func() (int, string) {
+			redisPosture = redis.CollectRedisPosture(ctx, servicesBlock.Items)
+			if redisPosture == nil {
+				return 0, ""
+			}
+			return 1, redisPosture.Error
+		}},
+		{"collect_mongodb_posture", func() (int, string) {
+			mongodbPosture = mongodb.CollectMongodbPosture(ctx, servicesBlock.Items)
+			if mongodbPosture == nil {
+				return 0, ""
+			}
+			return 1, mongodbPosture.Error
 		}},
 		{"collect_mysql_posture", func() (int, string) {
 			mysqlPosture = mysql.CollectMysqlPosture(ctx, servicesBlock.Items)
@@ -389,6 +407,8 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			NginxPosture:             nginxPosture,
 			PostfixPosture:           postfixPosture,
 			FtpPosture:               ftpPosture,
+			RedisPosture:             redisPosture,
+			MongodbPosture:           mongodbPosture,
 			MysqlPosture:             mysqlPosture,
 			PostgresPosture:          postgresPosture,
 			DockerPosture:            dockerPosture,

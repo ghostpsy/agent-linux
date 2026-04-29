@@ -88,8 +88,18 @@ func runUpdateCommand(cmd *cobra.Command, _ []string) {
 		fmt.Printf("Minimum supported: %s\n", info.MinSupportedVersion)
 	}
 
-	if !versionLess(current, info.LatestVersion) {
+	if current == info.LatestVersion {
 		printSuccessLine("Already on the latest version.")
+		return
+	}
+	if !versionLess(current, info.LatestVersion) {
+		// Local binary is newer than the published release — usually a dev build
+		// or a release that has not finished publishing yet. Don't pretend we're
+		// on "the latest"; a dev binary is not what end-users should run.
+		printMutedLine(fmt.Sprintf(
+			"This binary is newer than the latest published release (%s). No update available.",
+			info.LatestVersion,
+		))
 		return
 	}
 	if checkOnly {

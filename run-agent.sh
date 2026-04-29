@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
-# Download the latest GitHub Release binary for this machine, then run `ghostpsy scan`.
-# Requires: bash, curl, sha256sum or shasum. (Do not run with `sh`; use `bash run-agent.sh` or `./run-agent.sh`.)
+# Install the latest ghostpsy agent to /usr/local/bin and run the first scan
+# with a bootstrap token. The API issues the persistent agent token in the
+# response and the agent stores it in /etc/ghostpsy/agent.conf (mode 0600).
+#
+# Requires: bash, curl, sha256sum or shasum. Run as root (or via sudo) so the
+# binary can be installed and /etc/ghostpsy/agent.conf can be written.
+#
+# Usage:
+#   sudo GHOSTPSY_BOOTSTRAP_TOKEN=xxx bash run-agent.sh
+#
+# Or, when piping:
+#   curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | \
+#     sudo env "GHOSTPSY_BOOTSTRAP_TOKEN=$GHOSTPSY_BOOTSTRAP_TOKEN" bash
 
 set -euo pipefail
 
 REPO_OWNER="ghostpsy"
 REPO_NAME="agent-linux"
-UA="ghostpsy-agent-run-script/1.0"
+UA="ghostpsy-agent-run-script/2.0"
+INSTALL_PATH="/usr/local/bin/ghostpsy"
 
 die() {
   echo "Error: $*" >&2
@@ -23,6 +35,14 @@ map_arch() {
       ;;
   esac
 }
+
+if [[ $EUID -ne 0 ]]; then
+  die "This script installs to ${INSTALL_PATH} and writes /etc/ghostpsy/agent.conf — run as root or via sudo."
+fi
+
+if [[ -z "${GHOSTPSY_BOOTSTRAP_TOKEN-}" ]]; then
+  die "Set GHOSTPSY_BOOTSTRAP_TOKEN before running. Generate one in the dashboard (https://app.ghostpsy.com)."
+fi
 
 goarch="$(map_arch)"
 tmpdir="$(mktemp -d)"
@@ -61,7 +81,7 @@ fi
 if [[ "$release_blob" =~ $re_sums ]]; then
   sums_url="${BASH_REMATCH[0]%\"}"
 fi
-[[ -n "$bin_url" ]] || die "No binary asset for linux/${goarch} in latest release (or unexpected API JSON). See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+[[ -n "$bin_url" ]] || die "No binary asset for linux/${goarch} in latest release. See https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
 [[ -n "$sums_url" ]] || die "SHA256SUMS missing in latest release."
 
 bin_path="$tmpdir/ghostpsy"
@@ -84,55 +104,11 @@ fi
 [[ "$actual_hash" == "$expected_hash" ]] || die "Checksum mismatch for ${expected_file}"
 chmod +x "$bin_path"
 
-export GHOSTPSY_API_URL="https://api.ghostpsy.com"
+install -m 0755 "$bin_path" "$INSTALL_PATH"
 
-had_token_at_start=0
-[[ -n "${GHOSTPSY_INGEST_TOKEN-}" ]] && had_token_at_start=1
+export GHOSTPSY_API_URL="${GHOSTPSY_API_URL:-https://api.ghostpsy.com}"
+"$INSTALL_PATH" register --bootstrap="$GHOSTPSY_BOOTSTRAP_TOKEN"
 
-if [[ -z "${GHOSTPSY_INGEST_TOKEN-}" ]]; then
-  echo "" >&2
-  echo "Get a token: open https://app.ghostpsy.com in a browser, sign in, then create a token from the app header." >&2
-  echo "After you enter the token, this machine will be scanned and a JSON report will be shown. Nothing is sent to Ghostpsy Cloud until you confirm at the end; you can review the payload before that." >&2
-  echo "" >&2
-  if [[ ! -r /dev/tty ]]; then
-    die "Set GHOSTPSY_INGEST_TOKEN in the environment (no TTY to prompt — e.g. some piped or automated runs)."
-  fi
-  read -r -s -p "Paste token: " GHOSTPSY_INGEST_TOKEN </dev/tty || die "Could not read token from terminal."
-  echo "" >&2
-  [[ -n "${GHOSTPSY_INGEST_TOKEN// }" ]] || die "Token is required."
-fi
-
-# Verbose: on by default when the script prompts for the token ([Y/n] defaults to yes);
-# off by default when GHOSTPSY_INGEST_TOKEN was already set (set GHOSTPSY_VERBOSE=1 to enable).
-scan_args=(scan)
-if ((had_token_at_start)); then
-  case "${GHOSTPSY_VERBOSE:-}" in
-    1 | true | TRUE | yes | Yes | YES) scan_args+=(--verbose) ;;
-  esac
-else
-  if [[ "${GHOSTPSY_VERBOSE+x}" != x ]]; then
-    echo "" >&2
-    read -r -p "Enable verbose logging (step-by-step actions)? [Y/n]: " vline </dev/tty || vline=""
-    v="$(printf '%s' "$vline" | tr '[:upper:]' '[:lower:]')"
-    if [[ -z "${v// }" || "$v" == y* ]]; then
-      scan_args+=(--verbose)
-    fi
-  else
-    case "${GHOSTPSY_VERBOSE}" in
-      1 | true | TRUE | yes | Yes | YES | y | Y) scan_args+=(--verbose) ;;
-      0 | false | FALSE | no | No | NO | n | N) ;;
-      "")
-        echo "" >&2
-        read -r -p "Enable verbose logging (step-by-step actions)? [Y/n]: " vline </dev/tty || vline=""
-        v="$(printf '%s' "$vline" | tr '[:upper:]' '[:lower:]')"
-        if [[ -z "${v// }" || "$v" == y* ]]; then
-          scan_args+=(--verbose)
-        fi
-        ;;
-      *) die "Invalid GHOSTPSY_VERBOSE (use 1/true/yes or 0/false/no)." ;;
-    esac
-  fi
-fi
-
-export GHOSTPSY_INGEST_TOKEN
-exec "$bin_path" "${scan_args[@]}"
+echo ""
+echo "Next: enable scheduled scans:"
+echo "  sudo ${INSTALL_PATH} cron install"

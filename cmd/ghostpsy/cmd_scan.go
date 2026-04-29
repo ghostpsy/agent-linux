@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ghostpsy/agent-linux/internal/actionlog"
+	"github.com/ghostpsy/agent-linux/internal/agentconfig"
 	"github.com/ghostpsy/agent-linux/internal/state"
 )
 
@@ -20,8 +21,11 @@ func newScanCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scan",
 		Short: "Build payload, print JSON for review, optionally POST to API",
-		Long: `Register this host if needed, build the allowlisted payload, print JSON for review,
-and optionally POST to the API after confirmation.
+		Long: `Build the allowlisted payload, print JSON for review, and optionally POST to the API.
+
+Reads the bearer token from /etc/ghostpsy/agent.conf (written by ` + "`ghostpsy register`" + `).
+This file is mode 0600 owner=root, so the scan command is meant to run as root
+(directly, via sudo, or through the cron entry installed by ` + "`ghostpsy cron install`" + `).
 
 Scan options honor GHOSTPSY_API_URL unless --api is set.`,
 		Run: runScanCommand,
@@ -108,9 +112,9 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 		}
 	}
 
-	token := os.Getenv("GHOSTPSY_INGEST_TOKEN")
-	if token == "" {
-		printErrorLine("GHOSTPSY_INGEST_TOKEN is not set")
+	token, err := resolveIngestToken()
+	if err != nil {
+		printErrorLine(fmt.Sprintf("scan: %v", err))
 		os.Exit(1)
 	}
 
@@ -136,4 +140,16 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 		printErrorLine(fmt.Sprintf("save state: %v", err))
 		os.Exit(1)
 	}
+}
+
+// resolveIngestToken returns the bearer token to send with /v1/ingest.
+//
+// The persistent agent token lives in /etc/ghostpsy/agent.conf, written by
+// `ghostpsy register`. There is no environment-variable fallback.
+func resolveIngestToken() (string, error) {
+	tok, err := agentconfig.Load()
+	if err != nil {
+		return "", fmt.Errorf("%w (run: sudo ghostpsy register --bootstrap=<token>)", err)
+	}
+	return tok, nil
 }

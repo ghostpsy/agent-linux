@@ -13,12 +13,14 @@ import (
 const rootLongHelp = `ghostpsy collects allowlisted server metadata and sends it after operator preview.
 
 Commands:
-  scan       Register this host if needed, build payload, print JSON for review, optionally POST to API.
+  register   First-time setup: consume a 24h bootstrap token, run the first scan, store the persistent agent token at /etc/ghostpsy/agent.conf.
+  scan       Build payload, print JSON for review, optionally POST to API.
+  cron       Install, remove, or inspect the scheduled-scan timer.
   version    Print version, release date (build), and architecture.
 
 Environment:
-  GHOSTPSY_API_URL        Base URL for Ghostpsy Cloud API (default https://api.ghostpsy.com; override for local dev)
-  GHOSTPSY_INGEST_TOKEN  Token from https://app.ghostpsy.com (required to send after you confirm)
+  GHOSTPSY_API_URL          Base URL for Ghostpsy Cloud API (default https://api.ghostpsy.com; override for local dev).
+  GHOSTPSY_BOOTSTRAP_TOKEN  Bootstrap token for ` + "`ghostpsy register`" + ` (alternative to --bootstrap=<token>).
 `
 
 func newRootCommand() *cobra.Command {
@@ -34,6 +36,8 @@ func newRootCommand() *cobra.Command {
 	root.SilenceUsage = true
 	root.Flags().BoolP("version", "v", false, "print version and exit")
 	root.AddCommand(newScanCommand())
+	root.AddCommand(newRegisterCommand())
+	root.AddCommand(newCronCommand())
 	root.AddCommand(newVersionCommand())
 	return root
 }

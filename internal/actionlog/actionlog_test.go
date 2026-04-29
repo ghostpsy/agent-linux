@@ -33,7 +33,7 @@ func TestLoggerSummaryCounters(t *testing.T) {
 	var out bytes.Buffer
 	logger := New(true, &out)
 	logger.Step(classificationLocalRead, "host.network", "Reading network interfaces", nil)
-	logger.Step(classificationLocalModify, "~/.config/ghostpsy/agent.json", "Saving local state", nil)
+	logger.Step(classificationLocalModify, "/var/lib/ghostpsy/state.json", "Saving local state", nil)
 	logger.Step(classificationExternalSend, "https://api.example.com/v1/ingest", "Sending payload", nil)
 	logger.PrintSummary()
 

@@ -2,9 +2,7 @@
 
 package main
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestExtractAgentToken_OK(t *testing.T) {
 	body := []byte(`{"job_id":"j","status":"accepted","agent_token":"abc123"}`)

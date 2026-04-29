@@ -32,7 +32,12 @@ sends the first scan to the API, captures the persistent agent token returned in
 the response, and writes it to /etc/ghostpsy/agent.conf (mode 0600).
 
 Subsequent scans run with the persistent token; the bootstrap token is destroyed
-on the API side after this single use.`,
+on the API side after this single use.
+
+If /etc/ghostpsy/agent.conf already exists, register refuses by default so
+re-runs from automation cannot accidentally orphan a working token. Use
+--force to re-register a host (e.g. after rebinding from the dashboard or
+re-imaging the OS).`,
 		Run: runRegisterCommand,
 	}
 	defaultAPI := envOr("GHOSTPSY_API_URL", "https://api.ghostpsy.com")
@@ -40,6 +45,7 @@ on the API side after this single use.`,
 	cmd.Flags().String("bootstrap", "", "bootstrap token (or set "+envBootstrapToken+")")
 	cmd.Flags().String("save-payload", "", "write outbound payload JSON to this path before POST (dev/audit)")
 	cmd.Flags().Bool("verbose", false, "print action-by-action runtime logs with safety summary")
+	cmd.Flags().Bool("force", false, "re-register even if /etc/ghostpsy/agent.conf already exists")
 	return cmd
 }
 
@@ -62,6 +68,20 @@ func runRegisterCommand(cmd *cobra.Command, _ []string) {
 	verbose, err := cmd.Flags().GetBool("verbose")
 	if err != nil {
 		printErrorLine("register: invalid flags")
+		os.Exit(1)
+	}
+	force, err := cmd.Flags().GetBool("force")
+	if err != nil {
+		printErrorLine("register: invalid flags")
+		os.Exit(1)
+	}
+
+	if !force && agentconfig.Exists() {
+		printErrorLine(
+			"register: " + agentconfig.Path() + " already exists. " +
+				"This host is already registered. Use `ghostpsy scan --yes` for " +
+				"subsequent scans, or pass --force to re-register.",
+		)
 		os.Exit(1)
 	}
 

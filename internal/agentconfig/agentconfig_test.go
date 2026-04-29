@@ -96,3 +96,20 @@ func TestSave_OverwritesExisting(t *testing.T) {
 		t.Fatalf("got %q want %q", got, "second")
 	}
 }
+
+func TestExists_FalseWhenMissing(t *testing.T) {
+	setPath(t)
+	if Exists() {
+		t.Fatal("expected Exists() == false when file is missing")
+	}
+}
+
+func TestExists_TrueAfterSave(t *testing.T) {
+	setPath(t)
+	if err := Save("tok"); err != nil {
+		t.Fatal(err)
+	}
+	if !Exists() {
+		t.Fatal("expected Exists() == true after Save")
+	}
+}

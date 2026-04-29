@@ -39,6 +39,19 @@ func Path() string {
 	return defaultPath
 }
 
+// Exists reports whether the persistent agent token file is already on disk.
+//
+// Used by ``register`` to refuse re-runs (with a clear error) and by
+// idempotent install scripts to decide between ``register`` and a plain
+// ``scan --yes``. Permission errors fall through as "does not exist" so
+// callers see a single source of truth: the file is treated as
+// already-configured when it is readable; anything else means register
+// should attempt to write it.
+func Exists() bool {
+	_, err := os.Stat(Path())
+	return err == nil
+}
+
 // Load reads the persistent agent token.
 //
 // Returns ErrNotConfigured if the file does not exist. Refuses to read if

@@ -1,7 +1,7 @@
 # Ghost Server Autopsy — Linux-only Go agent (module github.com/ghostpsy/agent-linux)
 # Run from this directory: make help
 
-.PHONY: help tidy build install clean test test-linux vet lint fmt run-help run-version scan-dry scan install-git-hook pre-commit-check
+.PHONY: help tidy build install clean test test-linux vet lint fmt run-help run-version scan-dry scan install-git-hook pre-commit-check generate-signing-key
 
 GO       ?= go
 # Default off: links a static binary so builds on newer glibc (e.g. GitHub ubuntu-latest) still run on older distros.
@@ -34,10 +34,37 @@ help:
 	@echo "  make install-git-hook  installs .git/hooks/pre-commit for this repo"
 	@echo "  make fmt         go fmt ./..."
 	@echo "  make clean       rm -rf $(BIN_DIR)"
+	@echo "  make generate-signing-key  print a fresh Ed25519 release-signing keypair (one-time setup or rotation)"
 
 tidy:
 	$(GO) mod tidy
 	$(GO) mod verify
+
+# Print a fresh Ed25519 keypair for signing releases. Run once during the
+# initial setup, or to rotate the key. The output stays in the terminal —
+# nothing is written to disk — so copy the values to their destinations
+# immediately and close the terminal when done.
+generate-signing-key:
+	@$(GO) run ./scripts/gen-signing-key
+	@echo ""
+	@echo "============================================================="
+	@echo "  Where to put the keys"
+	@echo "============================================================="
+	@echo ""
+	@echo "  Public key  → agent-linux/internal/release/pubkey.go"
+	@echo "                Replace the value of PublicKeyHex and commit."
+	@echo ""
+	@echo "  Private key → GitHub Actions secret"
+	@echo "                Repository: github.com/ghostpsy/agent-linux"
+	@echo "                Settings → Secrets and variables → Actions"
+	@echo "                Name:  GHOSTPSY_RELEASE_SIGNING_KEY_HEX"
+	@echo "                Value: <private-key-hex above>"
+	@echo ""
+	@echo "  Then close this terminal — the private key lives nowhere"
+	@echo "  else after this session. Lost it before saving? Just rerun"
+	@echo "  this target; rotation is documented in"
+	@echo "  ghostpsy/internal-doc/release-signing.md."
+	@echo ""
 
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)

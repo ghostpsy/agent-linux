@@ -16,18 +16,18 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/payload"
 )
 
+func writeStateFile(t *testing.T, raw []byte) {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "state.json")
+	if err := os.WriteFile(p, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GHOSTPSY_STATE_PATH", p)
+}
+
 func TestBuildScanPayload_ContextCancelled(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	cfgDir := filepath.Join(home, ".config", "ghostpsy")
-	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	statePath := filepath.Join(cfgDir, "agent.json")
-	raw := []byte(`{"machine_uuid":"test-uuid-scan","claim_code":"ABC","scan_seq":0}`)
-	if err := os.WriteFile(statePath, raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeStateFile(t, []byte(`{"machine_uuid":"test-uuid-scan","scan_seq":0}`))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	logger := actionlog.New(false, io.Discard)
@@ -38,17 +38,7 @@ func TestBuildScanPayload_ContextCancelled(t *testing.T) {
 }
 
 func TestBuildScanPayload_ReturnsJSON(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	cfgDir := filepath.Join(home, ".config", "ghostpsy")
-	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	statePath := filepath.Join(cfgDir, "agent.json")
-	raw := []byte(`{"machine_uuid":"test-uuid-scan2","claim_code":"DEF","scan_seq":0}`)
-	if err := os.WriteFile(statePath, raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeStateFile(t, []byte(`{"machine_uuid":"test-uuid-scan2","scan_seq":0}`))
 	logger := actionlog.New(false, io.Discard)
 	_, _, _, body, err := buildScanPayload(context.Background(), logger)
 	if err != nil {

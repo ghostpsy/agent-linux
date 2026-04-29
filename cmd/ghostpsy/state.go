@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -13,6 +12,12 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/state"
 )
 
+// ensureState loads /var/lib/ghostpsy/state.json or seeds it on first run.
+//
+// MachineUUID prefers /etc/machine-id (stable per OS install). When that
+// file is missing (e.g. some minimal containers), a random UUID is
+// generated and persisted so the same identity is used on subsequent
+// scans.
 func ensureState(logger *actionlog.Logger) *state.AgentState {
 	st, err := state.Load()
 	if err == nil {
@@ -24,20 +29,15 @@ func ensureState(logger *actionlog.Logger) *state.AgentState {
 		mid = osMid
 		midSource = "OS machine-id (/etc/machine-id or /var/lib/dbus/machine-id)"
 	}
-	claim := strings.ToUpper(uuid.NewString()[:8])
-	s := &state.AgentState{
-		MachineUUID: mid,
-		ClaimCode:   claim,
-		ScanSeq:     0,
-	}
-	logger.Step("local-modifying", "~/.config/ghostpsy/agent.json", "Initializing local agent identity file in ~/.config/ghostpsy/agent.json", nil)
+	s := &state.AgentState{MachineUUID: mid, ScanSeq: 0}
+	logger.Step("local-modifying", state.Path(),
+		"Initializing local agent identity at "+state.Path(), nil)
 	if err := state.Save(s); err != nil {
 		printErrorLine(fmt.Sprintf("save state: %v", err))
 		os.Exit(1)
 	}
-	printSuccessLine("First run: registered this host.")
+	printSuccessLine("First run: registered local identity for this host.")
 	fmt.Println("Machine UUID:", mid, "("+midSource+")")
-	fmt.Println("Claim code (paste in dashboard while logged in):", claim)
-	printMutedLine("State file: ~/.config/ghostpsy/agent.json")
+	printMutedLine("State file: " + state.Path())
 	return s
 }

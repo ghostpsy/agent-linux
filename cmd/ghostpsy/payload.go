@@ -26,7 +26,7 @@ func writePayloadPreview(w io.Writer, p payload.V1) error {
 }
 
 func buildScanPayload(ctx context.Context, logger *actionlog.Logger) (*state.AgentState, int, payload.V1, []byte, error) {
-	logger.Step("local-read-only", "~/.config/ghostpsy/agent.json", "Reading local agent state from ~/.config/ghostpsy/agent.json", nil)
+	logger.Step("local-read-only", state.Path(), "Reading local agent state from "+state.Path(), nil)
 	st := ensureState(logger)
 	nextSeq := st.ScanSeq + 1
 	logger.Step("local-compute", "payload.v1", "Building allowlisted inventory payload from local system data", map[string]string{"scan_seq": fmt.Sprintf("%d", nextSeq)})

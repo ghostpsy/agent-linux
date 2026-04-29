@@ -146,7 +146,7 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 		os.Exit(1)
 	}
 	st.ScanSeq = nextSeq
-	logger.Step("local-modifying", "~/.config/ghostpsy/agent.json", "Persisting updated scan sequence to local state file", map[string]string{"scan_seq": fmt.Sprintf("%d", st.ScanSeq)})
+	logger.Step("local-modifying", state.Path(), "Persisting updated scan sequence to local state file", map[string]string{"scan_seq": fmt.Sprintf("%d", st.ScanSeq)})
 	if err := state.Save(st); err != nil {
 		printErrorLine(fmt.Sprintf("save state: %v", err))
 		os.Exit(1)

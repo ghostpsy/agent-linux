@@ -1,34 +1,33 @@
 #!/usr/bin/env bash
-# Install the latest ghostpsy agent to /usr/local/bin and run the first scan
-# with a bootstrap token. The API issues the persistent agent token in the
-# response and the agent stores it in /etc/ghostpsy/agent.conf (mode 0600).
+# Install (or upgrade) the latest ghostpsy agent at /usr/local/bin/ghostpsy.
+#
+# This script is install-only. It detects the CPU architecture, downloads the
+# matching release binary from GitHub Releases, verifies its SHA256, and writes
+# it to /usr/local/bin/ghostpsy. It does NOT register the host with the API
+# and does NOT need a bootstrap token. After this script finishes, run:
+#
+#   sudo ghostpsy register --bootstrap="<your bootstrap token>"
+#
+# The dashboard's "Add a machine" modal walks through the three steps end to
+# end (export token → install binary → register).
 #
 # Trust model:
 #   * First install (this script): integrity rests on GitHub Releases over
-#     HTTPS plus the SHA256SUMS check below. We cannot verify Ed25519
-#     signatures here without a pre-existing trust anchor on the host —
-#     a malicious binary served as the SHA256SUMS-matching artifact could
-#     lie about its own signature.
-#   * Subsequent auto-updates: the installed binary embeds the release
-#     public key and verifies SHA256SUMS.sig before swapping itself.
-#     ``ghostpsy update`` is the strong-signature path; this script is
-#     bootstrapping into it.
+#     HTTPS plus the SHA256SUMS check below. Ed25519 signature verification
+#     is not possible at install time without a pre-existing trust anchor —
+#     the embedded public key in the *installed* binary becomes the anchor
+#     for every auto-update after this point.
+#   * Subsequent auto-updates: ``ghostpsy update`` verifies SHA256SUMS.sig
+#     with the embedded public key before swapping the binary.
 #
 # Requires: bash, curl, sha256sum or shasum. Run as root (or via sudo) so the
-# binary can be installed and /etc/ghostpsy/agent.conf can be written.
-#
-# Usage:
-#   sudo GHOSTPSY_BOOTSTRAP_TOKEN=xxx bash run-agent.sh
-#
-# Or, when piping:
-#   curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | \
-#     sudo env "GHOSTPSY_BOOTSTRAP_TOKEN=$GHOSTPSY_BOOTSTRAP_TOKEN" bash
+# binary can be written to /usr/local/bin.
 
 set -euo pipefail
 
 REPO_OWNER="ghostpsy"
 REPO_NAME="agent-linux"
-UA="ghostpsy-agent-run-script/2.0"
+UA="ghostpsy-agent-install/1.0"
 INSTALL_PATH="/usr/local/bin/ghostpsy"
 
 die() {
@@ -48,11 +47,7 @@ map_arch() {
 }
 
 if [[ $EUID -ne 0 ]]; then
-  die "This script installs to ${INSTALL_PATH} and writes /etc/ghostpsy/agent.conf — run as root or via sudo."
-fi
-
-if [[ -z "${GHOSTPSY_BOOTSTRAP_TOKEN-}" ]]; then
-  die "Set GHOSTPSY_BOOTSTRAP_TOKEN before running. Generate one in the dashboard (https://app.ghostpsy.com)."
+  die "This script installs to ${INSTALL_PATH} — run as root or via sudo."
 fi
 
 goarch="$(map_arch)"
@@ -113,13 +108,11 @@ else
   die "Need sha256sum or shasum to verify the download."
 fi
 [[ "$actual_hash" == "$expected_hash" ]] || die "Checksum mismatch for ${expected_file}"
-chmod +x "$bin_path"
 
 install -m 0755 "$bin_path" "$INSTALL_PATH"
 
-export GHOSTPSY_API_URL="${GHOSTPSY_API_URL:-https://api.ghostpsy.com}"
-"$INSTALL_PATH" register --bootstrap="$GHOSTPSY_BOOTSTRAP_TOKEN"
-
 echo ""
-echo "Next: enable scheduled scans:"
-echo "  sudo ${INSTALL_PATH} cron install"
+echo "Installed ${expected_file} at ${INSTALL_PATH}."
+echo "Next:"
+echo "  sudo ghostpsy register --bootstrap=\"\$GHOSTPSY_BOOTSTRAP_TOKEN\""
+echo "  sudo ghostpsy cron install"

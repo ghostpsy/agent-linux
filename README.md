@@ -9,27 +9,31 @@ You can audit every collector under `internal/collect/` before you run the binar
 
 ## Install (recommended)
 
-`run-agent.sh` downloads the correct **static** binary for your CPU (**amd64**, **arm64**, or **i386**), checks it against **SHA256SUMS** from the same [GitHub Release](https://github.com/ghostpsy/agent-linux/releases/latest), installs it to `/usr/local/bin/ghostpsy`, runs the **first scan** with a 24h **bootstrap token**, and stores the **persistent agent token** returned by the API at `/etc/ghostpsy/agent.conf` (mode `0600`, owner `root`).
+The dashboard's **+ Add machine** modal walks through three commands. `run-agent.sh` is the install-only step that downloads the correct binary for your CPU (**amd64**, **arm64**, or **i386**), verifies its SHA256 against the GitHub Release, and writes it to `/usr/local/bin/ghostpsy`. It does **not** register the host. After it finishes, you call `ghostpsy register` directly.
 
-The script needs `bash`, `curl`, and `sha256sum` or `shasum`, and must run as **root** (or via `sudo`).
+The install script needs `bash`, `curl`, and `sha256sum` or `shasum`, and must run as **root** (or via `sudo`).
 
-**1. Mint a bootstrap** — Sign in to **[https://app.ghostpsy.com](https://app.ghostpsy.com)**, click **+ Add machine**, and copy the displayed install command. The bootstrap is valid for **24 hours and one install**.
+**1. Mint a bootstrap** in the dashboard at **[https://app.ghostpsy.com](https://app.ghostpsy.com)** → **+ Add machine**. The token is valid for **24 hours and one register call**.
 
-**2. Run on the server**
+**2. Run the three steps on the server:**
 
 ```bash
+# Step 1: export the bootstrap token in your shell
 export GHOSTPSY_BOOTSTRAP_TOKEN="<bootstrap>"
-curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh \
-  | sudo env "GHOSTPSY_BOOTSTRAP_TOKEN=$GHOSTPSY_BOOTSTRAP_TOKEN" bash
+
+# Step 2: install /usr/local/bin/ghostpsy (download + SHA256 verify)
+curl -fsSL https://raw.githubusercontent.com/ghostpsy/agent-linux/main/run-agent.sh | sudo bash
+
+# Step 3: register this host with the API (runs the first scan, stores the
+# long-lived agent token at /etc/ghostpsy/agent.conf, mode 0600)
+sudo ghostpsy register --bootstrap="$GHOSTPSY_BOOTSTRAP_TOKEN"
 ```
 
-The `sudo env "GHOSTPSY_BOOTSTRAP_TOKEN=…"` form is required: the superuser shell does **not** inherit your environment by default, so a plain `sudo bash` would lose the token.
-
-`run-agent.sh` targets `https://api.ghostpsy.com` by default. Override with `GHOSTPSY_API_URL` for self-hosted or local-dev deployments.
+`ghostpsy register` targets `https://api.ghostpsy.com` by default. Override with `GHOSTPSY_API_URL` for self-hosted or local-dev deployments.
 
 | Variable | Purpose |
 |----------|---------|
-| `GHOSTPSY_BOOTSTRAP_TOKEN` | 24h single-use bootstrap (required at install time) |
+| `GHOSTPSY_BOOTSTRAP_TOKEN` | 24h single-use bootstrap consumed by `ghostpsy register` |
 | `GHOSTPSY_API_URL` | Override the API base URL (default `https://api.ghostpsy.com`) |
 
 ## Recurring scans
@@ -59,8 +63,7 @@ Download **`ghostpsy_<version>_linux_<arch>`** and **`SHA256SUMS`** from [Releas
 
 ```bash
 sudo install -m 0755 ghostpsy_*_linux_amd64 /usr/local/bin/ghostpsy
-sudo GHOSTPSY_BOOTSTRAP_TOKEN="<bootstrap>" \
-  ghostpsy register --bootstrap="$GHOSTPSY_BOOTSTRAP_TOKEN"
+sudo ghostpsy register --bootstrap="<bootstrap>"
 sudo ghostpsy cron install
 ```
 

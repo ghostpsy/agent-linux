@@ -65,6 +65,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
       - uses: actions/download-artifact@v6.0.0
         with:
           pattern: ghostpsy-linux-*
@@ -73,12 +78,23 @@ jobs:
       - name: SHA256SUMS
         run: |
           cd release-assets && sha256sum ghostpsy_* | tee SHA256SUMS
+      - name: Sign SHA256SUMS (Ed25519)
+        env:
+          GHOSTPSY_RELEASE_SIGNING_KEY_HEX: ${{ secrets.GHOSTPSY_RELEASE_SIGNING_KEY_HEX }}
+        run: |
+          if [ -z "${GHOSTPSY_RELEASE_SIGNING_KEY_HEX}" ]; then
+            echo "GHOSTPSY_RELEASE_SIGNING_KEY_HEX secret is not set; refusing to publish an unsigned release." >&2
+            exit 1
+          fi
+          go run ./scripts/sign-release release-assets/SHA256SUMS
+          test -f release-assets/SHA256SUMS.sig
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2.2.2
         with:
           files: |
             release-assets/ghostpsy_*
             release-assets/SHA256SUMS
+            release-assets/SHA256SUMS.sig
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

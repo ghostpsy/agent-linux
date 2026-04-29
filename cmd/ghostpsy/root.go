@@ -16,6 +16,7 @@ Commands:
   register   First-time setup: consume a 24h bootstrap token, run the first scan, store the persistent agent token at /etc/ghostpsy/agent.conf.
   scan       Build payload, print JSON for review, optionally POST to API.
   cron       Install, remove, or inspect the scheduled-scan timer.
+  update     Check for and install a new agent release (Ed25519-signed).
   version    Print version, release date (build), and architecture.
 
 Environment:
@@ -38,6 +39,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newScanCommand())
 	root.AddCommand(newRegisterCommand())
 	root.AddCommand(newCronCommand())
+	root.AddCommand(newUpdateCommand())
 	root.AddCommand(newVersionCommand())
 	return root
 }

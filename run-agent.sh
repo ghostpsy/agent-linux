@@ -3,6 +3,17 @@
 # with a bootstrap token. The API issues the persistent agent token in the
 # response and the agent stores it in /etc/ghostpsy/agent.conf (mode 0600).
 #
+# Trust model:
+#   * First install (this script): integrity rests on GitHub Releases over
+#     HTTPS plus the SHA256SUMS check below. We cannot verify Ed25519
+#     signatures here without a pre-existing trust anchor on the host —
+#     a malicious binary served as the SHA256SUMS-matching artifact could
+#     lie about its own signature.
+#   * Subsequent auto-updates: the installed binary embeds the release
+#     public key and verifies SHA256SUMS.sig before swapping itself.
+#     ``ghostpsy update`` is the strong-signature path; this script is
+#     bootstrapping into it.
+#
 # Requires: bash, curl, sha256sum or shasum. Run as root (or via sudo) so the
 # binary can be installed and /etc/ghostpsy/agent.conf can be written.
 #

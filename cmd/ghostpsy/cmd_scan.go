@@ -15,7 +15,13 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/actionlog"
 	"github.com/ghostpsy/agent-linux/internal/agentconfig"
 	"github.com/ghostpsy/agent-linux/internal/state"
+	"github.com/ghostpsy/agent-linux/internal/version"
 )
+
+// envSkipMinVersionCheck disables the min_supported_version enforcement.
+// Tests use this; production agents leave it unset so the kill-switch is
+// effective.
+const envSkipMinVersionCheck = "GHOSTPSY_SKIP_MIN_VERSION_CHECK"
 
 func newScanCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -71,6 +77,11 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if err := enforceMinSupportedVersion(ctx, apiURL); err != nil {
+		printErrorLine(fmt.Sprintf("scan: %v", err))
+		os.Exit(1)
+	}
 
 	st, nextSeq, p, body, err := buildScanPayload(ctx, logger)
 	if err != nil {
@@ -140,6 +151,41 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 		printErrorLine(fmt.Sprintf("save state: %v", err))
 		os.Exit(1)
 	}
+}
+
+// enforceMinSupportedVersion blocks the scan when the API reports that this
+// agent is below the minimum supported version (kill-switch for critical
+// CVEs in the agent).
+//
+// Best-effort: if the update-check call fails (offline, API down, malformed
+// response) the scan proceeds. The cost of a temporary API outage taking
+// down every customer's cron is far higher than the benefit of strict
+// fail-closed behaviour for a rare kill-switch.
+func enforceMinSupportedVersion(ctx context.Context, apiURL string) error {
+	if strings.TrimSpace(os.Getenv(envSkipMinVersionCheck)) != "" {
+		return nil
+	}
+	// "dev" is the default for un-tagged local builds. Skip the kill-switch
+	// for these so a developer running `go run ./cmd/ghostpsy scan` is not
+	// blocked while iterating.
+	if version.Version == "dev" {
+		return nil
+	}
+	info, err := fetchUpdateCheck(ctx, apiURL, version.DisplayGOARCH())
+	if err != nil {
+		return nil
+	}
+	if info.MinSupportedVersion == "" {
+		return nil
+	}
+	if !versionLess(version.Version, info.MinSupportedVersion) {
+		return nil
+	}
+	return fmt.Errorf(
+		"agent version %s is below the minimum supported version %s; run "+
+			"`sudo ghostpsy update` before scanning",
+		version.Version, info.MinSupportedVersion,
+	)
 }
 
 // resolveIngestToken returns the bearer token to send with /v1/ingest.

@@ -134,7 +134,7 @@ func runRegisterCommand(cmd *cobra.Command, _ []string) {
 		os.Exit(1)
 	}
 
-	persistent, err := extractAgentToken(respBody)
+	persistent, effectiveSeq, err := parseRegisterResponse(respBody)
 	if err != nil {
 		printErrorLine(fmt.Sprintf("register: %v", err))
 		os.Exit(1)
@@ -147,7 +147,16 @@ func runRegisterCommand(cmd *cobra.Command, _ []string) {
 		os.Exit(1)
 	}
 
-	st.ScanSeq = nextSeq
+	// The API authoritatively assigns scan_seq during register so a host
+	// that lost its local state (deleted state.json, OS reinstall) can
+	// re-register and resume from the existing history. Honour the
+	// server's value when present; fall back to the locally-computed
+	// nextSeq for older API responses that lack the field.
+	resolvedSeq := nextSeq
+	if effectiveSeq > 0 {
+		resolvedSeq = effectiveSeq
+	}
+	st.ScanSeq = resolvedSeq
 	logger.Step("local-modifying", state.Path(),
 		"Persisting scan sequence to local state",
 		map[string]string{"scan_seq": fmt.Sprintf("%d", st.ScanSeq)})
@@ -160,16 +169,18 @@ func runRegisterCommand(cmd *cobra.Command, _ []string) {
 	printMutedLine("Next: enable scheduled scans with `ghostpsy cron install` (run as root)")
 }
 
-// extractAgentToken pulls the persistent token from the /v1/ingest response.
-func extractAgentToken(body []byte) (string, error) {
+// parseRegisterResponse pulls the persistent token and (when present) the
+// server-assigned scan_seq from the /v1/ingest response.
+func parseRegisterResponse(body []byte) (string, int, error) {
 	var parsed struct {
 		AgentToken string `json:"agent_token"`
+		ScanSeq    int    `json:"scan_seq"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("parse ingest response: %w", err)
+		return "", 0, fmt.Errorf("parse ingest response: %w", err)
 	}
 	if parsed.AgentToken == "" {
-		return "", errors.New("ingest response did not include agent_token (was the token a bootstrap?)")
+		return "", 0, errors.New("ingest response did not include agent_token (was the token a bootstrap?)")
 	}
-	return parsed.AgentToken, nil
+	return parsed.AgentToken, parsed.ScanSeq, nil
 }

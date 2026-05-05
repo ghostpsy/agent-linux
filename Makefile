@@ -86,7 +86,7 @@ LINUX_GO_ENV := GOOS=linux GOARCH=amd64
 # tests natively; on anything else we shell out to docker so the linux-
 # tagged files (//go:build linux) compile and run identically to CI.
 UNAME_S := $(shell uname -s)
-GO_IMAGE := golang:1.24
+GO_IMAGE := golang:1.26
 
 test:
 	$(GO) test ./...

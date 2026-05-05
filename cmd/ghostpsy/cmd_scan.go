@@ -42,6 +42,12 @@ Scan options honor GHOSTPSY_API_URL unless --api is set.`,
 	cmd.Flags().String("save-payload", "", "write outbound payload JSON to this path before optional POST")
 	cmd.Flags().Bool("verbose", false, "print action-by-action runtime logs with safety summary")
 	cmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt and send immediately")
+	autoUpdateDefault := strings.TrimSpace(os.Getenv(envAutoUpdate)) != ""
+	cmd.Flags().Bool(
+		"auto-update",
+		autoUpdateDefault,
+		"after a successful scan, install a newer agent release automatically (defaults to "+envAutoUpdate+")",
+	)
 	return cmd
 }
 
@@ -67,6 +73,11 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 		os.Exit(1)
 	}
 	autoConfirm, err := cmd.Flags().GetBool("yes")
+	if err != nil {
+		printErrorLine("scan: invalid flags")
+		os.Exit(1)
+	}
+	autoUpdate, err := cmd.Flags().GetBool("auto-update")
 	if err != nil {
 		printErrorLine("scan: invalid flags")
 		os.Exit(1)
@@ -151,6 +162,8 @@ func runScanCommand(cmd *cobra.Command, _ []string) {
 		printErrorLine(fmt.Sprintf("save state: %v", err))
 		os.Exit(1)
 	}
+
+	maybePromptUpdate(ctx, apiURL, st, autoUpdate)
 }
 
 // enforceMinSupportedVersion blocks the scan when the API reports that this

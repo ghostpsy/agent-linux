@@ -30,6 +30,11 @@ const fileMode os.FileMode = 0o600
 type AgentState struct {
 	MachineUUID string `json:"machine_uuid"`
 	ScanSeq     int    `json:"scan_seq"`
+	// LastUpdateNotifiedVersion + LastUpdateNotifiedAt back the weekly upgrade
+	// reminder (printed at the end of `ghostpsy scan` when a newer release is
+	// available). Empty/zero on agents that have never seen an upgrade nudge.
+	LastUpdateNotifiedVersion string `json:"last_update_notified_version,omitempty"`
+	LastUpdateNotifiedAt      int64  `json:"last_update_notified_at,omitempty"`
 }
 
 // Path returns the resolved state-file path.

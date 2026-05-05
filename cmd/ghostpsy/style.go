@@ -15,6 +15,7 @@ var (
 	lipSuccess = lipgloss.NewStyle().Foreground(lipgloss.Color("46"))
 	lipError   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	lipMuted   = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	lipNotice  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 )
 
 func printSectionTitle(w io.Writer, title string) {
@@ -31,4 +32,8 @@ func printMutedLine(msg string) {
 
 func printErrorLine(msg string) {
 	fmt.Fprintln(os.Stderr, lipError.Render(msg))
+}
+
+func printNoticeLine(msg string) {
+	fmt.Println(lipNotice.Render(msg))
 }

@@ -102,11 +102,17 @@ func runRegisterCommand(cmd *cobra.Command, _ []string) {
 		"Reading or seeding local agent identity at "+state.Path(), nil)
 	st := ensureState(logger)
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		printErrorLine(fmt.Sprintf("register: read hostname: %v", err))
+		os.Exit(1)
+	}
+
 	logger.Step("external-send",
 		strings.TrimSuffix(apiURL, "/")+"/v1/agent/register",
 		"Exchanging bootstrap for persistent agent token (no scan)",
 		map[string]string{"authorization": "Bearer bootstrap", "content_type": "application/json"})
-	resp, err := postRegister(ctx, apiURL, bootstrap, st.MachineUUID)
+	resp, err := postRegister(ctx, apiURL, bootstrap, st.MachineUUID, hostname)
 	if err != nil {
 		printErrorLine(fmt.Sprintf("register: post: %v", err))
 		os.Exit(1)
@@ -154,12 +160,21 @@ func runRegisterCommand(cmd *cobra.Command, _ []string) {
 }
 
 // postRegister POSTs the bootstrap-token register body to the API.
-func postRegister(ctx context.Context, apiBaseURL, bootstrap, machineUUID string) (*http.Response, error) {
+//
+// The hostname is sent so the server can detect a machine_uuid collision
+// (typically a cloned VM that inherited /etc/machine-id from its source
+// image) and refuse before consuming the bootstrap.
+func postRegister(
+	ctx context.Context, apiBaseURL, bootstrap, machineUUID, hostname string,
+) (*http.Response, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	url := strings.TrimSuffix(apiBaseURL, "/") + "/v1/agent/register"
-	body, err := json.Marshal(map[string]string{"machine_uuid": machineUUID})
+	body, err := json.Marshal(map[string]string{
+		"machine_uuid": machineUUID,
+		"hostname":     hostname,
+	})
 	if err != nil {
 		return nil, err
 	}

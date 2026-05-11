@@ -2,7 +2,14 @@
 
 package main
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestParseRegisterResponse_OK(t *testing.T) {
 	body := []byte(`{"job_id":"j","status":"accepted","agent_token":"abc","scan_seq":42}`)
@@ -41,5 +48,32 @@ func TestParseRegisterResponse_MissingToken(t *testing.T) {
 func TestParseRegisterResponse_InvalidJSON(t *testing.T) {
 	if _, _, err := parseRegisterResponse([]byte(`not json`)); err == nil {
 		t.Fatal("expected error on invalid JSON")
+	}
+}
+
+func TestPostRegister_SendsMachineUUIDAndHostname(t *testing.T) {
+	var capturedBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"agent_token":"t","machine_uuid":"00000000-0000-0000-0000-000000000000","scan_seq":0}`))
+	}))
+	defer server.Close()
+
+	resp, err := postRegister(context.Background(), server.URL, "boot", "00000000-0000-0000-0000-000000000000", "prod-original")
+	if err != nil {
+		t.Fatalf("postRegister: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var parsed map[string]string
+	if err := json.Unmarshal(capturedBody, &parsed); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
+	}
+	if parsed["machine_uuid"] != "00000000-0000-0000-0000-000000000000" {
+		t.Fatalf("machine_uuid: got %q", parsed["machine_uuid"])
+	}
+	if parsed["hostname"] != "prod-original" {
+		t.Fatalf("hostname: got %q, expected hostname to be included in register body", parsed["hostname"])
 	}
 }

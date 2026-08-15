@@ -5,9 +5,17 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/ghostpsy/agent-linux/internal/service"
 )
 
 // installSudoRule writes the privilege grant, but only after the system's own
@@ -114,4 +122,233 @@ func ensureSudo(present func() bool, packageManager string, run runner) error {
 			"then run this again (%w)", packageManager, err)
 	}
 	return nil
+}
+
+// setupStep is one thing the installer does, with the sentence the user sees.
+//
+// The description is not decoration. Installing this means creating a user and
+// granting sudo rights on someone's server, and they are entitled to read the
+// list before it happens — that is what --dry-run prints.
+type setupStep struct {
+	describe string
+	do       func() error
+}
+
+// runSetupSteps performs the install, or just describes it.
+//
+// A failing step stops everything. Carrying on would leave the server
+// half-configured, which is harder to reason about than not installed at all.
+func runSetupSteps(out io.Writer, steps []setupStep, dryRun bool) error {
+	if dryRun {
+		_, _ = fmt.Fprint(out, "This is what would happen. Nothing is being changed.\n\n")
+		for _, s := range steps {
+			_, _ = fmt.Fprintf(out, "  - %s\n", s.describe)
+		}
+		_, _ = fmt.Fprintln(out, "\nRun the same command without --dry-run to do it.")
+		return nil
+	}
+
+	for _, s := range steps {
+		if err := s.do(); err != nil {
+			return fmt.Errorf("%s: %w", s.describe, err)
+		}
+		_, _ = fmt.Fprintf(out, "  ok  %s\n", s.describe)
+	}
+	return nil
+}
+
+// createAgentUser makes the locked system account the agent runs as.
+//
+// It cannot log in and has no password. Creating a user that already exists is
+// normal on a re-run, not a failure: the installer has to be safe to run twice.
+func createAgentUser(exists func() bool, run runner) error {
+	if exists() {
+		return nil
+	}
+	err := run("useradd",
+		"--system",
+		"--shell", "/usr/sbin/nologin",
+		"--home-dir", agentStateDir,
+		agentUser,
+	)
+	if err != nil {
+		return fmt.Errorf("could not create the %s user: %w", agentUser, err)
+	}
+	return nil
+}
+
+// agentStateDir is where the agent keeps its own state, owned by the agent user.
+const agentStateDir = "/var/lib/ghostpsy"
+
+func newSetupCommand() *cobra.Command {
+	var token string
+	var dryRun bool
+
+	cmd := &cobra.Command{
+		Use:   "setup",
+		Short: "Create the ghostpsy user, grant scoped sudo, and start the service",
+		Long: "Finishes the install once the agent binary is in place.\n\n" +
+			"Creates the locked ghostpsy user, installs the sudo rule this server\n" +
+			"needs, registers the machine and starts the background service.\n\n" +
+			"Use --dry-run to see every change first, without making any.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runSetup(cmd, token, dryRun)
+		},
+	}
+	cmd.Flags().StringVar(&token, "token", "", "the single-use code from the dashboard")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print every change and make none")
+	return cmd
+}
+
+func runSetup(cmd *cobra.Command, token string, dryRun bool) error {
+	out := cmd.OutOrStdout()
+
+	kind := service.Detect()
+	manager, err := service.For(kind)
+	if err != nil {
+		return err
+	}
+
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not find the agent binary: %w", err)
+	}
+
+	steps := []setupStep{
+		{
+			describe: "Install sudo, if this server does not have it",
+			do: func() error {
+				return ensureSudo(func() bool { return commandExists("sudo") }, detectPackageManager(), runCommand)
+			},
+		},
+		{
+			describe: "Check that /etc/sudoers reads /etc/sudoers.d",
+			do:       func() error { return checkSudoersIncludesDropInDir("/etc/sudoers") },
+		},
+		{
+			describe: fmt.Sprintf("Create the locked %s system user", agentUser),
+			do:       func() error { return createAgentUser(func() bool { return userExists(agentUser) }, runCommand) },
+		},
+		{
+			describe: fmt.Sprintf("Create %s, owned by %s", agentStateDir, agentUser),
+			do:       func() error { return createAgentStateDir() },
+		},
+		{
+			describe: "Install the sudo rule, after checking it with visudo",
+			do:       func() error { return installSudoRule(installedGrantPath, sudoersFile(), runCommand) },
+		},
+		{
+			describe: "Register this machine",
+			do:       func() error { return registerMachine(token) },
+		},
+		{
+			describe: fmt.Sprintf("Start the ghostpsy service (%s)", kind),
+			do: func() error {
+				return manager.Install(service.Spec{ExecStart: self + " serve", User: agentUser})
+			},
+		},
+	}
+
+	if err := runSetupSteps(out, steps, dryRun); err != nil {
+		return err
+	}
+	if dryRun {
+		return nil
+	}
+
+	_, _ = fmt.Fprintf(out, "\nDone. This server is now reporting.\n")
+	_, _ = fmt.Fprintf(out, "  Runs as  %s, not root\n", agentUser)
+	_, _ = fmt.Fprintf(out, "  Rights   %s\n", installedGrantPath)
+	return nil
+}
+
+func commandExists(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+func userExists(name string) bool {
+	_, err := user.Lookup(name)
+	return err == nil
+}
+
+// detectPackageManager returns the first known package manager on this host, or
+// an empty string. The order matters only where two are installed, which is
+// rare and harmless: any of them can install sudo.
+func detectPackageManager() string {
+	for _, name := range []string{"apt-get", "dnf", "yum", "zypper", "apk", "pacman"} {
+		if commandExists(name) {
+			return name
+		}
+	}
+	return ""
+}
+
+func createAgentStateDir() error {
+	if err := os.MkdirAll(agentStateDir, 0o750); err != nil {
+		return fmt.Errorf("could not create %s: %w", agentStateDir, err)
+	}
+	u, err := user.Lookup(agentUser)
+	if err != nil {
+		return fmt.Errorf("the %s user does not exist: %w", agentUser, err)
+	}
+	uid, gid := atoiOrZero(u.Uid), atoiOrZero(u.Gid)
+	if err := os.Chown(agentStateDir, uid, gid); err != nil {
+		return fmt.Errorf("could not give %s to %s: %w", agentStateDir, agentUser, err)
+	}
+	return nil
+}
+
+func atoiOrZero(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// registerMachine runs the existing register command as a child process, for
+// the same reason serve does: it calls os.Exit on failure.
+func registerMachine(token string) error {
+	if strings.TrimSpace(token) == "" {
+		return errors.New("no code was given. Copy the command from the dashboard, which includes it")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	out, err := exec.Command(self, "register", "--bootstrap="+token).CombinedOutput()
+	if err != nil {
+		return explainRegisterFailure(errors.New(strings.TrimSpace(lastLine(out))))
+	}
+	return nil
+}
+
+// explainRegisterFailure turns whatever registration reported into something a
+// busy sysadmin can act on.
+//
+// On a real host this step produced:
+//
+//	register: post: Post "https://api.ghostpsy.com/...": local error: tls: bad record MAC
+//
+// which says nothing useful to the person who has to fix it. The two things
+// that actually go wrong here need different answers, so they get different
+// messages.
+func explainRegisterFailure(err error) error {
+	detail := err.Error()
+	lower := strings.ToLower(detail)
+
+	switch {
+	case strings.Contains(lower, "401"), strings.Contains(lower, "token"), strings.Contains(lower, "rejected"):
+		return fmt.Errorf("the code from the dashboard was not accepted. It works once and stops working "+
+			"after 24 hours, so get a fresh one from the Add machine screen and run this again (%s)", detail)
+	default:
+		return fmt.Errorf("could not reach the ghostpsy service to register this machine. Check that this "+
+			"server can make outbound HTTPS connections to api.ghostpsy.com, then run this again (%s)", detail)
+	}
+}
+
+func runCommand(name string, args ...string) error {
+	return exec.Command(name, args...).Run()
 }

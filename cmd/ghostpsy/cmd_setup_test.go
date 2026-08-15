@@ -155,3 +155,107 @@ func TestEnsureSudoSaysSoWithNoKnownPackageManager(t *testing.T) {
 		t.Fatal("expected setup to stop when it cannot install sudo")
 	}
 }
+
+// --dry-run must change nothing. It is the promise the "check it first" path in
+// the mockup makes to the sysadmin who will not pipe curl into a shell.
+func TestDryRunDescribesEveryStepAndRunsNone(t *testing.T) {
+	ran := 0
+	steps := []setupStep{
+		{describe: "Create the locked ghostpsy user", do: func() error { ran++; return nil }},
+		{describe: "Install the sudo rule", do: func() error { ran++; return nil }},
+	}
+	var out strings.Builder
+
+	if err := runSetupSteps(&out, steps, true); err != nil {
+		t.Fatalf("dry run failed: %v", err)
+	}
+
+	if ran != 0 {
+		t.Fatalf("a dry run must not do anything, but %d steps ran", ran)
+	}
+	for _, want := range []string{"Create the locked ghostpsy user", "Install the sudo rule"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("dry run did not mention %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// A step that fails must stop the install there. Carrying on would leave the
+// server half-configured, which is harder to reason about than not installed.
+func TestSetupStopsAtTheFirstFailure(t *testing.T) {
+	after := 0
+	steps := []setupStep{
+		{describe: "first", do: func() error { return nil }},
+		{describe: "second", do: func() error { return errors.New("no space left on device") }},
+		{describe: "third", do: func() error { after++; return nil }},
+	}
+	var out strings.Builder
+
+	err := runSetupSteps(&out, steps, false)
+
+	if err == nil {
+		t.Fatal("expected the failure to stop the install")
+	}
+	if after != 0 {
+		t.Error("steps after a failure must not run")
+	}
+	if !strings.Contains(err.Error(), "second") {
+		t.Errorf("the error should name the step that failed, got: %v", err)
+	}
+}
+
+// Creating a user that already exists is normal on a re-run, not a failure.
+// The installer has to be safe to run twice.
+func TestCreateAgentUserIsSafeToRunTwice(t *testing.T) {
+	f := &fakeSetup{}
+
+	if err := createAgentUser(func() bool { return true }, f.run); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(f.ran) != 0 {
+		t.Fatalf("an existing user must not be recreated, calls: %v", f.ran)
+	}
+}
+
+func TestCreateAgentUserMakesALockedAccount(t *testing.T) {
+	f := &fakeSetup{}
+
+	if err := createAgentUser(func() bool { return false }, f.run); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	call := strings.Join(f.ran, " ")
+	for _, want := range []string{"useradd", "--system", "nologin", agentUser} {
+		if !strings.Contains(call, want) {
+			t.Errorf("expected the user to be created locked and system-owned, missing %q in: %s", want, call)
+		}
+	}
+}
+
+// The registration step surfaced a raw Go error on a real host:
+//   "register: post: Post https://... local error: tls: bad record MAC"
+// That is not a message a busy sysadmin should have to decode.
+func TestRegisterFailureIsExplainedInPlainWords(t *testing.T) {
+	got := explainRegisterFailure(errors.New(`post: Post "https://api.ghostpsy.com/v1/agent/register": local error: tls: bad record MAC`))
+
+	if !strings.Contains(got.Error(), "could not reach") {
+		t.Errorf("expected a plain explanation, got: %v", got)
+	}
+	if !strings.Contains(got.Error(), "api.ghostpsy.com") {
+		t.Errorf("expected the message to name what to check, got: %v", got)
+	}
+}
+
+// An expired or reused code is the most likely failure, and it needs different
+// advice from a network problem — get a new one from the dashboard.
+func TestAnInvalidCodeIsExplainedDifferentlyFromANetworkProblem(t *testing.T) {
+	got := explainRegisterFailure(errors.New("register: bootstrap token rejected (401)"))
+
+	if !strings.Contains(strings.ToLower(got.Error()), "code") {
+		t.Errorf("expected the message to talk about the code, got: %v", got)
+	}
+	if strings.Contains(got.Error(), "could not reach") {
+		t.Errorf("a rejected code is not a network problem, got: %v", got)
+	}
+}

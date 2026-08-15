@@ -64,3 +64,64 @@ func TestRunAppliesTheDeclaredEnvironment(t *testing.T) {
 		t.Fatalf("expected the declared environment to reach the command, got: %q", res.Stdout)
 	}
 }
+
+// The agent runs as the unprivileged ghostpsy user, so a declared command has
+// to go through sudo. Without this the whole catalogue is decoration.
+func TestInvocationGoesThroughSudoWhenNotRoot(t *testing.T) {
+	c := Command{Binary: "/usr/sbin/iptables-save"}
+
+	bin, args := invocation(c.Binary, c, false)
+
+	if bin != sudoPath {
+		t.Fatalf("expected the command to be run through %s, got %q", sudoPath, bin)
+	}
+	if len(args) == 0 || args[0] != "-n" {
+		t.Fatalf("expected sudo to be non-interactive (-n), got %v", args)
+	}
+	if args[len(args)-1] != "/usr/sbin/iptables-save" {
+		t.Fatalf("expected the declared binary to be the last argument, got %v", args)
+	}
+}
+
+// Running as root already, sudo would be pointless indirection and would fail
+// on a host where sudo is not installed at all.
+func TestInvocationRunsDirectlyWhenAlreadyRoot(t *testing.T) {
+	c := Command{Binary: "/usr/sbin/iptables-save", Args: []string{"-t", "filter"}}
+
+	bin, args := invocation(c.Binary, c, true)
+
+	if bin != "/usr/sbin/iptables-save" {
+		t.Fatalf("expected a direct call, got %q", bin)
+	}
+	if len(args) != 2 || args[0] != "-t" {
+		t.Fatalf("expected the declared arguments unchanged, got %v", args)
+	}
+}
+
+// The grant file pins absolute paths. If Run called a bare name instead, the
+// two could disagree on a host where the binary is somewhere unusual, and the
+// grant would silently not apply. One source, one resolved path.
+func TestRunResolvesABareBinaryNameLikeTheGrantDoes(t *testing.T) {
+	declareForTest(t, ID("test:bare"), Command{Binary: "echo", Args: []string{"resolved"}, Why: "x"})
+
+	res, err := Run(context.Background(), ID("test:bare"))
+
+	if err != nil {
+		t.Fatalf("expected a bare binary name to be resolved and run, got: %v", err)
+	}
+	if got := strings.TrimSpace(string(res.Stdout)); got != "resolved" {
+		t.Fatalf("expected %q, got %q", "resolved", got)
+	}
+}
+
+// A declared command whose binary is not installed must fail with a clear
+// error, not with whatever exec says about a missing file.
+func TestRunReportsAMissingBinaryPlainly(t *testing.T) {
+	declareForTest(t, ID("test:missing"), Command{Binary: "definitely-not-installed", Why: "x"})
+
+	_, err := Run(context.Background(), ID("test:missing"))
+
+	if !errors.Is(err, ErrNotInstalled) {
+		t.Fatalf("expected ErrNotInstalled, got: %v", err)
+	}
+}

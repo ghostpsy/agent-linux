@@ -12,6 +12,7 @@ import (
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
 const (
@@ -95,16 +96,16 @@ func fillBackendRulesetFingerprint(ctx context.Context, fw *payload.Firewall) {
 	fw.BackendRulesetExcerpt = shared.TruncateRunes(redacted, maxRulesetExcerpt)
 }
 
+// captureRuleset dumps the packet filter rules. Both backends need root, and
+// this is the single biggest thing an unprivileged agent loses — 76% of this
+// section, measured on debian-13. Going through privexec is what lets sudo
+// grant it.
 func captureRuleset(ctx context.Context) ([]byte, string) {
-	cmd := exec.CommandContext(ctx, "iptables-save")
-	b, err := cmd.Output()
-	if err == nil && len(b) > 0 {
-		return b, "iptables-save"
+	if res, err := privexec.Run(ctx, privexec.FirewallIptablesSave); err == nil && len(res.Stdout) > 0 {
+		return res.Stdout, "iptables-save"
 	}
-	cmd = exec.CommandContext(ctx, "nft", "list", "ruleset")
-	b, err = cmd.Output()
-	if err == nil && len(b) > 0 {
-		return b, "nft"
+	if res, err := privexec.Run(ctx, privexec.FirewallNftListRuleset); err == nil && len(res.Stdout) > 0 {
+		return res.Stdout, "nft"
 	}
 	return nil, ""
 }

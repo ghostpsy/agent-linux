@@ -13,13 +13,14 @@ package privexec
 //
 //  1. Measure before you add. If a command works unprivileged, it does not
 //     belong here — a shorter grant file is a more trustworthy one.
+//     Equally: remove an entry when its last caller goes. The file claims to
+//     list what we use, so a grant nothing calls makes that claim false.
 //  2. Write Why in plain words. It is printed above the grant, and the person
 //     reading it is a busy sysadmin deciding whether to trust us.
 const (
 	// Firewall — the biggest gap measured: 76% of this section is lost
 	// without privilege, including every rule count and both default policies.
 	FirewallIptablesSave     ID = "firewall.iptables_save"
-	FirewallIptablesList     ID = "firewall.iptables_list"
 	FirewallNftListRuleset   ID = "firewall.nft_list_ruleset"
 	FirewallUfwStatusVerbose ID = "firewall.ufw_status_verbose"
 
@@ -53,11 +54,6 @@ func init() {
 	declare(FirewallIptablesSave, Command{
 		Binary: "iptables-save",
 		Why:    "read the firewall rules, to count them and spot an open default policy",
-	})
-	declare(FirewallIptablesList, Command{
-		Binary: "iptables",
-		Args:   []string{"-t", "filter", "-S"},
-		Why:    "read the firewall filter table",
 	})
 	declare(FirewallNftListRuleset, Command{
 		Binary: "nft",

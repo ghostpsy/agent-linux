@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the ghostpsy agent and set it up to keep reporting.
 #
-#   curl -fsSL <this script> | sudo sh -s -- --token=<code from the dashboard>
+#   curl -fsSL <this script> | sudo bash -s -- --token=<code from the dashboard>
 #
 # It detects the CPU architecture, downloads the matching release binary from
 # GitHub Releases, verifies its SHA256, installs it to /usr/local/bin/ghostpsy,
@@ -31,6 +31,15 @@
 # Requires: bash, curl, sha256sum or shasum. Run as root (or via sudo) so the
 # binary can be written to /usr/local/bin.
 
+# This script needs bash: it uses [[ ]] and BASH_REMATCH. /bin/sh is dash on
+# Debian and Ubuntu, where those are syntax errors and $EUID is unset. Say so
+# here rather than failing later with something confusing.
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "Error: this installer needs bash, not sh." >&2
+  echo "Run:  curl -fsSL <this script> | sudo bash -s -- --token=<code>" >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 REPO_OWNER="ghostpsy"
@@ -41,26 +50,30 @@ INSTALL_PATH="/usr/local/bin/ghostpsy"
 TOKEN=""
 DRY_RUN=0
 BINARY_ONLY=0
-for arg in "$@"; do
-  case "$arg" in
-    --token=*) TOKEN="${arg#*=}" ;;
-    --dry-run) DRY_RUN=1 ;;
-    --binary-only) BINARY_ONLY=1 ;;
-    -h | --help)
-      sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
-      exit 0
-      ;;
-    *)
-      echo "Unknown option: $arg" >&2
-      echo "Run with --help to see what this accepts." >&2
-      exit 2
-      ;;
-  esac
-done
 
 die() {
   echo "Error: $*" >&2
   exit 1
+}
+
+# Kept next to the flags it documents. The previous version printed a fixed
+# line range of the header comment, which silently truncated as soon as anyone
+# added a line above it.
+usage() {
+  cat <<'EOF'
+Install the ghostpsy agent and set it up to keep reporting.
+
+  curl -fsSL <this script> | sudo bash -s -- --token=<code from the dashboard>
+
+Options:
+  --token=CODE    the single-use code from the dashboard
+  --dry-run       show every change and make none
+  --binary-only   install the binary only: no user, no service, no sudo rule
+  -h, --help      this text
+
+Everything that can change a server lives in `ghostpsy setup`, which this
+script calls once the binary is in place.
+EOF
 }
 
 map_arch() {
@@ -73,6 +86,25 @@ map_arch() {
       ;;
   esac
 }
+
+# Parsed after the helpers above are defined: a shell only knows a function
+# once it has read it, and --help calls usage().
+for arg in "$@"; do
+  case "$arg" in
+    --token=*) TOKEN="${arg#*=}" ;;
+    --dry-run) DRY_RUN=1 ;;
+    --binary-only) BINARY_ONLY=1 ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $arg" >&2
+      echo "Run with --help to see what this accepts." >&2
+      exit 2
+      ;;
+  esac
+done
 
 if [[ $EUID -ne 0 ]]; then
   die "This script installs to ${INSTALL_PATH} — run as root or via sudo."
@@ -146,7 +178,7 @@ if [[ $DRY_RUN -eq 1 ]]; then
   echo ""
   echo "  - Install ${expected_file} at ${INSTALL_PATH}"
   chmod 0755 "$bin_path"
-  "$bin_path" setup --dry-run --token="$TOKEN" 2>/dev/null | sed -n '3,$p'
+  "$bin_path" setup --dry-run --token="$TOKEN"
   exit 0
 fi
 

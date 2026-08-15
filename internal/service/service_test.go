@@ -3,6 +3,7 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -92,6 +93,10 @@ func TestDetectReportsUnsupportedRatherThanGuessing(t *testing.T) {
 
 // A fake init system, so the install and removal steps can be tested without
 // one. What matters is the order and the completeness, not the exact commands.
+// errFakeFailure belongs with the double that returns it, not in the shipped
+// package.
+var errFakeFailure = errors.New("service: simulated failure")
+
 type fakeRunner struct {
 	calls   []string
 	written map[string]string

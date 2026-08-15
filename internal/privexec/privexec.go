@@ -23,6 +23,14 @@ import (
 // a caller controls.
 const sudoPath = "/usr/bin/sudo"
 
+// securePath mirrors what sudo hands a command through its own secure_path.
+//
+// Declared commands get an explicit environment so that running as root and
+// running through sudo behave identically. Handing over *no* PATH broke that:
+// ufw shells out to sysctl and failed with "problem running sysctl", but only
+// on the root path, because sudo was quietly supplying a PATH on the other one.
+const securePath = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 // ID names a declared command. Collectors reference commands by ID, never by
 // building an argument list of their own.
 type ID string
@@ -38,9 +46,8 @@ var ErrNotInstalled = errors.New("privexec: command is not installed on this hos
 
 // Result is the outcome of one declared command.
 type Result struct {
-	Stdout   []byte
-	Stderr   []byte
-	ExitCode int
+	Stdout []byte
+	Stderr []byte
 }
 
 // Command is one declared privileged command.
@@ -79,12 +86,13 @@ func Run(ctx context.Context, id ID) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %s", ErrNotInstalled, declared.Binary)
 	}
 
-	bin, args := invocation(path, declared, os.Geteuid() == 0)
+	bin, args := invocation(path, declared.Args, os.Geteuid() == 0)
 	cmd := exec.CommandContext(ctx, bin, args...)
 	// Always explicit, never inherited: sudo resets the environment, so a
 	// command must behave the same whether we reached it directly as root or
-	// through sudo as the ghostpsy user.
-	cmd.Env = declared.Env
+	// through sudo as the ghostpsy user. The baseline PATH is part of that —
+	// see securePath.
+	cmd.Env = append([]string{securePath}, declared.Env...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -100,12 +108,12 @@ func Run(ctx context.Context, id ID) (Result, error) {
 //
 // sudo -n never prompts: if the grant is missing the command fails immediately
 // instead of hanging a scan on a password prompt nobody will ever see.
-func invocation(path string, c Command, amRoot bool) (string, []string) {
+func invocation(path string, declaredArgs []string, amRoot bool) (string, []string) {
 	if amRoot {
-		return path, c.Args
+		return path, declaredArgs
 	}
-	args := make([]string, 0, len(c.Args)+2)
+	args := make([]string, 0, len(declaredArgs)+2)
 	args = append(args, "-n", path)
-	args = append(args, c.Args...)
+	args = append(args, declaredArgs...)
 	return sudoPath, args
 }

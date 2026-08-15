@@ -131,7 +131,10 @@ func sudoersHasDrifted(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return string(installed) != sudoersFile(), nil
+	// Compare the grants, not the bytes. A byte comparison also covers the
+	// header comment, so editing that text in a future release would report
+	// every host as drifted while nothing about its privileges changed.
+	return len(grantDiff(string(installed), sudoersFile())) > 0, nil
 }
 
 func sudoersFile() string {

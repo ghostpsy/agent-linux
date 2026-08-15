@@ -70,7 +70,7 @@ func TestRunAppliesTheDeclaredEnvironment(t *testing.T) {
 func TestInvocationGoesThroughSudoWhenNotRoot(t *testing.T) {
 	c := Command{Binary: "/usr/sbin/iptables-save"}
 
-	bin, args := invocation(c.Binary, c, false)
+	bin, args := invocation(c.Binary, c.Args, false)
 
 	if bin != sudoPath {
 		t.Fatalf("expected the command to be run through %s, got %q", sudoPath, bin)
@@ -88,7 +88,7 @@ func TestInvocationGoesThroughSudoWhenNotRoot(t *testing.T) {
 func TestInvocationRunsDirectlyWhenAlreadyRoot(t *testing.T) {
 	c := Command{Binary: "/usr/sbin/iptables-save", Args: []string{"-t", "filter"}}
 
-	bin, args := invocation(c.Binary, c, true)
+	bin, args := invocation(c.Binary, c.Args, true)
 
 	if bin != "/usr/sbin/iptables-save" {
 		t.Fatalf("expected a direct call, got %q", bin)
@@ -123,5 +123,40 @@ func TestRunReportsAMissingBinaryPlainly(t *testing.T) {
 
 	if !errors.Is(err, ErrNotInstalled) {
 		t.Fatalf("expected ErrNotInstalled, got: %v", err)
+	}
+}
+
+// Found by running it: ufw shells out to sysctl, and with no PATH it failed
+// with "problem running sysctl" — but only when the agent was root. Under sudo
+// it worked, because sudo supplies secure_path. The two paths must behave the
+// same, which is the whole reason the environment is explicit.
+func TestRunGivesEveryCommandAPath(t *testing.T) {
+	declareForTest(t, ID("test:path"), Command{Binary: "/usr/bin/env", Why: "x"})
+
+	res, err := Run(context.Background(), ID("test:path"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(res.Stdout), "PATH=") {
+		t.Fatalf("a declared command must get a PATH, got: %q", res.Stdout)
+	}
+}
+
+// A declared environment adds to that baseline rather than replacing it, or
+// declaring LC_ALL would silently remove PATH again.
+func TestRunKeepsThePathWhenACommandDeclaresItsOwnEnvironment(t *testing.T) {
+	declareForTest(t, ID("test:path-env"), Command{
+		Binary: "/usr/bin/env", Env: []string{"LC_ALL=C"}, Why: "x",
+	})
+
+	res, err := Run(context.Background(), ID("test:path-env"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := string(res.Stdout)
+	if !strings.Contains(out, "PATH=") || !strings.Contains(out, "LC_ALL=C") {
+		t.Fatalf("expected both PATH and the declared LC_ALL, got: %q", out)
 	}
 }

@@ -15,10 +15,6 @@ const (
 	upstartJobPath  = "/etc/init/ghostpsy.conf"
 )
 
-// errFakeFailure is only ever returned by the test double. It lives here so the
-// double stays a few lines long instead of growing its own error type.
-var errFakeFailure = errors.New("service: simulated failure")
-
 // Manager installs and removes the agent's service on one init system.
 type Manager interface {
 	Install(Spec) error

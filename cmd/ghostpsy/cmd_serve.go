@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -53,7 +52,13 @@ func servePass(ctx context.Context, d *serveDeps) error {
 
 	if act.Heartbeat {
 		if err := d.heartbeat(ctx); err != nil {
-			slog.Debug("heartbeat failed", "error", err)
+			// Same trap as the scan path: a failure leaves lastHeartbeat unset,
+			// so the next pass asks for another one and Wait stays zero. Without
+			// this sleep the loop spins as fast as the CPU allows, forever.
+			slog.Debug("heartbeat failed, will try again", "error", err, "retry_in", retryDelay)
+			if !act.Scan {
+				return d.sleep(ctx, retryDelay)
+			}
 		} else {
 			d.lastHeartbeat = now
 		}
@@ -139,7 +144,7 @@ func runServe(ctx context.Context) error {
 // prevent. Running it as a child also means a panic in a collector costs one
 // scan rather than the agent.
 func runScanSubprocess(ctx context.Context) error {
-	self, err := os.Executable()
+	self, err := resolveSelfPath()
 	if err != nil {
 		return fmt.Errorf("could not find the agent binary: %w", err)
 	}

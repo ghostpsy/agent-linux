@@ -57,17 +57,15 @@ func fillFirewalldHints(ctx context.Context, fw *payload.Firewall) {
 }
 
 func fillUfwVerbose(ctx context.Context, fw *payload.Firewall) {
-	path := ufwExecutablePath()
-	if path == "" {
-		return
-	}
 	subCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(subCtx, path, "status", "verbose")
-	b, err := cmd.Output()
+	// Measured as lost without privilege on debian-13, so it goes through the
+	// declared command like the ruleset dump does.
+	res, err := privexec.Run(subCtx, privexec.FirewallUfwStatusVerbose)
 	if err != nil {
 		return
 	}
+	b := res.Stdout
 	var lines []string
 	for _, line := range strings.Split(string(b), "\n") {
 		line = strings.TrimRight(line, "\r")

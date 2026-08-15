@@ -129,3 +129,24 @@ func TestServePassDoesNotBackOffAfterASuccessfulScan(t *testing.T) {
 		t.Fatalf("a successful scan must not trigger the retry back-off, slept %v", slept)
 	}
 }
+
+// The scan path got a back-off; the heartbeat path did not. A failed heartbeat
+// leaves lastHeartbeat unset, so Decide asks for another one immediately and
+// Wait stays zero — a tight loop that burns a core forever. Found by review,
+// not by the earlier tests, because they only checked the scan path.
+func TestServePassBacksOffAfterAFailedHeartbeat(t *testing.T) {
+	d, _, _ := fixedDeps()
+	d.lastScan = d.now()
+	d.lastHeartbeat = time.Time{}
+	d.heartbeat = func(context.Context) error { return errors.New("permission denied") }
+	slept := time.Duration(0)
+	d.sleep = func(_ context.Context, dur time.Duration) error { slept = dur; return nil }
+
+	if err := servePass(context.Background(), d); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if slept < time.Minute {
+		t.Fatalf("a failed heartbeat must not spin the loop, slept %v", slept)
+	}
+}

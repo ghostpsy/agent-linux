@@ -38,7 +38,6 @@ func newRootCommand() *cobra.Command {
 	root.Flags().BoolP("version", "v", false, "print version and exit")
 	root.AddCommand(newScanCommand())
 	root.AddCommand(newRegisterCommand())
-	root.AddCommand(newCronCommand())
 	root.AddCommand(newUpdateCommand())
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newSudoersCommand())

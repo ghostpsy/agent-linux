@@ -57,22 +57,12 @@ func chainDeclaration(line string) (name, policy string) {
 // it a restrictive INPUT policy usually breaks the machine, so its absence is
 // worth reporting rather than assuming.
 func (t filterTable) HasEstablishedRelated() bool {
-	for _, rule := range t.Rules {
-		if iptablesRuleLinesHaveEstablishedRelated([]string{rule}) {
-			return true
-		}
-	}
-	return false
+	return iptablesRuleLinesHaveEstablishedRelated(t.Rules)
 }
 
 // MentionsUfw reports whether ufw manages this table. Chain names alone are not
 // enough: on some hosts the -A rules referencing ufw chains appear before the
 // chains are declared, so the rules have to be read too.
 func (t filterTable) MentionsUfw() bool {
-	for _, name := range t.Chains {
-		if strings.Contains(strings.ToLower(name), "ufw") {
-			return true
-		}
-	}
-	return filterRuleLinesMentionUfw(t.Rules)
+	return filterChainsIndicateUfwBackend(t.Chains) || filterRuleLinesMentionUfw(t.Rules)
 }

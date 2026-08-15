@@ -58,30 +58,6 @@ func collectIptablesMetrics(ctx context.Context) (firewallMetrics, int, bool, er
 	}, len(table.Chains), table.MentionsUfw(), nil
 }
 
-func policyFromIptablesSOutputLines(lines []string, chainName string) string {
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[0] == "-P" && fields[1] == chainName {
-			return strings.ToUpper(fields[2])
-		}
-	}
-	return ""
-}
-
-// countIptablesFilterRuleLines counts real rules from iptables -S output.
-// Per-chain -S can include a -P policy line (not a rule); go-iptables List returns it as one line per chain.
-func countIptablesFilterRuleLines(lines []string) int {
-	n := 0
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "-A") || strings.HasPrefix(line, "-I") {
-			n++
-		}
-	}
-	return n
-}
-
 func iptablesRuleLinesHaveEstablishedRelated(rules []string) bool {
 	for _, line := range rules {
 		u := strings.ToUpper(line)

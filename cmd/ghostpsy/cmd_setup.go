@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghostpsy/agent-linux/internal/agentconfig"
 	"github.com/ghostpsy/agent-linux/internal/service"
 )
 
@@ -210,7 +211,7 @@ func runSetup(cmd *cobra.Command, token string, dryRun bool) error {
 		return err
 	}
 
-	self, err := os.Executable()
+	self, err := resolveSelfPath()
 	if err != nil {
 		return fmt.Errorf("could not find the agent binary: %w", err)
 	}
@@ -241,6 +242,14 @@ func runSetup(cmd *cobra.Command, token string, dryRun bool) error {
 		{
 			describe: "Register this machine",
 			do:       func() error { return registerMachine(token) },
+		},
+		{
+			// register runs as root and writes the token 0600 root-owned, but
+			// the service runs as ghostpsy. Without this the agent cannot read
+			// its own token, every heartbeat fails, and the machine looks dead
+			// while the daemon retries forever.
+			describe: fmt.Sprintf("Give the agent token to %s", agentUser),
+			do:       func() error { return giveConfigToAgentUser() },
 		},
 		{
 			describe: fmt.Sprintf("Start the ghostpsy service (%s)", kind),
@@ -300,6 +309,27 @@ func createAgentStateDir() error {
 	return nil
 }
 
+// giveConfigToAgentUser hands /etc/ghostpsy to the agent account.
+//
+// The directory and the token inside it are created by `register`, which runs
+// as root. The service does not, so without this it cannot read the credential
+// it was just given.
+func giveConfigToAgentUser() error {
+	dir := filepath.Dir(agentconfig.Path())
+	u, err := user.Lookup(agentUser)
+	if err != nil {
+		return fmt.Errorf("the %s user does not exist: %w", agentUser, err)
+	}
+	uid, gid := atoiOrZero(u.Uid), atoiOrZero(u.Gid)
+
+	for _, path := range []string{dir, agentconfig.Path()} {
+		if err := os.Chown(path, uid, gid); err != nil {
+			return fmt.Errorf("could not give %s to %s: %w", path, agentUser, err)
+		}
+	}
+	return nil
+}
+
 func atoiOrZero(s string) int {
 	n, err := strconv.Atoi(s)
 	if err != nil {
@@ -314,7 +344,7 @@ func registerMachine(token string) error {
 	if strings.TrimSpace(token) == "" {
 		return errors.New("no code was given. Copy the command from the dashboard, which includes it")
 	}
-	self, err := os.Executable()
+	self, err := resolveSelfPath()
 	if err != nil {
 		return err
 	}

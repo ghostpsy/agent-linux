@@ -5,10 +5,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghostpsy/agent-linux/internal/agentconfig"
 	"github.com/ghostpsy/agent-linux/internal/service"
 )
 
@@ -21,14 +23,21 @@ type uninstallPaths struct {
 	Sudoers string
 	Config  string
 	State   string
+	// Left behind by the `cron install` command that v2 removed. A host that
+	// ran it still has these, and a stale timer whose service file is gone
+	// fails on every tick forever.
+	LegacyCronFile     string
+	LegacySystemdTimer string
 }
 
 func defaultUninstallPaths() uninstallPaths {
 	return uninstallPaths{
-		Binary:  "/usr/local/bin/ghostpsy",
-		Sudoers: "/etc/sudoers.d/ghostpsy",
-		Config:  "/etc/ghostpsy",
-		State:   "/var/lib/ghostpsy",
+		Binary:             defaultBinPath,
+		Sudoers:            installedGrantPath,
+		Config:             filepath.Dir(agentconfig.Path()),
+		State:              agentStateDir,
+		LegacyCronFile:     "/etc/cron.d/ghostpsy",
+		LegacySystemdTimer: "/etc/systemd/system/ghostpsy.timer",
 	}
 }
 
@@ -101,7 +110,7 @@ func removeInstalledFiles(paths uninstallPaths, purge bool) ([]string, error) {
 // behaviour can be tested. Relying on file permissions does not work: the tests
 // run as root, and root ignores them.
 func removeInstalledFilesWith(paths uninstallPaths, purge bool, remove func(string) error) ([]string, error) {
-	targets := []string{paths.Sudoers, paths.Binary}
+	targets := []string{paths.Sudoers, paths.LegacySystemdTimer, paths.LegacyCronFile, paths.Binary}
 	if purge {
 		targets = append(targets, paths.Config, paths.State)
 	}

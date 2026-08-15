@@ -3,7 +3,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -13,8 +16,18 @@ import (
 // agentUser is the locked system account the agent runs as. It cannot log in.
 const agentUser = "ghostpsy"
 
+// installedGrantPath is where the grant lives once a host has one.
+const installedGrantPath = "/etc/sudoers.d/ghostpsy"
+
+// errNoGrantInstalled means there is no grant file at all. That is a different
+// situation from a stale one, and it needs different advice.
+var errNoGrantInstalled = errors.New("no sudo rule is installed")
+
 func newSudoersCommand() *cobra.Command {
-	return &cobra.Command{
+	var check, diff bool
+	var path string
+
+	cmd := &cobra.Command{
 		Use:   "sudoers",
 		Short: "Print the sudo rule the agent needs, and install nothing",
 		Long: "Prints the exact list of commands ghostpsy may run as root on this server.\n" +
@@ -23,12 +36,102 @@ func newSudoersCommand() *cobra.Command {
 			"installed here, so it grants nothing for software you do not have.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// A truncated grant file is worse than none: report a broken pipe
-			// rather than let the caller install half a rule.
-			_, err := fmt.Fprint(cmd.OutOrStdout(), sudoersFile())
-			return err
+			switch {
+			case check:
+				return runSudoersCheck(cmd, path)
+			case diff:
+				return runSudoersDiff(cmd, path)
+			default:
+				// A truncated grant file is worse than none: report a broken
+				// pipe rather than let the caller install half a rule.
+				_, err := fmt.Fprint(cmd.OutOrStdout(), sudoersFile())
+				return err
+			}
 		},
 	}
+
+	cmd.Flags().BoolVar(&check, "check", false, "compare the installed rule with what this version needs")
+	cmd.Flags().BoolVar(&diff, "diff", false, "show what would change in the installed rule")
+	cmd.Flags().StringVar(&path, "path", installedGrantPath, "the installed rule to compare against")
+
+	return cmd
+}
+
+func runSudoersCheck(cmd *cobra.Command, path string) error {
+	drifted, err := sudoersHasDrifted(path)
+	if errors.Is(err, errNoGrantInstalled) {
+		return fmt.Errorf("no sudo rule is installed at %s.\n"+
+			"Install one with: ghostpsy sudoers | sudo tee %s", path, path)
+	}
+	if err != nil {
+		return err
+	}
+	if drifted {
+		return fmt.Errorf("the sudo rule at %s no longer matches what this agent needs.\n"+
+			"See what changed with: ghostpsy sudoers --diff\n"+
+			"Update it with:        ghostpsy sudoers | sudo tee %s", path, path)
+	}
+
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "The sudo rule at %s is up to date.\n", path)
+	return err
+}
+
+func runSudoersDiff(cmd *cobra.Command, path string) error {
+	installed, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		installed = nil
+	} else if err != nil {
+		return err
+	}
+
+	out := cmd.OutOrStdout()
+	for _, line := range grantDiff(string(installed), sudoersFile()) {
+		if _, err := fmt.Fprintln(out, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// grantDiff reports the lines that would leave the installed rule and the ones
+// that would join it. Order does not matter in a sudoers file, so comparing
+// sets keeps the output to what actually changes.
+func grantDiff(installed, wanted string) []string {
+	present := map[string]bool{}
+	for _, line := range strings.Split(installed, "\n") {
+		present[line] = true
+	}
+	keep := map[string]bool{}
+	for _, line := range strings.Split(wanted, "\n") {
+		keep[line] = true
+	}
+
+	var out []string
+	for _, line := range strings.Split(installed, "\n") {
+		if line != "" && !keep[line] {
+			out = append(out, "- "+line)
+		}
+	}
+	for _, line := range strings.Split(wanted, "\n") {
+		if line != "" && !present[line] {
+			out = append(out, "+ "+line)
+		}
+	}
+	return out
+}
+
+// sudoersHasDrifted reports whether the installed grant still matches what this
+// agent version needs. Drift is not cosmetic: a collector that lost its
+// privilege goes quiet, and nobody connects that to an upgrade weeks earlier.
+func sudoersHasDrifted(path string) (bool, error) {
+	installed, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, errNoGrantInstalled
+	}
+	if err != nil {
+		return false, err
+	}
+	return string(installed) != sudoersFile(), nil
 }
 
 func sudoersFile() string {

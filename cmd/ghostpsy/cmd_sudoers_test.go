@@ -4,6 +4,9 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -47,5 +50,88 @@ func TestSudoersCommandExplainsWhereTheFileGoes(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("expected the header to mention %q, got:\n%s", want, got)
 		}
+	}
+}
+
+// After an upgrade the agent may need a command the installed rule does not
+// grant. Silence there is the dangerous case: collectors would start failing
+// for a reason nobody connects to the upgrade.
+func TestSudoersCheckReportsDriftAgainstTheInstalledFile(t *testing.T) {
+	stale := filepath.Join(t.TempDir(), "ghostpsy")
+	if err := os.WriteFile(stale, []byte("# an old grant that no longer matches\n"), 0o440); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	drifted, err := sudoersHasDrifted(stale)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !drifted {
+		t.Fatal("expected a stale grant file to be reported as drifted")
+	}
+}
+
+func TestSudoersCheckIsQuietWhenTheInstalledFileMatches(t *testing.T) {
+	current := filepath.Join(t.TempDir(), "ghostpsy")
+	if err := os.WriteFile(current, []byte(sudoersFile()), 0o440); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	drifted, err := sudoersHasDrifted(current)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if drifted {
+		t.Fatal("expected an up-to-date grant file to report no drift")
+	}
+}
+
+// A missing file is not drift, it is "never installed". The two need different
+// advice, so they must not collapse into one answer.
+func TestSudoersCheckSaysWhenNoGrantIsInstalledAtAll(t *testing.T) {
+	_, err := sudoersHasDrifted(filepath.Join(t.TempDir(), "absent"))
+
+	if !errors.Is(err, errNoGrantInstalled) {
+		t.Fatalf("expected errNoGrantInstalled, got: %v", err)
+	}
+}
+
+func TestSudoersCheckTellsTheUserWhatToDoWhenNothingIsInstalled(t *testing.T) {
+	cmd := newSudoersCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--check", "--path", filepath.Join(t.TempDir(), "absent")})
+
+	err := cmd.Execute()
+
+	if err == nil {
+		t.Fatal("expected a missing grant to be reported as an error")
+	}
+	got := out.String() + err.Error()
+	if !strings.Contains(got, "ghostpsy sudoers") {
+		t.Fatalf("expected the message to say how to fix it, got:\n%s", got)
+	}
+}
+
+func TestSudoersDiffShowsWhatAnUpgradeWouldChange(t *testing.T) {
+	stale := filepath.Join(t.TempDir(), "ghostpsy")
+	if err := os.WriteFile(stale, []byte("# stale line that is not in the current grant\n"), 0o440); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	cmd := newSudoersCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--diff", "--path", stale})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("diff failed: %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "- # stale line that is not in the current grant") {
+		t.Fatalf("expected the removed line to be shown, got:\n%s", got)
 	}
 }

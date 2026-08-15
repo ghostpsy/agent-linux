@@ -35,3 +35,23 @@ func newReadShadowCommand() *cobra.Command {
 		},
 	}
 }
+
+// newReadSudoersCommand is the second and, so far, last delegated read. A
+// sudoers file says who can become root here; the agent needs the counts, not
+// the text, so only the counts are printed.
+func newReadSudoersCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:    "read-sudoers",
+		Short:  "Print the sudoers audit counts, without any rule text",
+		Args:   cobra.NoArgs,
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			raw, err := identity.SudoersAuditJSON()
+			if err != nil {
+				return fmt.Errorf("could not summarise the sudoers files: %w", err)
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(raw))
+			return err
+		},
+	}
+}

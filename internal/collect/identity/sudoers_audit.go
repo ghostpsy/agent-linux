@@ -16,6 +16,10 @@ const sudoersMaxFileBytes = 512 * 1024
 
 // CollectSudoersAudit performs a structural sudoers scan without transmitting full rule bodies.
 func CollectSudoersAudit(ctx context.Context) *payload.SudoersAudit {
+	return sudoersAudit(ctx)
+}
+
+func collectSudoersAuditLocal() *payload.SudoersAudit {
 	out := &payload.SudoersAudit{}
 	mainPath := "/etc/sudoers"
 	b, err := readSudoersFileLimited(mainPath)

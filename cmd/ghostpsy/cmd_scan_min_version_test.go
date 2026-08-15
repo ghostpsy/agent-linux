@@ -14,7 +14,7 @@ import (
 
 // pinVersion sets version.Version for the duration of one test and restores
 // the previous value on cleanup. Tests that check the kill-switch must pin
-// because the default ``dev`` placeholder is special-cased to skip.
+// because the default “dev“ placeholder is special-cased to skip.
 func pinVersion(t *testing.T, v string) {
 	t.Helper()
 	prev := version.Version

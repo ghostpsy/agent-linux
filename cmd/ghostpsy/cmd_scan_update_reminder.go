@@ -18,7 +18,7 @@ import (
 const envSkipUpdateNotice = "GHOSTPSY_SKIP_UPDATE_NOTICE"
 
 // envAutoUpdate enables hands-off install of new releases (same effect as
-// passing ``--auto-update`` on the scan command).
+// passing “--auto-update“ on the scan command).
 const envAutoUpdate = "GHOSTPSY_AUTO_UPDATE"
 
 // updateReminderInterval is how long we stay quiet about the same target
@@ -27,7 +27,7 @@ const updateReminderInterval = 7 * 24 * time.Hour
 
 // maybePromptUpdate is called at the end of a successful scan. When a newer
 // release exists it either auto-installs (opt-in) or prints a one-shot
-// reminder no more often than once per ``updateReminderInterval`` per target
+// reminder no more often than once per “updateReminderInterval“ per target
 // version. Failures are silent — the user just ran a successful scan and
 // should not be punished by transient network issues.
 func maybePromptUpdate(ctx context.Context, apiURL string, st *state.AgentState, autoUpdate bool) {
@@ -70,7 +70,7 @@ func maybePromptUpdate(ctx context.Context, apiURL string, st *state.AgentState,
 }
 
 // shouldRemindAboutVersion is true when we have either never told the user
-// about ``target`` or the previous reminder is older than the cadence. Pure
+// about “target“ or the previous reminder is older than the cadence. Pure
 // helper so the policy is unit-testable without HTTP/state IO.
 func shouldRemindAboutVersion(st *state.AgentState, target string, now time.Time) bool {
 	if st == nil || target == "" {

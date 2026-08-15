@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// versionLess returns true when ``a`` is strictly older than ``b`` using a
+// versionLess returns true when “a“ is strictly older than “b“ using a
 // dotted-numeric comparison. Non-numeric segments compare as 0 (e.g. the
 // "dev" placeholder used for un-tagged local builds is older than every
 // real release).

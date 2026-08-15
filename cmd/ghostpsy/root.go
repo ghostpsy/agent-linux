@@ -43,6 +43,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newSudoersCommand())
 	root.AddCommand(newReadShadowCommand())
+	root.AddCommand(newReadSudoersCommand())
 	return root
 }
 

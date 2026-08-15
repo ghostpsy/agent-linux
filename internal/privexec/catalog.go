@@ -40,7 +40,8 @@ const (
 	// so for these the agent asks its own signed binary, which enforces the
 	// path allowlist internally. Keep this list very short: every entry asks
 	// the reader to trust our code instead of a command they can read.
-	ReadShadow ID = "read.shadow"
+	ReadShadow  ID = "read.shadow"
+	ReadSudoers ID = "read.sudoers"
 )
 
 // localeC keeps output in a language the parsers understand. sudo deletes the
@@ -112,6 +113,12 @@ func init() {
 		Binary: agentBinaryPath,
 		Args:   []string{"read-shadow"},
 		Why:    "count locked and passwordless accounts. Returns only the counts — a password hash never leaves this command",
+		Env:    localeC,
+	})
+	declare(ReadSudoers, Command{
+		Binary: agentBinaryPath,
+		Args:   []string{"read-sudoers"},
+		Why:    "count risky sudo rules. Returns only the counts — no rule text leaves this command",
 		Env:    localeC,
 	})
 }

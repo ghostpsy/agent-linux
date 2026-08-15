@@ -37,6 +37,11 @@ type Command struct {
 	Binary string
 	Args   []string
 
+	// Why says, in plain words, what this command is for. It is printed as a
+	// comment above the grant, because a privilege file a sysadmin cannot read
+	// is not the promise we made.
+	Why string
+
 	// Env is the environment the command needs to behave predictably, for
 	// example LC_ALL=C so its output stays parseable. It must be declared here
 	// rather than set at the call site: sudo deletes the environment by

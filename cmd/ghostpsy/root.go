@@ -41,6 +41,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newCronCommand())
 	root.AddCommand(newUpdateCommand())
 	root.AddCommand(newVersionCommand())
+	root.AddCommand(newSudoersCommand())
 	return root
 }
 

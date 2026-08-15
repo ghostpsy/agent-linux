@@ -35,6 +35,10 @@ type AgentState struct {
 	// available). Empty/zero on agents that have never seen an upgrade nudge.
 	LastUpdateNotifiedVersion string `json:"last_update_notified_version,omitempty"`
 	LastUpdateNotifiedAt      int64  `json:"last_update_notified_at,omitempty"`
+	// LastScanAt is when the service last completed a scan, in unix seconds.
+	// Zero on an agent that has never scanned, which is why the service treats
+	// zero as "never" rather than as 1970.
+	LastScanAt int64 `json:"last_scan_at,omitempty"`
 }
 
 // Path returns the resolved state-file path.

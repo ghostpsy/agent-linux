@@ -36,7 +36,7 @@ This file is mode 0600 owner=root, so the scan command is meant to run as root
 Scan options honor GHOSTPSY_API_URL unless --api is set.`,
 		Run: runScanCommand,
 	}
-	defaultAPI := envOr("GHOSTPSY_API_URL", "https://api.ghostpsy.com")
+	defaultAPI := envOr("GHOSTPSY_API_URL", defaultAPIBaseURL)
 	cmd.Flags().String("api", defaultAPI, "API base URL")
 	cmd.Flags().Bool("dry-run", false, "only print payload, do not POST")
 	cmd.Flags().String("save-payload", "", "write outbound payload JSON to this path before optional POST")

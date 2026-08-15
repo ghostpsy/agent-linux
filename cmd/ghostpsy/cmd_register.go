@@ -44,7 +44,7 @@ active agent tokens for this machine and resumes the scan_seq counter,
 so the existing scan history is preserved.`,
 		Run: runRegisterCommand,
 	}
-	defaultAPI := envOr("GHOSTPSY_API_URL", "https://api.ghostpsy.com")
+	defaultAPI := envOr("GHOSTPSY_API_URL", defaultAPIBaseURL)
 	cmd.Flags().String("api", defaultAPI, "API base URL")
 	cmd.Flags().String("bootstrap", "", "bootstrap token (or set "+envBootstrapToken+")")
 	cmd.Flags().Bool("verbose", false, "print action-by-action runtime logs with safety summary")

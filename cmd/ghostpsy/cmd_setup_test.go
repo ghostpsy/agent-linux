@@ -234,7 +234,9 @@ func TestCreateAgentUserMakesALockedAccount(t *testing.T) {
 }
 
 // The registration step surfaced a raw Go error on a real host:
-//   "register: post: Post https://... local error: tls: bad record MAC"
+//
+//	"register: post: Post https://... local error: tls: bad record MAC"
+//
 // That is not a message a busy sysadmin should have to decode.
 func TestRegisterFailureIsExplainedInPlainWords(t *testing.T) {
 	got := explainRegisterFailure(errors.New(`post: Post "https://api.ghostpsy.com/v1/agent/register": local error: tls: bad record MAC`))

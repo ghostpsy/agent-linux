@@ -13,8 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghostpsy/agent-linux/internal/agentconfig"
 	"github.com/ghostpsy/agent-linux/internal/schedule"
 	"github.com/ghostpsy/agent-linux/internal/state"
+	"github.com/ghostpsy/agent-linux/internal/version"
 )
 
 // retryDelay is how long the loop waits after a scan fails.
@@ -103,7 +105,7 @@ func runServe(ctx context.Context) error {
 		lastHeartbeat: time.Time{},
 		now:           func() time.Time { return time.Now().UTC() },
 		scan:          runScanSubprocess,
-		heartbeat:     func(context.Context) error { return nil },
+		heartbeat:     heartbeatSender(st.MachineUUID),
 		sleep:         sleepUntilCancelled,
 	}
 	if st.LastScanAt == 0 {
@@ -162,5 +164,31 @@ func sleepUntilCancelled(ctx context.Context, d time.Duration) error {
 		return nil
 	case <-t.C:
 		return nil
+	}
+}
+
+// heartbeatSender reports that this agent is alive, and whether its sudo rule
+// still matches what this version needs.
+//
+// Drift is included because the person who can fix it is not reading this
+// server's logs. If we cannot tell — no rule installed, or the check failed —
+// nothing is sent for it: absent and false are different answers.
+func heartbeatSender(machineUUID string) func(context.Context) error {
+	return func(ctx context.Context) error {
+		token, err := agentconfig.Load()
+		if err != nil {
+			return fmt.Errorf("no agent token yet: %w", err)
+		}
+
+		body := heartbeatBody{
+			MachineUUID:  machineUUID,
+			AgentVersion: version.Version,
+		}
+		if drifted, err := sudoersHasDrifted(installedGrantPath); err == nil {
+			current := !drifted
+			body.SudoRuleCurrent = &current
+		}
+
+		return postHeartbeat(ctx, envOr("GHOSTPSY_API_URL", defaultAPIBaseURL), token, body)
 	}
 }

@@ -17,15 +17,24 @@ import (
 const shadowPath = "/etc/shadow"
 
 // CollectShadowAccountSummary derives non-secret counts from /etc/shadow (no hash material).
-func CollectShadowAccountSummary(ctx context.Context) *payload.ShadowAccountSummary {
+func CollectShadowAccountSummary(_ context.Context) *payload.ShadowAccountSummary {
+	return collectShadowFrom(shadowPath)
+}
+
+// collectShadowFrom reads one shadow-format file. Counts stay nil until the
+// file has actually been read, so an unreadable file reports nothing rather
+// than reporting zero — those are different answers.
+func collectShadowFrom(path string) *payload.ShadowAccountSummary {
 	out := &payload.ShadowAccountSummary{}
-	f, err := os.Open(shadowPath)
+	f, err := os.Open(path)
 	if err != nil {
 		out.Error = "shadow file not readable"
 		return out
 	}
 	defer func() { _ = f.Close() }()
 	out.ShadowReadable = true
+
+	var locked, noLogin, expired int
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := sc.Text()
@@ -39,19 +48,22 @@ func CollectShadowAccountSummary(ctx context.Context) *payload.ShadowAccountSumm
 		pass := parts[1]
 		switch {
 		case pass == "":
-			out.AccountsNoLoginPasswordCount++
+			noLogin++
 		case pass == "*" || strings.HasPrefix(pass, "!"):
-			out.AccountsLockedCount++
+			locked++
 		default:
-			exp := shadowPasswordExpiredHint(parts)
-			if exp {
-				out.AccountsPasswordExpiredHintCount++
+			if shadowPasswordExpiredHint(parts) {
+				expired++
 			}
 		}
 	}
 	if err := sc.Err(); err != nil {
 		out.Error = "shadow file read incomplete"
 	}
+
+	out.AccountsLockedCount = &locked
+	out.AccountsNoLoginPasswordCount = &noLogin
+	out.AccountsPasswordExpiredHintCount = &expired
 	out.AccountsNeverLoggedInHintCount = lastlogNeverCount()
 	return out
 }
@@ -74,13 +86,15 @@ func shadowPasswordExpiredHint(parts []string) bool {
 	return lastN+maxN < epochDays
 }
 
-func lastlogNeverCount() int {
+// lastlogNeverCount returns nil when lastlog could not be run: zero would claim
+// every account has logged in, which is not what we learned.
+func lastlogNeverCount() *int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "lastlog")
 	b, err := cmd.Output()
 	if err != nil {
-		return 0
+		return nil
 	}
 	n := 0
 	for _, line := range strings.Split(string(b), "\n") {
@@ -88,5 +102,5 @@ func lastlogNeverCount() int {
 			n++
 		}
 	}
-	return n
+	return &n
 }

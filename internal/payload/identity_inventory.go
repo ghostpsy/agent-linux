@@ -3,12 +3,16 @@ package payload
 import "encoding/json"
 
 // ShadowAccountSummary is non-secret metadata from /etc/shadow (no hash material).
+// The counts are pointers so that "I could not look" is absent rather than
+// zero. Measured on docker/debian-13: as an unprivileged user this reported
+// accounts_locked_count = 0 when the real answer was 25, and a reader cannot
+// tell that apart from a server with no locked accounts.
 type ShadowAccountSummary struct {
 	ShadowReadable                   bool   `json:"shadow_readable"`
-	AccountsLockedCount              int    `json:"accounts_locked_count"`
-	AccountsNoLoginPasswordCount     int    `json:"accounts_no_login_password_count"`
-	AccountsPasswordExpiredHintCount int    `json:"accounts_password_expired_hint_count"`
-	AccountsNeverLoggedInHintCount   int    `json:"accounts_never_logged_in_hint_count"`
+	AccountsLockedCount              *int   `json:"accounts_locked_count,omitempty"`
+	AccountsNoLoginPasswordCount     *int   `json:"accounts_no_login_password_count,omitempty"`
+	AccountsPasswordExpiredHintCount *int   `json:"accounts_password_expired_hint_count,omitempty"`
+	AccountsNeverLoggedInHintCount   *int   `json:"accounts_never_logged_in_hint_count,omitempty"`
 	Error                            string `json:"error,omitempty"`
 }
 

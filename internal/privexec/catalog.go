@@ -35,6 +35,12 @@ const (
 	// [][]string literal and no search for exec.Command would show it.
 	CrontabListRoot ID = "cron.crontab_list_root"
 	CrontabListSelf ID = "cron.crontab_list_self"
+
+	// Delegated reads. A file path cannot be written as an exact sudo command,
+	// so for these the agent asks its own signed binary, which enforces the
+	// path allowlist internally. Keep this list very short: every entry asks
+	// the reader to trust our code instead of a command they can read.
+	ReadShadow ID = "read.shadow"
 )
 
 // localeC keeps output in a language the parsers understand. sudo deletes the
@@ -102,7 +108,17 @@ func init() {
 		Why:    "read root's scheduled jobs, to find backup jobs",
 		Env:    localeC,
 	})
+	declare(ReadShadow, Command{
+		Binary: agentBinaryPath,
+		Args:   []string{"read-shadow"},
+		Why:    "count locked and passwordless accounts. Returns only the counts — a password hash never leaves this command",
+		Env:    localeC,
+	})
 }
+
+// agentBinaryPath is where the installer puts the agent. The grant names this
+// exact path, so a copy of the binary somewhere else is not covered by it.
+const agentBinaryPath = "/usr/local/bin/ghostpsy"
 
 // declare adds a command to the catalogue. It panics on a duplicate ID: two
 // commands answering to one name is a programming error, and it must surface at

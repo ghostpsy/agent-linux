@@ -17,8 +17,8 @@ import (
 const shadowPath = "/etc/shadow"
 
 // CollectShadowAccountSummary derives non-secret counts from /etc/shadow (no hash material).
-func CollectShadowAccountSummary(_ context.Context) *payload.ShadowAccountSummary {
-	return collectShadowFrom(shadowPath)
+func CollectShadowAccountSummary(ctx context.Context) *payload.ShadowAccountSummary {
+	return shadowSummary(ctx)
 }
 
 // collectShadowFrom reads one shadow-format file. Counts stay nil until the

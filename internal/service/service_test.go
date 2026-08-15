@@ -89,3 +89,110 @@ func TestDetectReportsUnsupportedRatherThanGuessing(t *testing.T) {
 		t.Fatalf("expected Unsupported when no init system is recognised, got %v", got)
 	}
 }
+
+// A fake init system, so the install and removal steps can be tested without
+// one. What matters is the order and the completeness, not the exact commands.
+type fakeRunner struct {
+	calls   []string
+	written map[string]string
+	fail    string
+}
+
+func newFakeRunner() *fakeRunner { return &fakeRunner{written: map[string]string{}} }
+
+func (f *fakeRunner) run(name string, args ...string) error {
+	call := name + " " + strings.Join(args, " ")
+	f.calls = append(f.calls, call)
+	if f.fail != "" && strings.Contains(call, f.fail) {
+		return errFakeFailure
+	}
+	return nil
+}
+
+func (f *fakeRunner) write(path, content string) error {
+	f.written[path] = content
+	return nil
+}
+
+func (f *fakeRunner) remove(path string) error {
+	f.calls = append(f.calls, "remove "+path)
+	delete(f.written, path)
+	return nil
+}
+
+func (f *fakeRunner) did(substr string) bool {
+	for _, c := range f.calls {
+		if strings.Contains(c, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSystemdInstallWritesTheUnitEnablesAndStarts(t *testing.T) {
+	f := newFakeRunner()
+	m := systemdManager{run: f.run, write: f.write, remove: f.remove}
+
+	if err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"}); err != nil {
+		t.Fatalf("install failed: %v", err)
+	}
+
+	if _, ok := f.written["/etc/systemd/system/ghostpsy.service"]; !ok {
+		t.Fatalf("no unit file written, wrote: %v", f.written)
+	}
+	// daemon-reload must come before enable, or systemd acts on a unit it has
+	// not read yet.
+	if !f.did("daemon-reload") || !f.did("enable") {
+		t.Fatalf("expected daemon-reload then enable, got: %v", f.calls)
+	}
+}
+
+// Removal has to leave nothing behind. A tool that is hard to remove is a tool
+// people hesitate to install.
+func TestSystemdRemoveStopsDisablesAndDeletesTheUnit(t *testing.T) {
+	f := newFakeRunner()
+	m := systemdManager{run: f.run, write: f.write, remove: f.remove}
+	_ = m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
+
+	if err := m.Remove(); err != nil {
+		t.Fatalf("remove failed: %v", err)
+	}
+
+	for _, want := range []string{"stop", "disable", "remove /etc/systemd/system/ghostpsy.service"} {
+		if !f.did(want) {
+			t.Errorf("removal did not %q, calls: %v", want, f.calls)
+		}
+	}
+}
+
+func TestUpstartInstallWritesTheJobAndStarts(t *testing.T) {
+	f := newFakeRunner()
+	m := upstartManager{run: f.run, write: f.write, remove: f.remove}
+
+	if err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"}); err != nil {
+		t.Fatalf("install failed: %v", err)
+	}
+
+	if _, ok := f.written["/etc/init/ghostpsy.conf"]; !ok {
+		t.Fatalf("no upstart job written, wrote: %v", f.written)
+	}
+	if !f.did("start ghostpsy") {
+		t.Fatalf("expected the job to be started, got: %v", f.calls)
+	}
+}
+
+// Stopping a service that is already stopped is not a failure. Removal has to
+// finish and leave nothing behind, whatever state it found.
+func TestRemoveFinishesEvenIfStopFails(t *testing.T) {
+	f := newFakeRunner()
+	f.fail = "stop"
+	m := systemdManager{run: f.run, write: f.write, remove: f.remove}
+	_ = m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
+
+	if err := m.Remove(); err != nil {
+		t.Fatalf("remove must not fail because the service was already stopped: %v", err)
+	}
+	if _, still := f.written["/etc/systemd/system/ghostpsy.service"]; still {
+		t.Error("the unit file was left behind")
+	}
+}

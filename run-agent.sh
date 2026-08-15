@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
-# Install (or upgrade) the latest ghostpsy agent at /usr/local/bin/ghostpsy.
+# Install the ghostpsy agent and set it up to keep reporting.
 #
-# This script is install-only. It detects the CPU architecture, downloads the
-# matching release binary from GitHub Releases, verifies its SHA256, and writes
-# it to /usr/local/bin/ghostpsy. It does NOT register the host with the API
-# and does NOT need a bootstrap token. After this script finishes, run:
+#   curl -fsSL <this script> | sudo sh -s -- --token=<code from the dashboard>
 #
-#   sudo ghostpsy register --bootstrap="<your bootstrap token>"
+# It detects the CPU architecture, downloads the matching release binary from
+# GitHub Releases, verifies its SHA256, installs it to /usr/local/bin/ghostpsy,
+# and then hands over to `ghostpsy setup`, which creates the locked ghostpsy
+# user, installs a scoped sudo rule and starts the background service.
 #
-# The dashboard's "Add a machine" modal walks through the three steps end to
-# end (export token → install binary → register).
+# Options:
+#   --token=CODE    the single-use code from the dashboard
+#   --dry-run       show every change and make none. Downloads to a temporary
+#                   directory so it can show you the real plan, then stops.
+#   --binary-only   install the binary and nothing else. No user, no service,
+#                   no sudo rule. For reading `ghostpsy sudoers` first.
+#
+# This script stays deliberately thin. Everything that can damage a server —
+# the sudo rule, the user, the service — lives in `ghostpsy setup`, where it
+# is covered by tests.
 #
 # Trust model:
 #   * First install (this script): integrity rests on GitHub Releases over
@@ -27,8 +35,28 @@ set -euo pipefail
 
 REPO_OWNER="ghostpsy"
 REPO_NAME="agent-linux"
-UA="ghostpsy-agent-install/1.0"
+UA="ghostpsy-agent-install/2.0"
 INSTALL_PATH="/usr/local/bin/ghostpsy"
+
+TOKEN=""
+DRY_RUN=0
+BINARY_ONLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --token=*) TOKEN="${arg#*=}" ;;
+    --dry-run) DRY_RUN=1 ;;
+    --binary-only) BINARY_ONLY=1 ;;
+    -h | --help)
+      sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $arg" >&2
+      echo "Run with --help to see what this accepts." >&2
+      exit 2
+      ;;
+  esac
+done
 
 die() {
   echo "Error: $*" >&2
@@ -109,10 +137,36 @@ else
 fi
 [[ "$actual_hash" == "$expected_hash" ]] || die "Checksum mismatch for ${expected_file}"
 
-install -m 0755 "$bin_path" "$INSTALL_PATH"
+# A dry run stops here. The binary has been downloaded to a temporary
+# directory, which changes nothing on this server, and running it from there
+# lets us show the real plan rather than a guess at one.
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo ""
+  echo "This is what would happen. Nothing is being changed."
+  echo ""
+  echo "  - Install ${expected_file} at ${INSTALL_PATH}"
+  chmod 0755 "$bin_path"
+  "$bin_path" setup --dry-run --token="$TOKEN" 2>/dev/null | sed -n '3,$p'
+  exit 0
+fi
 
-echo ""
-echo "Installed ${expected_file} at ${INSTALL_PATH}."
-echo "Next:"
-echo "  sudo ghostpsy register --bootstrap=\"\$GHOSTPSY_BOOTSTRAP_TOKEN\""
-echo "  sudo ghostpsy cron install"
+install -m 0755 "$bin_path" "$INSTALL_PATH"
+echo "  ok  Installed ${expected_file} at ${INSTALL_PATH}"
+
+if [[ $BINARY_ONLY -eq 1 ]]; then
+  echo ""
+  echo "The binary is installed and nothing else was touched."
+  echo "To see the sudo rights it would need:  ghostpsy sudoers"
+  echo "To finish the install:                 sudo ghostpsy setup --token=<code>"
+  exit 0
+fi
+
+if [[ -z "$TOKEN" ]]; then
+  echo ""
+  echo "The binary is installed, but no code was given, so this machine is not"
+  echo "registered yet. Copy the full command from the dashboard's Add machine"
+  echo "screen — it includes the code."
+  exit 1
+fi
+
+exec "$INSTALL_PATH" setup --token="$TOKEN"

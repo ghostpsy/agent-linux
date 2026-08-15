@@ -4,15 +4,14 @@ package firewall
 
 import (
 	"context"
-	"os"
-	"os/exec"
+	"errors"
 	"strings"
-	"time"
-
-	"github.com/coreos/go-iptables/iptables"
 )
 
-const iptablesFilterSaveTimeout = 15 * time.Second
+// errNoRulesetAvailable means we could not read the packet filter at all. It is
+// deliberately distinct from "no rules": an empty firewall and an unreadable
+// one are different facts, and only one of them is alarming.
+var errNoRulesetAvailable = errors.New("firewall: packet filter ruleset could not be read")
 
 func filterChainsIndicateUfwBackend(chainNames []string) bool {
 	for _, name := range chainNames {
@@ -35,93 +34,28 @@ func filterRuleLinesMentionUfw(lines []string) bool {
 	return false
 }
 
-func iptablesExecutablePath() string {
-	if p, err := exec.LookPath("iptables"); err == nil {
-		return p
-	}
-	for _, p := range []string{"/sbin/iptables", "/usr/sbin/iptables"} {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p
-		}
-	}
-	return "iptables"
-}
-
-// filterTableFullSaveOutputMentionsUfw reads the entire filter table (`iptables -t filter -S`).
-// go-iptables ListChains is incomplete when -A lines precede -N lines; per-chain List can miss UFW on some hosts.
-func filterTableFullSaveOutputMentionsUfw(ctx context.Context) bool {
-	subCtx, cancel := context.WithTimeout(ctx, iptablesFilterSaveTimeout)
-	defer cancel()
-	out, err := exec.CommandContext(subCtx, iptablesExecutablePath(), "-t", "filter", "-S").Output()
-	if err != nil {
-		return false
-	}
-	return strings.Contains(strings.ToLower(string(out)), "ufw")
-}
-
+// collectIptablesMetrics derives every firewall number from the ruleset we
+// already fetched through privexec.
+//
+// It used to ask github.com/coreos/go-iptables, which runs the iptables binary
+// itself and therefore bypasses privexec: an unprivileged agent got
+// "Permission denied (you must be root)" and lost the rule count, both default
+// policies and the established/related flag. Parsing the dump we hold removes
+// that whole class of problem instead of working around it.
 func collectIptablesMetrics(ctx context.Context) (firewallMetrics, int, bool, error) {
-	ipt, err := iptables.New()
-	if err != nil {
-		return firewallMetrics{}, 0, false, err
+	dump, _ := captureRuleset(ctx)
+	if len(dump) == 0 {
+		return firewallMetrics{}, 0, false, errNoRulesetAvailable
 	}
-	in, out, err := filterDefaultPoliciesFromIptables(ipt)
-	if err != nil {
-		return firewallMetrics{}, 0, false, err
-	}
-	chains, err := ipt.ListChains("filter")
-	if err != nil {
-		return firewallMetrics{}, 0, false, err
-	}
-	ufwBackend := filterChainsIndicateUfwBackend(chains)
-	if !ufwBackend {
-		inputLines, errIn := ipt.List("filter", "INPUT")
-		if errIn == nil && filterRuleLinesMentionUfw(inputLines) {
-			ufwBackend = true
-		}
-	}
-	if !ufwBackend && filterTableFullSaveOutputMentionsUfw(ctx) {
-		ufwBackend = true
-	}
-	n := 0
-	hasEst := false
-	for _, chain := range chains {
-		rules, err := ipt.List("filter", chain)
-		if err != nil {
-			return firewallMetrics{}, 0, false, err
-		}
-		n += countIptablesFilterRuleLines(rules)
-		if !hasEst {
-			hasEst = iptablesRuleLinesHaveEstablishedRelated(rules)
-		}
-	}
-	return firewallMetrics{
-		DefaultPolicyIn:       in,
-		DefaultPolicyOut:      out,
-		RuleCount:             n,
-		HasEstablishedRelated: hasEst,
-	}, len(chains), ufwBackend, nil
-}
 
-// filterDefaultPoliciesFromIptables reads default policies from a full filter table dump when possible.
-// Per-chain List output can omit -P lines on some iptables-nft builds.
-func filterDefaultPoliciesFromIptables(ipt *iptables.IPTables) (in, out string, err error) {
-	inLines, errIn := ipt.List("filter", "INPUT")
-	if errIn != nil {
-		return "", "", errIn
-	}
-	outLines, errOut := ipt.List("filter", "OUTPUT")
-	if errOut != nil {
-		return "", "", errOut
-	}
-	inPol := policyFromFilterTableLines(inLines, "INPUT")
-	outPol := policyFromFilterTableLines(outLines, "OUTPUT")
-	if inPol == "" {
-		inPol = policyFromIptablesSOutputLines(inLines, "INPUT")
-	}
-	if outPol == "" {
-		outPol = policyFromIptablesSOutputLines(outLines, "OUTPUT")
-	}
-	return inPol, outPol, nil
+	table := parseIptablesSave(string(dump))
+
+	return firewallMetrics{
+		DefaultPolicyIn:       table.Policies["INPUT"],
+		DefaultPolicyOut:      table.Policies["OUTPUT"],
+		RuleCount:             len(table.Rules),
+		HasEstablishedRelated: table.HasEstablishedRelated(),
+	}, len(table.Chains), table.MentionsUfw(), nil
 }
 
 func policyFromIptablesSOutputLines(lines []string, chainName string) string {

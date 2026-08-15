@@ -3,13 +3,13 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
 // CollectSystemdHealth reports systemd default target and running state when systemctl exists.
@@ -23,8 +23,8 @@ func CollectSystemdHealth(ctx context.Context) *payload.SystemdHealth {
 	out.SystemdPresent = true
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if b, err := exec.CommandContext(ctx, "systemctl", "get-default").Output(); err == nil {
-		out.DefaultTarget = strings.TrimSpace(string(b))
+	if res, err := privexec.Run(ctx, privexec.SystemdDefaultTarget); err == nil {
+		out.DefaultTarget = strings.TrimSpace(string(res.Stdout))
 	}
 	if b, err := exec.CommandContext(ctx, "systemctl", "is-system-running").Output(); err == nil {
 		out.IsSystemRunning = strings.TrimSpace(string(b))
@@ -41,13 +41,11 @@ func CollectSystemdHealth(ctx context.Context) *payload.SystemdHealth {
 func countFailedUnits(ctx context.Context) *int {
 	ctx2, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx2, "systemctl", "--failed", "--no-legend", "--no-pager")
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	if err := cmd.Run(); err != nil {
+	res, err := privexec.Run(ctx2, privexec.SystemdFailedUnits)
+	if err != nil {
 		return nil
 	}
-	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	lines := strings.Split(strings.TrimSpace(string(res.Stdout)), "\n")
 	n := 0
 	const maxCount = 50
 	for _, line := range lines {

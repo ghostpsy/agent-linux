@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	macDeepPsZMaxLines        = 400
-	macDeepSemanageMaxLines   = 24
-	macDeepCmdTimeout         = 4 * time.Second
-	macDeepAaStatusTimeout    = 3 * time.Second
+	macDeepPsZMaxLines      = 400
+	macDeepSemanageMaxLines = 24
+	macDeepCmdTimeout       = 4 * time.Second
+	macDeepAaStatusTimeout  = 3 * time.Second
 )
 
 func collectMacDeep(ctx context.Context, mac *payload.SelinuxApparmorBlock) *payload.MacDeepPosture {

@@ -3,8 +3,8 @@
 package filesystem
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"os"
 	"strings"
 

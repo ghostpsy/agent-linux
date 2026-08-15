@@ -3,8 +3,8 @@
 package filesystem
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"

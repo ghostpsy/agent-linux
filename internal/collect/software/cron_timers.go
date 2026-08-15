@@ -15,6 +15,7 @@ import (
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
 const (
@@ -120,8 +121,8 @@ func capStringSlice(in []string, maxN, maxRunes int) []string {
 func fillSystemdTimers(out *payload.CronTimersInventory) {
 	ctx, cancel := context.WithTimeout(context.Background(), cronCollectTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "systemctl", "list-timers", "--all", "--no-pager", "--output=json")
-	raw, err := cmd.Output()
+	res, err := privexec.Run(ctx, privexec.SystemdListTimers)
+	raw := res.Stdout
 	if err != nil {
 		tryParseSystemctlTimersText(out)
 		return

@@ -73,10 +73,10 @@ var allowedWorkloadLabelPrefixes = []string{
 // for the workload view. Defined locally — intentionally narrower than
 // the posture collector's shape, which pulls security fields.
 type dockerInspectShape struct {
-	ID              string `json:"Id"`
-	Name            string `json:"Name"`
-	RestartCount    int    `json:"RestartCount"`
-	State           struct {
+	ID           string `json:"Id"`
+	Name         string `json:"Name"`
+	RestartCount int    `json:"RestartCount"`
+	State        struct {
 		Status     string `json:"Status"`
 		Running    bool   `json:"Running"`
 		StartedAt  string `json:"StartedAt"`
@@ -125,8 +125,8 @@ type dockerImageInspectShape struct {
 // crictlPod is the shape we read from `crictl pods --output json`.
 type crictlPodList struct {
 	Items []struct {
-		ID        string `json:"id"`
-		Metadata  struct {
+		ID       string `json:"id"`
+		Metadata struct {
 			Name      string `json:"name"`
 			Namespace string `json:"namespace"`
 		} `json:"metadata"`
@@ -140,8 +140,8 @@ type crictlContainerList struct {
 		ID           string `json:"id"`
 		PodSandboxID string `json:"podSandboxId"`
 		Metadata     struct {
-			Name         string `json:"name"`
-			Attempt      int    `json:"attempt"`
+			Name    string `json:"name"`
+			Attempt int    `json:"attempt"`
 		} `json:"metadata"`
 		Image struct {
 			Image string `json:"image"`
@@ -463,7 +463,7 @@ func countSecretLikeEnvKeys(env []string) int {
 	return n
 }
 
-// hasNoNewPrivileges returns true when ``no-new-privileges`` appears in
+// hasNoNewPrivileges returns true when “no-new-privileges“ appears in
 // the container's SecurityOpt list. Default Docker behaviour is to NOT
 // set this, so absence = risk.
 func hasNoNewPrivileges(opts []string) bool {
@@ -538,22 +538,22 @@ func tmpfsTargetsSorted(tmpfs map[string]string) []string {
 // purpose of supply-chain context. An image from anywhere else is
 // treated as private (self-hosted or vendor-managed).
 var knownPublicRegistries = map[string]struct{}{
-	"docker.io":                          {},
-	"index.docker.io":                    {},
-	"registry-1.docker.io":               {},
-	"ghcr.io":                            {},
-	"quay.io":                            {},
-	"mcr.microsoft.com":                  {},
-	"public.ecr.aws":                     {},
-	"registry.gitlab.com":                {},
-	"gcr.io":                             {},
-	"k8s.gcr.io":                         {},
-	"registry.k8s.io":                    {},
+	"docker.io":            {},
+	"index.docker.io":      {},
+	"registry-1.docker.io": {},
+	"ghcr.io":              {},
+	"quay.io":              {},
+	"mcr.microsoft.com":    {},
+	"public.ecr.aws":       {},
+	"registry.gitlab.com":  {},
+	"gcr.io":               {},
+	"k8s.gcr.io":           {},
+	"registry.k8s.io":      {},
 }
 
 // classifyImageRegistry parses the registry hostname from a container
 // image reference. Canonical Docker references omit the hostname for
-// images on Docker Hub (``nginx:1.27`` == ``docker.io/library/nginx:1.27``)
+// images on Docker Hub (“nginx:1.27“ == “docker.io/library/nginx:1.27“)
 // — we treat anything without a "." or ":" in the first path segment as
 // Docker Hub.
 func classifyImageRegistry(imageRef string) (registry string, isPublic bool) {
@@ -590,7 +590,7 @@ func classifyImageRegistry(imageRef string) (registry string, isPublic bool) {
 
 // looksLikeManualCommit returns true when the container's image
 // reference is a bare digest with no repository / tag, which is the
-// shape produced by ``docker commit`` without a target name. We check
+// shape produced by “docker commit“ without a target name. We check
 // the resolved Image digest string (starts with "sha256:") and the
 // Config.Image ref separately — a manual commit leaves Config.Image as
 // the bare sha.
@@ -806,7 +806,7 @@ func appendWarning(out *payload.ContainerWorkloads, msg string) {
 // ─── Docker HTTP fallback (gap #2 — no `docker` CLI on PATH) ───────────
 
 // dockerHTTPClient returns an *http.Client that talks HTTP over the Unix
-// socket at ``socketPath``. The dockerd Engine API speaks HTTP 1.1 over
+// socket at “socketPath“. The dockerd Engine API speaks HTTP 1.1 over
 // that socket; the standard library handles the rest.
 func dockerHTTPClient(socketPath string) *http.Client {
 	return &http.Client{

@@ -3,8 +3,8 @@
 package identity
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"

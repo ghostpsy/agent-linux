@@ -28,14 +28,14 @@ var (
 )
 
 type mysqlCnfMerger struct {
-	visited             map[string]bool
-	filesRead           int
-	warnings            []string
-	opts                map[string]string
-	passwordExposed     bool
-	firstEntryPath      string
-	firstEntryPathSet   bool
-	baseDir             string
+	visited           map[string]bool
+	filesRead         int
+	warnings          []string
+	opts              map[string]string
+	passwordExposed   bool
+	firstEntryPath    string
+	firstEntryPathSet bool
+	baseDir           string
 }
 
 func normalizeMysqlCnfKey(k string) string {

@@ -17,12 +17,12 @@ import (
 )
 
 var (
-	reVersion      = regexp.MustCompile(`v=([\d]+\.[\d]+\.[\d]+)`)
-	reBind         = regexp.MustCompile(`(?i)^\s*bind\s+(.+)$`)
-	rePort         = regexp.MustCompile(`(?i)^\s*port\s+(\d+)\s*$`)
-	reProtected    = regexp.MustCompile(`(?i)^\s*protected-mode\s+(\S+)\s*$`)
-	reRequirepass  = regexp.MustCompile(`(?i)^\s*requirepass\s+\S+`)
-	reTlsPort      = regexp.MustCompile(`(?i)^\s*tls-port\s+(\d+)\s*$`)
+	reVersion     = regexp.MustCompile(`v=([\d]+\.[\d]+\.[\d]+)`)
+	reBind        = regexp.MustCompile(`(?i)^\s*bind\s+(.+)$`)
+	rePort        = regexp.MustCompile(`(?i)^\s*port\s+(\d+)\s*$`)
+	reProtected   = regexp.MustCompile(`(?i)^\s*protected-mode\s+(\S+)\s*$`)
+	reRequirepass = regexp.MustCompile(`(?i)^\s*requirepass\s+\S+`)
+	reTlsPort     = regexp.MustCompile(`(?i)^\s*tls-port\s+(\d+)\s*$`)
 )
 
 var (

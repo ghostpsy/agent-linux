@@ -11,7 +11,7 @@
 package release
 
 // PublicKeyHex is the hex-encoded Ed25519 public key (32 raw bytes → 64 hex
-// characters). Populated once by ``go run ./scripts/gen-signing-key``;
+// characters). Populated once by “go run ./scripts/gen-signing-key“;
 // the matching private key lives as the GitHub Actions secret
 // GHOSTPSY_RELEASE_SIGNING_KEY_HEX.
 const PublicKeyHex = "af463b2689f87712ce60446e0f82f3817f3c26269e0fccb978bd59a25a182ab6"

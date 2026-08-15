@@ -3,8 +3,8 @@
 package filesystem
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"

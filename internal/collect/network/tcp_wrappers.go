@@ -3,8 +3,8 @@
 package network
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"os"
 	"strings"
 

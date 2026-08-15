@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	fail2banCmdTimeout   = 4 * time.Second
+	fail2banCmdTimeout    = 4 * time.Second
 	fail2banMaxJailDFiles = 32
 )
 

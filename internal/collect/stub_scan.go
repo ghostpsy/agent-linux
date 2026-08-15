@@ -16,13 +16,13 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/collect/security"
 	"github.com/ghostpsy/agent-linux/internal/collect/software"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/apache"
-	"github.com/ghostpsy/agent-linux/internal/collect/software/packages"
-	"github.com/ghostpsy/agent-linux/internal/collect/software/mysql"
-	"github.com/ghostpsy/agent-linux/internal/collect/software/nginx"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/ftp"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/mongodb"
-	"github.com/ghostpsy/agent-linux/internal/collect/software/redis"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/mysql"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/nginx"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/packages"
 	"github.com/ghostpsy/agent-linux/internal/collect/software/postfix"
+	"github.com/ghostpsy/agent-linux/internal/collect/software/redis"
 	"github.com/ghostpsy/agent-linux/internal/payload"
 	"github.com/ghostpsy/agent-linux/internal/version"
 )
@@ -414,7 +414,7 @@ func stubBuildPayloadV1(ctx context.Context, machineUUID string, scanSeq int, ob
 			DockerPosture:            dockerPosture,
 		},
 		ContainerAndCloudNativeLinux: payload.ContainerAndCloudNativeLinuxComponent{
-			HostRuntimes:      containerCloudHostRuntimes(hr),
+			HostRuntimes:       containerCloudHostRuntimes(hr),
 			ContainerWorkloads: containerWorkloads,
 		},
 		LoggingAndSystemAuditing:            logAudit,

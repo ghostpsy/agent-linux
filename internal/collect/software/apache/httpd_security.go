@@ -34,8 +34,8 @@ var (
 	reApacheServerTokens  = regexp.MustCompile(`(?i)ServerTokens\s+(\S+)`)
 	reApacheServerSig     = regexp.MustCompile(`(?i)ServerSignature\s+(\S+)`)
 	reApacheListenLine    = regexp.MustCompile(`(?i)^\s*Listen\s+(.+)$`)
-	reApacheUserLine    = regexp.MustCompile(`(?i)^\s*User\s+(\S+)\s*(?:#.*)?$`)
-	reApacheTraceEnable = regexp.MustCompile(`(?i)^\s*TraceEnable\s+(\S+)\s*(?:#.*)?$`)
+	reApacheUserLine      = regexp.MustCompile(`(?i)^\s*User\s+(\S+)\s*(?:#.*)?$`)
+	reApacheTraceEnable   = regexp.MustCompile(`(?i)^\s*TraceEnable\s+(\S+)\s*(?:#.*)?$`)
 	reApacheSSLProtocol   = regexp.MustCompile(`(?i)^\s*SSLProtocol\s+(.+?)\s*(?:#.*)?$`)
 	reApacheSSLCipher     = regexp.MustCompile(`(?i)^\s*SSLCipherSuite\s+(.+?)\s*(?:#.*)?$`)
 	reApacheAllowOverride = regexp.MustCompile(`(?i)^\s*AllowOverride\s+(\S+)\s*(?:#.*)?$`)
@@ -72,14 +72,14 @@ var apacheProtectiveModuleNames = []string{
 }
 
 type apacheWalkState struct {
-	merged       strings.Builder
-	bytesTotal   int
-	warnings     []string
-	serverRoot   string
-	visited      map[string]struct{}
-	queued       []string
-	mainPath     string
-	filesRead    int
+	merged     strings.Builder
+	bytesTotal int
+	warnings   []string
+	serverRoot string
+	visited    map[string]struct{}
+	queued     []string
+	mainPath   string
+	filesRead  int
 }
 
 func fillApacheHttpdSecurityPosture(ctx context.Context, invokeBin string, out *payload.ApacheHttpdPosture, listeners []payload.Listener) {

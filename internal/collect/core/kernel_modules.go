@@ -3,8 +3,8 @@
 package core
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"os"
 	"strings"
 

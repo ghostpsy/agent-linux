@@ -3,8 +3,8 @@
 package software
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
 type backupTool struct {
@@ -118,10 +119,14 @@ func detectBackupCronHint() bool {
 			return true
 		}
 	}
-	for _, args := range [][]string{{"crontab", "-l"}, {"crontab", "-u", "root", "-l"}} {
-		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+	// crontab -u root -l is privileged, and it hid from a search for
+	// exec.Command because it lived in this literal table. It now goes through
+	// the declared-command path like everything else.
+	for _, id := range []privexec.ID{privexec.CrontabListSelf, privexec.CrontabListRoot} {
+		res, err := privexec.Run(context.Background(), id)
+		out := append(res.Stdout, res.Stderr...)
 		if err != nil && len(strings.TrimSpace(string(out))) == 0 {
-			slog.Debug("crontab command failed", "args", strings.Join(args, " "), "error", err)
+			slog.Debug("crontab command failed", "command", string(id), "error", err)
 			continue
 		}
 		if textHasBackupHint(string(out)) {

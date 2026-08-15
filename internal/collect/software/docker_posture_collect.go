@@ -35,14 +35,14 @@ var dockerDangerousCaps = map[string]struct{}{
 }
 
 type dockerDaemonPostureJSON struct {
-	LiveRestore       *bool           `json:"live-restore"`
-	Icc               *bool           `json:"icc"`
-	UsernsRemap       string          `json:"userns-remap"`
-	NoNewPrivileges   *bool           `json:"no-new-privileges"`
-	LogDriver         string          `json:"log-driver"`
-	SeccompProfile    string          `json:"seccomp-profile"`
-	DefaultUlimits    json.RawMessage `json:"default-ulimits"`
-	Hosts             []string        `json:"hosts"`
+	LiveRestore     *bool           `json:"live-restore"`
+	Icc             *bool           `json:"icc"`
+	UsernsRemap     string          `json:"userns-remap"`
+	NoNewPrivileges *bool           `json:"no-new-privileges"`
+	LogDriver       string          `json:"log-driver"`
+	SeccompProfile  string          `json:"seccomp-profile"`
+	DefaultUlimits  json.RawMessage `json:"default-ulimits"`
+	Hosts           []string        `json:"hosts"`
 }
 
 type dockerInfoPosture struct {
@@ -101,14 +101,14 @@ type dockerNetworkInspectPosture struct {
 // CollectDockerPosture collects Docker host security posture (read-only docker CLI and filesystem checks).
 func CollectDockerPosture(ctx context.Context) *payload.DockerPosture {
 	out := &payload.DockerPosture{
-		ContainerRisks:               []payload.DockerContainerRisk{},
+		ContainerRisks:                []payload.DockerContainerRisk{},
 		DockerSockMountedInContainers: []string{},
-		ImagesRunningAsLatest:        []string{},
-		ImagesWithoutHealthcheck:     []string{},
-		PublishedPorts:               []payload.DockerPublishedPort{},
-		CustomNetworksEncrypted:      []payload.DockerOverlayNetworkEncryption{},
-		DockerGroupMembers:           []string{},
-		CollectorWarnings:            []string{},
+		ImagesRunningAsLatest:         []string{},
+		ImagesWithoutHealthcheck:      []string{},
+		PublishedPorts:                []payload.DockerPublishedPort{},
+		CustomNetworksEncrypted:       []payload.DockerOverlayNetworkEncryption{},
+		DockerGroupMembers:            []string{},
+		CollectorWarnings:             []string{},
 	}
 	dockerPath, errDocker := exec.LookPath("docker")
 	hasCLI := errDocker == nil && dockerPath != ""
@@ -255,12 +255,12 @@ func applyDockerInfoPosture(out *payload.DockerPosture, raw []byte) {
 }
 
 type dockerdScan struct {
-	pid          int
-	configFile   string
-	tcpHosts     []string
-	tlsVerify    bool
-	rootlessArg  bool
-	uid          int
+	pid         int
+	configFile  string
+	tcpHosts    []string
+	tlsVerify   bool
+	rootlessArg bool
+	uid         int
 }
 
 func scanDockerdProcess() dockerdScan {

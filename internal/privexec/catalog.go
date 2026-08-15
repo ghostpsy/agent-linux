@@ -34,6 +34,7 @@ const (
 	// Scheduling — found by tracing, not by scanning: this one hides inside a
 	// [][]string literal and no search for exec.Command would show it.
 	CrontabListRoot ID = "cron.crontab_list_root"
+	CrontabListSelf ID = "cron.crontab_list_self"
 )
 
 // localeC keeps output in a language the parsers understand. sudo deletes the
@@ -89,6 +90,12 @@ func init() {
 		Env:    localeC,
 	})
 
+	declare(CrontabListSelf, Command{
+		Binary: "crontab",
+		Args:   []string{"-l"},
+		Why:    "read this account's scheduled jobs",
+		Env:    localeC,
+	})
 	declare(CrontabListRoot, Command{
 		Binary: "crontab",
 		Args:   []string{"-u", "root", "-l"},

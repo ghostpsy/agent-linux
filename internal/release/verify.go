@@ -26,10 +26,10 @@ func resolvePublicKeyHex() string {
 	return PublicKeyHex
 }
 
-// VerifyShaSums checks that ``signatureHex`` is a valid Ed25519 signature
-// over ``shaSumsContent`` produced by the release private key.
+// VerifyShaSums checks that “signatureHex“ is a valid Ed25519 signature
+// over “shaSumsContent“ produced by the release private key.
 //
-// ``signatureHex`` is the textual content of the ``SHA256SUMS.sig`` file:
+// “signatureHex“ is the textual content of the “SHA256SUMS.sig“ file:
 // 64 hex bytes (128 characters), optionally surrounded by whitespace.
 func VerifyShaSums(shaSumsContent []byte, signatureHex string) error {
 	keyHex := resolvePublicKeyHex()
@@ -62,16 +62,16 @@ func VerifyShaSums(shaSumsContent []byte, signatureHex string) error {
 	return nil
 }
 
-// HashBinary returns the lowercase hex SHA256 of ``data``, the format
-// produced by ``sha256sum`` and used in the SHA256SUMS file.
+// HashBinary returns the lowercase hex SHA256 of “data“, the format
+// produced by “sha256sum“ and used in the SHA256SUMS file.
 func HashBinary(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
 
-// VerifyBinaryHash checks that ``data`` matches the entry for ``filename``
-// in a SHA256SUMS file. Lines look like ``<hex>  <name>``; surrounding
-// whitespace and ``*`` (binary mode) are ignored.
+// VerifyBinaryHash checks that “data“ matches the entry for “filename“
+// in a SHA256SUMS file. Lines look like “<hex>  <name>“; surrounding
+// whitespace and “*“ (binary mode) are ignored.
 func VerifyBinaryHash(shaSumsContent []byte, filename string, data []byte) error {
 	want := ""
 	for _, raw := range strings.Split(string(shaSumsContent), "\n") {

@@ -53,14 +53,14 @@ type CupsExposureFingerprint struct {
 
 // ApacheHttpdPosture is allowlisted httpd/apache2 security posture (no secrets, no full raw config dump).
 type ApacheHttpdPosture struct {
-	Detected     bool    `json:"detected"`
-	BinPath      string  `json:"bin_path"`
-	Version        *string `json:"version"`
-	DistroVersion  *string `json:"distro_version,omitempty"`
-	ServiceState *string `json:"service_state"`
+	Detected      bool    `json:"detected"`
+	BinPath       string  `json:"bin_path"`
+	Version       *string `json:"version"`
+	DistroVersion *string `json:"distro_version,omitempty"`
+	ServiceState  *string `json:"service_state"`
 
 	ListenBindings             []ApacheListenBinding `json:"listen_bindings"`
-	ListenBindingDiscrepancies   []string              `json:"listen_binding_discrepancies"`
+	ListenBindingDiscrepancies []string              `json:"listen_binding_discrepancies"`
 
 	SSLModuleLoaded     *bool   `json:"ssl_module_loaded"`
 	SSLProtocol         *string `json:"ssl_protocol"`
@@ -108,11 +108,11 @@ type ApacheListenBinding struct {
 
 // NginxPosture is allowlisted nginx security posture from -v/-V/-T (no raw secrets).
 type NginxPosture struct {
-	Detected     bool    `json:"detected"`
-	BinPath      string  `json:"bin_path,omitempty"`
-	Version        *string `json:"version,omitempty"`
-	DistroVersion  *string `json:"distro_version,omitempty"`
-	ServiceState *string `json:"service_state,omitempty"` // running | stopped | not_installed
+	Detected      bool    `json:"detected"`
+	BinPath       string  `json:"bin_path,omitempty"`
+	Version       *string `json:"version,omitempty"`
+	DistroVersion *string `json:"distro_version,omitempty"`
+	ServiceState  *string `json:"service_state,omitempty"` // running | stopped | not_installed
 
 	SiteMapSummary *NginxSiteMapSummary `json:"site_map_summary,omitempty"`
 	ListenBindings []NginxListenBinding `json:"listen_bindings,omitempty"`
@@ -120,9 +120,9 @@ type NginxPosture struct {
 	ListenBindingDiscrepancies []string `json:"listen_binding_discrepancies,omitempty"`
 
 	// ModulesSample is security-relevant nginx -V flags (broad); RiskyModulesCompiled is the high-risk subset only.
-	ModulesSample         []string `json:"modules_sample,omitempty"`
-	RiskyModulesCompiled  []string `json:"risky_modules_compiled,omitempty"`
-	TlsLegacyProtocolsPresent *bool `json:"tls_legacy_protocols_present,omitempty"`
+	ModulesSample             []string `json:"modules_sample,omitempty"`
+	RiskyModulesCompiled      []string `json:"risky_modules_compiled,omitempty"`
+	TlsLegacyProtocolsPresent *bool    `json:"tls_legacy_protocols_present,omitempty"`
 
 	SslConfigured            *bool   `json:"ssl_configured,omitempty"`
 	SslProtocols             *string `json:"ssl_protocols,omitempty"`
@@ -140,25 +140,25 @@ type NginxPosture struct {
 	ServerHeaderHidden     *bool `json:"server_header_hidden,omitempty"`
 	ErrorPageCustom        *bool `json:"error_page_custom,omitempty"`
 
-	MissingSecurityHeaders          []string `json:"missing_security_headers,omitempty"`
-	LocationsDroppingParentHeaders  []string `json:"locations_dropping_parent_headers,omitempty"`
+	MissingSecurityHeaders         []string `json:"missing_security_headers,omitempty"`
+	LocationsDroppingParentHeaders []string `json:"locations_dropping_parent_headers,omitempty"`
 
 	AutoindexEnabledPaths      []string `json:"autoindex_enabled_paths,omitempty"`
-	SensitivePathsUnrestricted   []string `json:"sensitive_paths_unrestricted,omitempty"`
+	SensitivePathsUnrestricted []string `json:"sensitive_paths_unrestricted,omitempty"`
 	LimitReqConfigured         *bool    `json:"limit_req_configured,omitempty"`
 	ClientMaxBodySize          *string  `json:"client_max_body_size,omitempty"`
 
 	ProxyPassOrUpstreamSeen *bool `json:"proxy_pass_or_upstream_seen,omitempty"`
-	ProxyHeadersForwarded     *bool `json:"proxy_headers_forwarded,omitempty"`
-	ProxyHostHeader           *bool `json:"proxy_host_header,omitempty"`
-	UpstreamPlaintext         *bool `json:"upstream_plaintext,omitempty"`
-	ProxyInterceptErrors      *bool `json:"proxy_intercept_errors,omitempty"`
+	ProxyHeadersForwarded   *bool `json:"proxy_headers_forwarded,omitempty"`
+	ProxyHostHeader         *bool `json:"proxy_host_header,omitempty"`
+	UpstreamPlaintext       *bool `json:"upstream_plaintext,omitempty"`
+	ProxyInterceptErrors    *bool `json:"proxy_intercept_errors,omitempty"`
 
-	RunUser                 *string `json:"run_user,omitempty"`
-	RunUserWorkersNonRoot   *bool   `json:"run_user_workers_non_root,omitempty"`
-	ConfigFilePermissions   *string `json:"config_file_permissions,omitempty"`
-	DocrootWorldWritable    *bool   `json:"docroot_world_writable,omitempty"`
-	IsContainerized         *bool   `json:"is_containerized,omitempty"`
+	RunUser               *string `json:"run_user,omitempty"`
+	RunUserWorkersNonRoot *bool   `json:"run_user_workers_non_root,omitempty"`
+	ConfigFilePermissions *string `json:"config_file_permissions,omitempty"`
+	DocrootWorldWritable  *bool   `json:"docroot_world_writable,omitempty"`
+	IsContainerized       *bool   `json:"is_containerized,omitempty"`
 
 	CollectorWarnings []string `json:"collector_warnings,omitempty"`
 	Error             string   `json:"error,omitempty"`
@@ -179,11 +179,11 @@ type NginxListenBinding struct {
 
 // PostfixPosture is allowlisted postconf + bounded master.cf security posture (no postconf -n dump, no queue or mail content).
 type PostfixPosture struct {
-	Detected     bool    `json:"detected"`
-	BinPath      string  `json:"bin_path"`
-	Version        *string `json:"version"`
-	DistroVersion  *string `json:"distro_version,omitempty"`
-	ServiceState *string `json:"service_state"`
+	Detected      bool    `json:"detected"`
+	BinPath       string  `json:"bin_path"`
+	Version       *string `json:"version"`
+	DistroVersion *string `json:"distro_version,omitempty"`
+	ServiceState  *string `json:"service_state"`
 
 	ListenAddresses *string `json:"listen_addresses"`
 	ListenProtocols *string `json:"listen_protocols"`
@@ -193,24 +193,24 @@ type PostfixPosture struct {
 	RelayDomains               *string `json:"relay_domains"`
 	SmtpdRecipientRestrictions *string `json:"smtpd_recipient_restrictions"`
 
-	SmtpdTlsSecurityLevel     *string `json:"smtpd_tls_security_level"`
-	SmtpTlsSecurityLevel      *string `json:"smtp_tls_security_level"`
-	SmtpdTlsProtocols         *string `json:"smtpd_tls_protocols"`
-	SmtpdTlsMandatoryCiphers  *string `json:"smtpd_tls_mandatory_ciphers"`
-	TlsPreemptCipherlist      *bool   `json:"tls_preempt_cipherlist"`
+	SmtpdTlsSecurityLevel    *string `json:"smtpd_tls_security_level"`
+	SmtpTlsSecurityLevel     *string `json:"smtp_tls_security_level"`
+	SmtpdTlsProtocols        *string `json:"smtpd_tls_protocols"`
+	SmtpdTlsMandatoryCiphers *string `json:"smtpd_tls_mandatory_ciphers"`
+	TlsPreemptCipherlist     *bool   `json:"tls_preempt_cipherlist"`
 
-	SmtpdSaslAuthEnable        *bool   `json:"smtpd_sasl_auth_enable"`
-	SmtpdSaslSecurityOptions   *string `json:"smtpd_sasl_security_options"`
-	SmtpdTlsAuthOnly           *bool   `json:"smtpd_tls_auth_only"`
-	SubmissionPortEnabled      *bool   `json:"submission_port_enabled"`
+	SmtpdSaslAuthEnable      *bool   `json:"smtpd_sasl_auth_enable"`
+	SmtpdSaslSecurityOptions *string `json:"smtpd_sasl_security_options"`
+	SmtpdTlsAuthOnly         *bool   `json:"smtpd_tls_auth_only"`
+	SubmissionPortEnabled    *bool   `json:"submission_port_enabled"`
 
 	SmtpdSenderRestrictions *string `json:"smtpd_sender_restrictions"`
 	SmtpdHeloRequired       *bool   `json:"smtpd_helo_required"`
 	SmtpdHeloRestrictions   *string `json:"smtpd_helo_restrictions"`
 	SmtpdSenderLoginMaps    *string `json:"smtpd_sender_login_maps"`
 
-	SmtpdBanner          *string `json:"smtpd_banner"`
-	ShowqServiceExposed  *bool   `json:"showq_service_exposed"`
+	SmtpdBanner         *string `json:"smtpd_banner"`
+	ShowqServiceExposed *bool   `json:"showq_service_exposed"`
 
 	SmtpdClientConnectionRateLimit *string `json:"smtpd_client_connection_rate_limit"`
 	SmtpdClientMessageRateLimit    *string `json:"smtpd_client_message_rate_limit"`
@@ -218,9 +218,9 @@ type PostfixPosture struct {
 	SmtpdHardErrorLimit            *string `json:"smtpd_hard_error_limit"`
 	MessageSizeLimit               *string `json:"message_size_limit"`
 
-	RunUser             *string `json:"run_user"`
-	ChrootRatioSummary  *string `json:"chroot_ratio_summary"`
-	IsContainerized     *bool   `json:"is_containerized"`
+	RunUser            *string `json:"run_user"`
+	ChrootRatioSummary *string `json:"chroot_ratio_summary"`
+	IsContainerized    *bool   `json:"is_containerized"`
 
 	CollectorWarnings []string `json:"collector_warnings"`
 	Error             string   `json:"error,omitempty"`
@@ -229,12 +229,12 @@ type PostfixPosture struct {
 // FtpPosture is bounded FTP server security posture (vsftpd, ProFTPD, Pure-FTPd).
 // No credentials, no user lists, no file contents.
 type FtpPosture struct {
-	Detected     bool    `json:"detected"`
-	BinPath      string  `json:"bin_path"`
-	Daemon       string  `json:"daemon"`
-	Version        *string `json:"version"`
-	DistroVersion  *string `json:"distro_version,omitempty"`
-	ServiceState *string `json:"service_state"`
+	Detected      bool    `json:"detected"`
+	BinPath       string  `json:"bin_path"`
+	Daemon        string  `json:"daemon"`
+	Version       *string `json:"version"`
+	DistroVersion *string `json:"distro_version,omitempty"`
+	ServiceState  *string `json:"service_state"`
 
 	AnonymousEnabled *bool   `json:"anonymous_enabled"`
 	TlsEnabled       *bool   `json:"tls_enabled"`
@@ -251,11 +251,11 @@ type FtpPosture struct {
 // RedisPosture is bounded Redis server security posture.
 // No keyspace data, no ACL contents, no credential values.
 type RedisPosture struct {
-	Detected     bool    `json:"detected"`
-	BinPath      string  `json:"bin_path"`
-	Version        *string `json:"version"`
-	DistroVersion  *string `json:"distro_version,omitempty"`
-	ServiceState *string `json:"service_state"`
+	Detected      bool    `json:"detected"`
+	BinPath       string  `json:"bin_path"`
+	Version       *string `json:"version"`
+	DistroVersion *string `json:"distro_version,omitempty"`
+	ServiceState  *string `json:"service_state"`
 
 	Bind               *string `json:"bind"`
 	Port               *int    `json:"port"`
@@ -274,7 +274,7 @@ type MysqlPosture struct {
 	Version       *string `json:"version"`
 	DistroVersion *string `json:"distro_version,omitempty"`
 	BinPath       string  `json:"bin_path"`
-	ServiceState *string `json:"service_state"`
+	ServiceState  *string `json:"service_state"`
 
 	BindAddress        *string `json:"bind_address"`
 	Port               *int    `json:"port"`
@@ -301,13 +301,13 @@ type MysqlPosture struct {
 	GeneralLog      *string `json:"general_log"`
 	SkipGrantTables *bool   `json:"skip_grant_tables"`
 
-	RunUser                 *string `json:"run_user"`
-	Datadir                 *string `json:"datadir"`
-	DatadirPermissions      *string `json:"datadir_permissions"`
-	ConfigFilePermissions   *string `json:"config_file_permissions"`
-	MyCnfPasswordsExposed   *bool   `json:"my_cnf_passwords_exposed"`
-	ErrorLogPermissions     *string `json:"error_log_permissions"`
-	IsContainerized         *bool   `json:"is_containerized"`
+	RunUser               *string `json:"run_user"`
+	Datadir               *string `json:"datadir"`
+	DatadirPermissions    *string `json:"datadir_permissions"`
+	ConfigFilePermissions *string `json:"config_file_permissions"`
+	MyCnfPasswordsExposed *bool   `json:"my_cnf_passwords_exposed"`
+	ErrorLogPermissions   *string `json:"error_log_permissions"`
+	IsContainerized       *bool   `json:"is_containerized"`
 
 	InnodbEncryptTables    *string `json:"innodb_encrypt_tables"`
 	DefaultTableEncryption *string `json:"default_table_encryption"`
@@ -324,14 +324,14 @@ type PostgresPosture struct {
 	Version       *string `json:"version,omitempty"`
 	DistroVersion *string `json:"distro_version,omitempty"`
 	BinPath       string  `json:"bin_path,omitempty"`
-	ServiceState *string `json:"service_state,omitempty"`
+	ServiceState  *string `json:"service_state,omitempty"`
 
-	ListenAddresses             *string  `json:"listen_addresses,omitempty"`
-	Port                        *int     `json:"port,omitempty"`
-	ListenImpliesAllAddresses   *bool    `json:"listen_implies_all_addresses,omitempty"`
-	PortListenerDiscrepancies   []string `json:"port_listener_discrepancies,omitempty"`
-	ConfigFilePath              *string  `json:"config_file_path,omitempty"`
-	PgHbaFilePath               *string  `json:"pg_hba_file_path,omitempty"`
+	ListenAddresses           *string  `json:"listen_addresses,omitempty"`
+	Port                      *int     `json:"port,omitempty"`
+	ListenImpliesAllAddresses *bool    `json:"listen_implies_all_addresses,omitempty"`
+	PortListenerDiscrepancies []string `json:"port_listener_discrepancies,omitempty"`
+	ConfigFilePath            *string  `json:"config_file_path,omitempty"`
+	PgHbaFilePath             *string  `json:"pg_hba_file_path,omitempty"`
 
 	TrustRules             []string `json:"trust_rules,omitempty"`
 	PasswordCleartextRules []string `json:"password_cleartext_rules,omitempty"`
@@ -386,13 +386,13 @@ type PostgresPosture struct {
 type DockerPosture struct {
 	Detected bool `json:"detected"`
 
-	DockerCliPath   *string `json:"docker_cli_path,omitempty"`
-	Version         *string `json:"version,omitempty"`
-	DistroVersion   *string `json:"distro_version,omitempty"`
-	APIVersion      *string `json:"api_version,omitempty"`
-	StorageDriver   *string `json:"storage_driver,omitempty"`
-	ContainerCount  *int    `json:"container_count,omitempty"`
-	DockerRootDir   *string `json:"docker_root_dir,omitempty"`
+	DockerCliPath  *string `json:"docker_cli_path,omitempty"`
+	Version        *string `json:"version,omitempty"`
+	DistroVersion  *string `json:"distro_version,omitempty"`
+	APIVersion     *string `json:"api_version,omitempty"`
+	StorageDriver  *string `json:"storage_driver,omitempty"`
+	ContainerCount *int    `json:"container_count,omitempty"`
+	DockerRootDir  *string `json:"docker_root_dir,omitempty"`
 
 	RootlessMode        *bool   `json:"rootless_mode,omitempty"`
 	DockerSockPath      *string `json:"docker_sock_path,omitempty"`
@@ -449,13 +449,13 @@ type DockerContainerRisk struct {
 
 // DockerPublishedPort is one published port binding from a running container.
 type DockerPublishedPort struct {
-	Container           string `json:"container"`
-	ContainerID         string `json:"container_id"`
-	HostIP              string `json:"host_ip"`
-	HostPort            string `json:"host_port"`
-	ContainerPort       string `json:"container_port"`
-	Protocol            string `json:"protocol"`
-	BindAllInterfaces   bool   `json:"bind_all_interfaces"`
+	Container         string `json:"container"`
+	ContainerID       string `json:"container_id"`
+	HostIP            string `json:"host_ip"`
+	HostPort          string `json:"host_port"`
+	ContainerPort     string `json:"container_port"`
+	Protocol          string `json:"protocol"`
+	BindAllInterfaces bool   `json:"bind_all_interfaces"`
 }
 
 // DockerOverlayNetworkEncryption records overlay driver encryption hint for a user-defined network.
@@ -467,11 +467,11 @@ type DockerOverlayNetworkEncryption struct {
 // MongodbPosture is bounded MongoDB server security posture.
 // No database contents, user lists, or credentials.
 type MongodbPosture struct {
-	Detected     bool    `json:"detected"`
-	BinPath      string  `json:"bin_path"`
-	Version        *string `json:"version"`
-	DistroVersion  *string `json:"distro_version,omitempty"`
-	ServiceState *string `json:"service_state"`
+	Detected      bool    `json:"detected"`
+	BinPath       string  `json:"bin_path"`
+	Version       *string `json:"version"`
+	DistroVersion *string `json:"distro_version,omitempty"`
+	ServiceState  *string `json:"service_state"`
 
 	BindIp         *string `json:"bind_ip"`
 	Port           *int    `json:"port"`

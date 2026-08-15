@@ -99,8 +99,8 @@ type SoftwarePackagesAndApplicationsComponent struct {
 }
 
 type ContainerAndCloudNativeLinuxComponent struct {
-	HostRuntimes      *ContainerNativeHostRuntimes `json:"host_runtimes,omitempty"`
-	ContainerWorkloads *ContainerWorkloads         `json:"container_workloads,omitempty"`
+	HostRuntimes       *ContainerNativeHostRuntimes `json:"host_runtimes,omitempty"`
+	ContainerWorkloads *ContainerWorkloads          `json:"container_workloads,omitempty"`
 }
 
 // ContainerWorkloads is a bounded inventory of running Docker containers and
@@ -128,20 +128,20 @@ type ContainerWorkloads struct {
 // No env vars, no command-line flags (may carry secrets) — only image identity,
 // runtime state, whitelisted labels, and workload-risk flags.
 type DockerContainerWorkload struct {
-	Name           string   `json:"name"`
-	ContainerID    string   `json:"container_id"`
-	Image          string   `json:"image"`
-	ImageTag       string   `json:"image_tag,omitempty"`
-	ImageDigest    string   `json:"image_digest,omitempty"`
-	ImageTagLatest bool     `json:"image_tag_is_latest"`
-	ImageDigestPinned bool  `json:"image_digest_pinned"`
-	State          string   `json:"state"`
-	StartedAt      string   `json:"started_at,omitempty"`
-	RestartCount   int      `json:"restart_count"`
-	User           string   `json:"user,omitempty"`
-	EntrypointHint string   `json:"entrypoint_hint,omitempty"`
-	WorkloadHint   string   `json:"workload_hint,omitempty"`
-	NetworkMode    string   `json:"network_mode,omitempty"`
+	Name              string `json:"name"`
+	ContainerID       string `json:"container_id"`
+	Image             string `json:"image"`
+	ImageTag          string `json:"image_tag,omitempty"`
+	ImageDigest       string `json:"image_digest,omitempty"`
+	ImageTagLatest    bool   `json:"image_tag_is_latest"`
+	ImageDigestPinned bool   `json:"image_digest_pinned"`
+	State             string `json:"state"`
+	StartedAt         string `json:"started_at,omitempty"`
+	RestartCount      int    `json:"restart_count"`
+	User              string `json:"user,omitempty"`
+	EntrypointHint    string `json:"entrypoint_hint,omitempty"`
+	WorkloadHint      string `json:"workload_hint,omitempty"`
+	NetworkMode       string `json:"network_mode,omitempty"`
 	// WorkloadLabels carries only allow-listed compose/kubernetes/OCI labels
 	// that identify the workload to the operator. Never arbitrary user labels.
 	WorkloadLabels map[string]string `json:"workload_labels,omitempty"`
@@ -151,7 +151,7 @@ type DockerContainerWorkload struct {
 	// SecretEnvCount is the count of environment variables whose NAME matches
 	// a secret-like pattern (PASSWORD/SECRET/TOKEN/API_KEY). Values and
 	// full key names are NEVER shipped; this is a risk signal only.
-	SecretEnvCount int  `json:"secret_env_count"`
+	SecretEnvCount   int  `json:"secret_env_count"`
 	HasSecretEnvRisk bool `json:"has_secret_env_risk"`
 
 	// IpcModeHost is true when `--ipc=host` was used (cross-container attack
@@ -208,11 +208,11 @@ type DockerContainerWorkload struct {
 
 // KubeletPodWorkload describes one pod observed via kubelet / crictl on this node.
 type KubeletPodWorkload struct {
-	Name        string                        `json:"name"`
-	Namespace   string                        `json:"namespace"`
-	Phase       string                        `json:"phase,omitempty"`
-	CreatedAt   string                        `json:"created_at,omitempty"`
-	Containers  []KubeletContainerWorkload    `json:"containers"`
+	Name       string                     `json:"name"`
+	Namespace  string                     `json:"namespace"`
+	Phase      string                     `json:"phase,omitempty"`
+	CreatedAt  string                     `json:"created_at,omitempty"`
+	Containers []KubeletContainerWorkload `json:"containers"`
 }
 
 // KubeletContainerWorkload is a single container inside a pod.
@@ -374,7 +374,7 @@ type HostNetwork struct {
 	HasPublicIPv4           *bool          `json:"has_public_ipv4,omitempty"`
 	HasPublicIPv6           *bool          `json:"has_public_ipv6,omitempty"`
 	PublicIPCandidates      []string       `json:"public_ip_candidates,omitempty"` // redacted: IPv4 a.b.x.x / IPv6 h:h:x:x:x:x:x:x
-	ProbeTargets            []string       `json:"probe_targets,omitempty"`         // real public IPs for API-side WAN probing
+	ProbeTargets            []string       `json:"probe_targets,omitempty"`        // real public IPs for API-side WAN probing
 	Interfaces              []NetworkIface `json:"interfaces,omitempty"`
 	ResolvConfNameservers   []string       `json:"resolv_conf_nameservers,omitempty"`
 	ResolvConfSearchDomains []string       `json:"resolv_conf_search_domains,omitempty"`

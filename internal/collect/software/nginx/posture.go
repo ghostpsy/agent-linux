@@ -16,6 +16,7 @@ import (
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/collect/systemdutil"
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
 const (
@@ -73,8 +74,11 @@ func CollectNginxPosture(ctx context.Context, services []payload.ServiceEntry, l
 
 	subCtxT, cancelT := context.WithTimeout(ctx, nginxCmdTimeout)
 	defer cancelT()
-	cmdT := exec.CommandContext(subCtxT, bin, "-T")
-	tCombined, errT := cmdT.CombinedOutput()
+	// nginx -T dumps the effective configuration, including files only root can
+	// read. Measured on debian-13: without privilege this loses the whole TLS
+	// posture, the listen bindings and the site map.
+	resT, errT := privexec.Run(subCtxT, privexec.NginxDumpConfig)
+	tCombined := append(resT.Stdout, resT.Stderr...)
 	tText := string(truncateNginxOut(tCombined))
 	if errT != nil {
 		if out.Error != "" {

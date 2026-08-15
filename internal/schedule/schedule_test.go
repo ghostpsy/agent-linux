@@ -43,7 +43,7 @@ func TestNextIsTomorrowWhenTodaysScanAlreadyRan(t *testing.T) {
 	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 	lastScan := now.Add(-2 * time.Hour)
 
-	next := Next("m-1", lastScan, now)
+	next := Next("m-1", lastScan, now, now)
 
 	if next.Before(now) {
 		t.Fatalf("next scan %v is in the past", next)
@@ -59,7 +59,7 @@ func TestNextCatchesUpOnceAfterLongDowntime(t *testing.T) {
 	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 	lastScan := now.Add(-7 * day)
 
-	next := Next("m-1", lastScan, now)
+	next := Next("m-1", lastScan, now, now)
 
 	if next.Before(now) {
 		t.Fatalf("catch-up scan %v is in the past", next)
@@ -77,7 +77,7 @@ func TestCatchUpIsSpreadAcrossAFleet(t *testing.T) {
 
 	delays := map[time.Duration]bool{}
 	for _, id := range []string{"m-1", "m-2", "m-3", "m-4", "m-5", "m-6"} {
-		delays[Next(id, lastScan, now).Sub(now).Round(time.Minute)] = true
+		delays[Next(id, lastScan, now, now).Sub(now).Round(time.Minute)] = true
 	}
 
 	if len(delays) < 4 {
@@ -90,9 +90,60 @@ func TestCatchUpIsSpreadAcrossAFleet(t *testing.T) {
 func TestNextRunsAlmostImmediatelyForANewMachine(t *testing.T) {
 	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 
-	next := Next("m-1", time.Time{}, now)
+	next := Next("m-1", time.Time{}, now, now)
 
 	if next.Sub(now) > 2*time.Minute {
 		t.Fatalf("a new machine should scan almost at once, got %v", next.Sub(now))
+	}
+}
+
+func TestDecideScansWhenAScanIsDue(t *testing.T) {
+	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+
+	got := Decide("m-1", now.Add(-7*day), now, now.Add(-2*time.Hour), now)
+
+	if !got.Scan {
+		t.Fatalf("expected an overdue machine to scan, got %+v", got)
+	}
+}
+
+func TestDecideSendsAHeartbeatWhenOneIsDue(t *testing.T) {
+	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+
+	got := Decide("m-1", now, now.Add(-20*time.Minute), now, now)
+
+	if !got.Heartbeat {
+		t.Fatalf("expected a heartbeat after 20 minutes, got %+v", got)
+	}
+}
+
+// The loop must wake up often enough to stay responsive, even when the next
+// scan is 20 hours away. A daemon that sleeps for a day cannot be told
+// anything, and Solve will need it awake.
+func TestDecideNeverSleepsLongerThanTheHeartbeatInterval(t *testing.T) {
+	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+
+	got := Decide("m-1", now, now, now, now)
+
+	if got.Scan || got.Heartbeat {
+		t.Fatalf("expected nothing due immediately, got %+v", got)
+	}
+	if got.Wait > HeartbeatInterval {
+		t.Fatalf("wait %v is longer than the heartbeat interval %v", got.Wait, HeartbeatInterval)
+	}
+	if got.Wait <= 0 {
+		t.Fatalf("wait must be positive, got %v", got.Wait)
+	}
+}
+
+// A brand new agent has never sent anything, so it must report in rather than
+// wait a quarter of an hour to say hello.
+func TestDecideSendsTheFirstHeartbeatImmediately(t *testing.T) {
+	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+
+	got := Decide("m-1", now, time.Time{}, now, now)
+
+	if !got.Heartbeat {
+		t.Fatalf("expected the first heartbeat to go at once, got %+v", got)
 	}
 }

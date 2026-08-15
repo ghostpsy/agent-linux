@@ -39,12 +39,16 @@ func DailyOffset(machineID string) time.Duration {
 //
 // A machine that has been switched off for a week gets one catch-up scan, not
 // a week of missed ones.
-func Next(machineID string, lastScan, now time.Time) time.Time {
+//
+// startedAt is when this agent process began, and the catch-up is anchored to
+// it rather than to now. That matters: anchoring to now would push the target
+// forward every time the loop asked, and an overdue scan would never arrive.
+func Next(machineID string, lastScan, startedAt, now time.Time) time.Time {
 	if lastScan.IsZero() {
-		return now.Add(newMachineDelay)
+		return startedAt.Add(newMachineDelay)
 	}
 
-	scheduled := midnightUTC(now).Add(DailyOffset(machineID))
+	scheduled := midnightUTC(lastScan).Add(DailyOffset(machineID))
 	if !scheduled.After(lastScan) {
 		scheduled = scheduled.Add(interval)
 	}
@@ -52,9 +56,9 @@ func Next(machineID string, lastScan, now time.Time) time.Time {
 		return scheduled
 	}
 
-	// Overdue. Spread the catch-up the same way, so a fleet that rebooted
-	// together does not arrive together.
-	return now.Add(time.Duration(spread(machineID+":catchup", uint64(catchUpWindow))))
+	// Overdue. Spread the catch-up the same way as the daily slot, so a fleet
+	// that rebooted together does not arrive together.
+	return startedAt.Add(time.Duration(spread(machineID+":catchup", uint64(catchUpWindow))))
 }
 
 func midnightUTC(t time.Time) time.Time {
@@ -83,4 +87,49 @@ func mix(x uint64) uint64 {
 	x *= 0x94d049bb133111eb
 	x ^= x >> 31
 	return x
+}
+
+// HeartbeatInterval is how often the agent says "I am still here".
+//
+// It is what lets the dashboard tell a switched-off server apart from a broken
+// agent. At sixty servers it is about 5,800 tiny requests a day.
+const HeartbeatInterval = 15 * time.Minute
+
+// Action is what the service loop should do on this pass.
+//
+// Keeping the decision in a pure function is deliberate: the loop around it is
+// then trivial, and every rule about when we touch a customer's server can be
+// tested without touching one.
+type Action struct {
+	Scan      bool
+	Heartbeat bool
+
+	// Wait is how long to sleep when there is nothing to do. It is capped at
+	// the heartbeat interval so the loop stays responsive — a daemon that
+	// sleeps for twenty hours cannot be told anything, and Solve will need it
+	// awake to receive work.
+	Wait time.Duration
+}
+
+// Decide reports what the loop should do now.
+func Decide(machineID string, lastScan, lastHeartbeat, startedAt, now time.Time) Action {
+	var act Action
+
+	if !Next(machineID, lastScan, startedAt, now).After(now) {
+		act.Scan = true
+	}
+	// A brand new agent reports in at once rather than waiting a quarter of an
+	// hour to say hello.
+	if lastHeartbeat.IsZero() || !now.Before(lastHeartbeat.Add(HeartbeatInterval)) {
+		act.Heartbeat = true
+	}
+	if act.Scan || act.Heartbeat {
+		return act
+	}
+
+	act.Wait = min(Next(machineID, lastScan, startedAt, now).Sub(now), HeartbeatInterval)
+	if act.Wait <= 0 {
+		act.Wait = HeartbeatInterval
+	}
+	return act
 }

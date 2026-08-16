@@ -17,6 +17,7 @@ import (
 
 	"github.com/ghostpsy/agent-linux/internal/agentconfig"
 	"github.com/ghostpsy/agent-linux/internal/service"
+	"github.com/ghostpsy/agent-linux/internal/state"
 )
 
 // installSudoRule writes the privilege grant, but only after the system's own
@@ -181,6 +182,20 @@ func createAgentUser(exists func() bool, run runner) error {
 // agentStateDir is where the agent keeps its own state, owned by the agent user.
 const agentStateDir = "/var/lib/ghostpsy"
 
+// serviceEnv is what the running service has to be told, and nothing more.
+//
+// The address is known while setup runs and forgotten by the time the service
+// starts, so a machine registered against a staging or self-hosted server would
+// then report to the public one. Only a non-default address is written down:
+// putting the public URL into every unit would pin thousands of servers to a
+// value that is meant to stay a compiled-in default.
+func serviceEnv(apiBaseURL string) []string {
+	if apiBaseURL == "" || apiBaseURL == defaultAPIBaseURL {
+		return nil
+	}
+	return []string{"GHOSTPSY_API_URL=" + apiBaseURL}
+}
+
 func newSetupCommand() *cobra.Command {
 	var token string
 	var dryRun bool
@@ -244,17 +259,27 @@ func runSetup(cmd *cobra.Command, token string, dryRun bool) error {
 			do:       func() error { return registerMachine(token) },
 		},
 		{
-			// register runs as root and writes the token 0600 root-owned, but
-			// the service runs as ghostpsy. Without this the agent cannot read
-			// its own token, every heartbeat fails, and the machine looks dead
-			// while the daemon retries forever.
-			describe: fmt.Sprintf("Give the agent token to %s", agentUser),
-			do:       func() error { return giveConfigToAgentUser() },
+			// register runs as root and writes the token and the state file
+			// 0600 root-owned, but the service runs as ghostpsy. Without this
+			// the agent cannot read its own credentials, every heartbeat fails,
+			// and the machine looks dead while the daemon retries forever.
+			describe: fmt.Sprintf("Give the agent its files to %s", agentUser),
+			do: func() error {
+				uid, gid, err := agentUIDGID()
+				if err != nil {
+					return err
+				}
+				return giveAgentItsFiles(agentOwnedPaths(), uid, gid, os.Chown)
+			},
 		},
 		{
 			describe: fmt.Sprintf("Start the ghostpsy service (%s)", kind),
 			do: func() error {
-				return manager.Install(service.Spec{ExecStart: self + " serve", User: agentUser})
+				return manager.Install(service.Spec{
+					ExecStart: self + " serve",
+					User:      agentUser,
+					Env:       serviceEnv(envOr("GHOSTPSY_API_URL", defaultAPIBaseURL)),
+				})
 			},
 		},
 	}
@@ -309,21 +334,38 @@ func createAgentStateDir() error {
 	return nil
 }
 
-// giveConfigToAgentUser hands /etc/ghostpsy to the agent account.
+// agentOwnedPaths is every path the installer creates as root that the service,
+// running as the agent user, has to be able to read.
 //
-// The directory and the token inside it are created by `register`, which runs
-// as root. The service does not, so without this it cannot read the credential
-// it was just given.
-func giveConfigToAgentUser() error {
-	dir := filepath.Dir(agentconfig.Path())
+// One list, because the alternative was found the hard way twice: the token was
+// missed first, then the state file. A machine whose agent cannot read one of
+// these does not fail loudly — it restarts forever while the installer reports
+// success.
+func agentOwnedPaths() []string {
+	return []string{
+		filepath.Dir(agentconfig.Path()),
+		agentconfig.Path(),
+		agentStateDir,
+		state.Path(),
+	}
+}
+
+// agentUIDGID resolves the account the service runs as.
+func agentUIDGID() (uid, gid int, err error) {
 	u, err := user.Lookup(agentUser)
 	if err != nil {
-		return fmt.Errorf("the %s user does not exist: %w", agentUser, err)
+		return 0, 0, fmt.Errorf("the %s user does not exist: %w", agentUser, err)
 	}
-	uid, gid := atoiOrZero(u.Uid), atoiOrZero(u.Gid)
+	return atoiOrZero(u.Uid), atoiOrZero(u.Gid), nil
+}
 
-	for _, path := range []string{dir, agentconfig.Path()} {
-		if err := os.Chown(path, uid, gid); err != nil {
+// giveAgentItsFiles hands the paths to the agent account.
+//
+// They are created by `register`, which runs as root. The service does not, so
+// without this it cannot read what it was just given.
+func giveAgentItsFiles(paths []string, uid, gid int, chown func(string, int, int) error) error {
+	for _, path := range paths {
+		if err := chown(path, uid, gid); err != nil {
 			return fmt.Errorf("could not give %s to %s: %w", path, agentUser, err)
 		}
 	}

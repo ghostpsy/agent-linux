@@ -6,8 +6,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/ghostpsy/agent-linux/internal/agentconfig"
+	"github.com/ghostpsy/agent-linux/internal/state"
 )
 
 type fakeSetup struct {
@@ -259,5 +263,65 @@ func TestAnInvalidCodeIsExplainedDifferentlyFromANetworkProblem(t *testing.T) {
 	}
 	if strings.Contains(got.Error(), "could not reach") {
 		t.Errorf("a rejected code is not a network problem, got: %v", got)
+	}
+}
+
+// The service runs as ghostpsy, but every file the installer creates is written
+// by root. Found on a real VM: the agent started, could not read its own
+// state.json, exited 1, and systemd restarted it forever. The installer printed
+// "This server is now reporting" the whole time.
+//
+// The token had this exact bug once already. Listing every path in one place is
+// what stops it happening a third time.
+func TestEveryFileTheAgentNeedsIsHandedToIt(t *testing.T) {
+	var chowned []string
+	chown := func(path string, _, _ int) error {
+		chowned = append(chowned, path)
+		return nil
+	}
+
+	if err := giveAgentItsFiles(agentOwnedPaths(), 1000, 1000, chown); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, want := range []string{agentconfig.Path(), agentStateDir, state.Path()} {
+		if !slices.Contains(chowned, want) {
+			t.Errorf("%s is created by root and read by the agent, but was never handed over; got %v", want, chowned)
+		}
+	}
+}
+
+// One unreadable path is the whole failure, so it must stop the install rather
+// than let it finish and claim success.
+func TestSetupFailsIfAFileCannotBeHandedOver(t *testing.T) {
+	chown := func(path string, _, _ int) error {
+		if path == state.Path() {
+			return errors.New("operation not permitted")
+		}
+		return nil
+	}
+
+	err := giveAgentItsFiles(agentOwnedPaths(), 1000, 1000, chown)
+
+	if err == nil {
+		t.Fatal("expected an error when a path could not be handed over")
+	}
+	if !strings.Contains(err.Error(), state.Path()) {
+		t.Errorf("the error must name the path that failed, got: %v", err)
+	}
+}
+
+// Only a non-default address is written down. Writing the public URL into every
+// unit would pin thousands of machines to a value that is meant to be a
+// compiled-in default, so moving it later would need every server edited.
+func TestTheServiceIsToldTheAddressOnlyWhenItIsNotTheDefault(t *testing.T) {
+	if env := serviceEnv(defaultAPIBaseURL); len(env) != 0 {
+		t.Errorf("the default address must not be written into the unit, got %v", env)
+	}
+
+	env := serviceEnv("http://192.168.64.1:8000")
+
+	if len(env) != 1 || !strings.Contains(env[0], "GHOSTPSY_API_URL=http://192.168.64.1:8000") {
+		t.Errorf("a custom address must be carried by the service, got %v", env)
 	}
 }

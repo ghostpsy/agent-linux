@@ -84,12 +84,43 @@ func runUninstall(cmd *cobra.Command, purge bool) error {
 		say("Removed %s", p)
 	}
 
+	if err := removeAgentUserIfPurging(purge, func() bool { return userExists(agentUser) }, runCommand); err != nil {
+		return err
+	}
+
 	if purge {
+		say("Removed the %s user", agentUser)
 		say("\nDone. Nothing of ghostpsy is left on this server.")
 		say("Revoke this machine's token in the dashboard if you do not plan to reinstall.")
 		return nil
 	}
 	say("\nDone. Configuration and state were kept, so a reinstall keeps this machine's history.")
+	return nil
+}
+
+// removeAgentUserIfPurging deletes the account only for --purge.
+//
+// A plain uninstall keeps the machine's identity so a reinstall keeps its
+// history, and the account owns the files holding it.
+func removeAgentUserIfPurging(purge bool, exists func() bool, run runner) error {
+	if !purge {
+		return nil
+	}
+	return removeAgentUser(exists, run)
+}
+
+// removeAgentUser deletes the locked system account the installer created.
+//
+// --purge promises "Nothing of ghostpsy is left on this server", and an account
+// nobody asked for is something left. Removing one that is already gone is not
+// a failure: uninstall has to finish whatever state it finds.
+func removeAgentUser(exists func() bool, run runner) error {
+	if !exists() {
+		return nil
+	}
+	if err := run("userdel", agentUser); err != nil {
+		return fmt.Errorf("could not remove the %s user: %w", agentUser, err)
+	}
 	return nil
 }
 

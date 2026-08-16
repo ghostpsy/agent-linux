@@ -142,3 +142,47 @@ func TestUninstallKeepsGoingWhenOnePathCannotBeRemoved(t *testing.T) {
 		}
 	}
 }
+
+// --purge says "Nothing of ghostpsy is left on this server". The system account
+// the installer created is part of that promise, and it was being left behind:
+// a user who removed ghostpsy still had a ghostpsy account on the server for
+// good. Found on a real VM, by checking the sentence the command prints.
+func TestPurgeRemovesTheAgentUser(t *testing.T) {
+	f := &fakeSetup{}
+
+	if err := removeAgentUser(func() bool { return true }, f.run); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !f.did("userdel") || !f.did(agentUser) {
+		t.Fatalf("the agent account must be removed, calls: %v", f.ran)
+	}
+}
+
+// Removing an account that is not there is not a failure. Uninstall has to
+// finish whatever state it finds, or it leaves the host half-cleaned.
+func TestPurgeIsFineWhenTheAgentUserIsAlreadyGone(t *testing.T) {
+	f := &fakeSetup{}
+
+	if err := removeAgentUser(func() bool { return false }, f.run); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(f.ran) != 0 {
+		t.Fatalf("nothing should have run, calls: %v", f.ran)
+	}
+}
+
+// Without --purge the account stays. A plain uninstall keeps the machine's
+// identity so a reinstall keeps its history, and the account owns those files.
+func TestAPlainUninstallKeepsTheAgentUser(t *testing.T) {
+	f := &fakeSetup{}
+
+	if err := removeAgentUserIfPurging(false, func() bool { return true }, f.run); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(f.ran) != 0 {
+		t.Fatalf("a plain uninstall must keep the account, calls: %v", f.ran)
+	}
+}

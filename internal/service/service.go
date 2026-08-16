@@ -11,12 +11,21 @@
 // Nothing outside this package knows which init system is in use.
 package service
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Spec is what any init system needs to be told about the agent.
+//
+// Env carries KEY=value settings the running service needs. It exists because
+// the agent registers against one address and would otherwise report to
+// another: the address is known at install time and forgotten by the time the
+// service starts, unless the init system is told to pass it on.
 type Spec struct {
 	ExecStart string
 	User      string
+	Env       []string
 }
 
 // systemdUnit renders the unit for systemd hosts: Debian 8+, Ubuntu 15.04+,
@@ -37,7 +46,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=%s
-ExecStart=%s
+%sExecStart=%s
 Restart=always
 RestartSec=30
 
@@ -48,7 +57,18 @@ PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target
-`, s.User, s.ExecStart)
+`, s.User, systemdEnvironment(s.Env), s.ExecStart)
+}
+
+// systemdEnvironment renders one quoted Environment= line per setting, or
+// nothing at all. Values can hold characters systemd would otherwise split on,
+// so they are quoted.
+func systemdEnvironment(env []string) string {
+	var b strings.Builder
+	for _, kv := range env {
+		fmt.Fprintf(&b, "Environment=%q\n", kv)
+	}
+	return b.String()
 }
 
 // upstartJob renders the job for RHEL/CentOS 6 and Ubuntu 9.10-14.10.
@@ -68,6 +88,16 @@ respawn limit 10 60
 
 setuid %s
 
-exec %s
-`, s.User, s.ExecStart)
+%sexec %s
+`, s.User, upstartEnvironment(s.Env), s.ExecStart)
+}
+
+// upstartEnvironment renders Upstart's own form of the same thing. Upstart has
+// no quoting here, which is fine: the only values we pass are URLs.
+func upstartEnvironment(env []string) string {
+	var b strings.Builder
+	for _, kv := range env {
+		fmt.Fprintf(&b, "env %s\n", kv)
+	}
+	return b.String()
 }

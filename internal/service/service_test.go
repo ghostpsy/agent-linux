@@ -201,3 +201,43 @@ func TestRemoveFinishesEvenIfStopFails(t *testing.T) {
 		t.Error("the unit file was left behind")
 	}
 }
+
+// The agent registers with one server and then reports to another unless the
+// service carries the address. Found on a test VM: setup was told to use a
+// local API, the machine registered there, and the daemon then talked to the
+// public service because the unit said nothing about it.
+func TestSystemdUnitCarriesTheEnvironmentItWasGiven(t *testing.T) {
+	unit := systemdUnit(Spec{
+		ExecStart: "/usr/local/bin/ghostpsy serve",
+		User:      "ghostpsy",
+		Env:       []string{"GHOSTPSY_API_URL=http://192.168.64.1:8000"},
+	})
+
+	if !strings.Contains(unit, `Environment="GHOSTPSY_API_URL=http://192.168.64.1:8000"`) {
+		t.Errorf("the unit must pass the address on to the service:\n%s", unit)
+	}
+}
+
+// Nothing to carry must produce no Environment line at all. An empty directive
+// is noise in a file whose value is that a person can read it.
+func TestSystemdUnitHasNoEnvironmentLineWhenThereIsNothingToPass(t *testing.T) {
+	unit := systemdUnit(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
+
+	if strings.Contains(unit, "Environment") {
+		t.Errorf("no environment was given, so the unit must not mention one:\n%s", unit)
+	}
+}
+
+// Upstart has its own syntax for the same thing, and CentOS 6 is exactly the
+// kind of host someone would point at a self-hosted server.
+func TestUpstartJobCarriesTheEnvironmentItWasGiven(t *testing.T) {
+	job := upstartJob(Spec{
+		ExecStart: "/usr/local/bin/ghostpsy serve",
+		User:      "ghostpsy",
+		Env:       []string{"GHOSTPSY_API_URL=http://192.168.64.1:8000"},
+	})
+
+	if !strings.Contains(job, "env GHOSTPSY_API_URL=http://192.168.64.1:8000") {
+		t.Errorf("the job must pass the address on to the service:\n%s", job)
+	}
+}

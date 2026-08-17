@@ -76,6 +76,20 @@ func systemdEnvironment(env []string) string {
 // respawn is the reason Upstart is supported at all: without something to
 // restart a crashed agent the machine simply goes quiet, and nobody notices
 // until they look.
+//
+// Privilege is dropped with su rather than the setuid stanza. setuid arrived in
+// Upstart 1.4; CentOS 6 ships 0.6.5, which does not ignore it but rejects the
+// entire job — `initctl start ghostpsy` answered "Unknown job" while the file
+// sat in /etc/init looking perfectly correct. Measured on a real CentOS 6.10:
+// deleting that one line made the same job load.
+//
+// `exec su ... -c 'exec ...'` matters in both places. The outer exec replaces
+// the job's shell with su, the inner one replaces su with the agent, so what
+// Upstart watches and respawns is the agent itself and not a shell holding it.
+//
+// -m keeps the environment across the change of user. Without it the env lines
+// above are discarded, and a machine set up against a staging server would go
+// back to reporting to the public one.
 func upstartJob(s Spec) string {
 	return fmt.Sprintf(`# ghostpsy agent
 description "ghostpsy agent"
@@ -86,10 +100,9 @@ stop on runlevel [!2345]
 respawn
 respawn limit 10 60
 
-setuid %s
-
-%sexec %s
-`, s.User, upstartEnvironment(s.Env), s.ExecStart)
+# Not "setuid %s": Upstart 0.6.5 on CentOS 6 rejects the whole job over it.
+%sexec su -m -s /bin/sh -c 'exec %s' %s
+`, s.User, upstartEnvironment(s.Env), s.ExecStart, s.User)
 }
 
 // upstartEnvironment renders Upstart's own form of the same thing. Upstart has

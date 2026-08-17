@@ -55,11 +55,66 @@ func TestUpstartJobRespawnsAndRunsAsTheLockedUser(t *testing.T) {
 	if !strings.Contains(job, "respawn") {
 		t.Errorf("upstart job must respawn a crashed agent:\n%s", job)
 	}
-	if !strings.Contains(job, "setuid ghostpsy") {
+	if !strings.Contains(job, "ghostpsy") {
 		t.Errorf("upstart job must drop to the locked user:\n%s", job)
 	}
 	if !strings.Contains(job, "/usr/local/bin/ghostpsy serve") {
 		t.Errorf("upstart job missing the command:\n%s", job)
+	}
+}
+
+// The setuid stanza arrived in Upstart 1.4. CentOS 6 ships 0.6.5, which does not
+// merely ignore it — it rejects the whole job, so `initctl start ghostpsy`
+// answers "Unknown job: ghostpsy" while the file sits there looking correct.
+//
+// Measured on an emulated CentOS 6.10 (upstart 0.6.5): deleting the setuid line
+// from the very same file made the job load. Every install on the one
+// distribution Upstart exists for had a service that could never start, and
+// respawn — the reason Upstart is supported at all — never ran once.
+func TestUpstartJobAvoidsStanzasCentOS6Rejects(t *testing.T) {
+	job := upstartJob(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
+
+	for _, line := range strings.Split(job, "\n") {
+		field := strings.Fields(strings.TrimSpace(line))
+		if len(field) == 0 || strings.HasPrefix(field[0], "#") {
+			continue
+		}
+		switch field[0] {
+		case "setuid", "setgid":
+			t.Errorf("upstart 0.6.5 rejects the whole job over %q:\n%s", field[0], job)
+		}
+	}
+}
+
+// Dropping privilege still has to happen, by a means 0.6.5 understands. exec su
+// replaces the shell with the agent, so Upstart keeps supervising the real
+// process and respawn still means something.
+func TestUpstartJobDropsPrivilegeWithSu(t *testing.T) {
+	job := upstartJob(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
+
+	if !strings.Contains(job, "exec su ") {
+		t.Errorf("the job must drop privilege with su, which 0.6.5 supports:\n%s", job)
+	}
+	if !strings.Contains(job, "exec /usr/local/bin/ghostpsy serve") {
+		t.Errorf("su must exec the agent, so Upstart supervises it and not a shell:\n%s", job)
+	}
+}
+
+// The environment has to survive the change of user, or a machine set up against
+// a staging server silently reports to the public one — the same bug the systemd
+// unit already carries a fix for. su resets the environment unless told not to.
+func TestUpstartJobKeepsTheEnvironmentAcrossSu(t *testing.T) {
+	job := upstartJob(Spec{
+		ExecStart: "/usr/local/bin/ghostpsy serve",
+		User:      "ghostpsy",
+		Env:       []string{"GHOSTPSY_API_URL=http://10.0.0.1:8000"},
+	})
+
+	if !strings.Contains(job, "env GHOSTPSY_API_URL=http://10.0.0.1:8000") {
+		t.Errorf("the job must declare the environment:\n%s", job)
+	}
+	if !strings.Contains(job, "su -m") {
+		t.Errorf("su must preserve the environment, or the declared value is lost:\n%s", job)
 	}
 }
 

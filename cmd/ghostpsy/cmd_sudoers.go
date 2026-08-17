@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -124,7 +125,34 @@ func grantDiff(installed, wanted string) []string {
 // agent version needs. Drift is not cosmetic: a collector that lost its
 // privilege goes quiet, and nobody connects that to an upgrade weeks earlier.
 func sudoersHasDrifted(path string) (bool, error) {
-	installed, err := os.ReadFile(path)
+	return sudoersHasDriftedWith(path, readInstalledGrant)
+}
+
+// readInstalledGrant returns the installed grant's text.
+//
+// Root reads the file. The agent user cannot, and no permission change fixes it:
+// the grant is 0440 root:root, and on an SELinux host making it group-readable is
+// still refused — measured on CentOS 6.10, where sudo accepted the file and the
+// agent was still denied. So the unprivileged path asks the agent itself,
+// through the same allowlist every other privileged read goes through.
+//
+// Until a host's grant includes that entry the read fails, and the drift stays
+// unreported rather than guessed. Reinstalling the rule fixes it.
+func readInstalledGrant(path string) ([]byte, error) {
+	if os.Geteuid() == 0 {
+		return os.ReadFile(path)
+	}
+	res, err := privexec.Run(context.Background(), privexec.ReadGrant)
+	if err != nil {
+		return nil, err
+	}
+	return res.Stdout, nil
+}
+
+// sudoersHasDriftedWith takes the reader, so the comparison can be tested
+// without a privileged host.
+func sudoersHasDriftedWith(path string, read func(string) ([]byte, error)) (bool, error) {
+	installed, err := read(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, errNoGrantInstalled
 	}

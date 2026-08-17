@@ -160,3 +160,23 @@ func TestRunKeepsThePathWhenACommandDeclaresItsOwnEnvironment(t *testing.T) {
 		t.Fatalf("expected both PATH and the declared LC_ALL, got: %q", out)
 	}
 }
+
+// The agent has to be able to read its own grant, or it can never tell the
+// service whether the grant is out of date.
+//
+// Reading the file directly does not work: it is 0440 root:root, and making it
+// group-readable is still refused on an SELinux host — measured on CentOS 6.10,
+// where sudo accepted the relabelled file and the agent still could not open it.
+// So the grant includes permission to read the grant, through the agent itself.
+func TestTheAgentCanReadItsOwnGrant(t *testing.T) {
+	declared, ok := registry[ReadGrant]
+	if !ok {
+		t.Fatal("ReadGrant is not declared, so sudo_rule_current can never be reported")
+	}
+	if declared.Binary != agentBinaryPath {
+		t.Errorf("the read must go through the agent, not an arbitrary reader: %q", declared.Binary)
+	}
+	if declared.Why == "" {
+		t.Error("every grant needs a reason a person can read above it")
+	}
+}

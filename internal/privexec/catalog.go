@@ -43,6 +43,7 @@ const (
 	// the reader to trust our code instead of a command they can read.
 	ReadShadow  ID = "read.shadow"
 	ReadSudoers ID = "read.sudoers"
+	ReadGrant   ID = "read.grant"
 )
 
 // localeC keeps output in a language the parsers understand. sudo deletes the
@@ -115,6 +116,12 @@ func init() {
 		Binary: agentBinaryPath,
 		Args:   []string{"read-sudoers"},
 		Why:    "count risky sudo rules. Returns only the counts — no rule text leaves this command",
+		Env:    localeC,
+	})
+	declare(ReadGrant, Command{
+		Binary: agentBinaryPath,
+		Args:   []string{"read-grant"},
+		Why:    "read this very file, to report whether it is still the one this agent version needs",
 		Env:    localeC,
 	})
 }

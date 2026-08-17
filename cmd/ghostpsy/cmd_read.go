@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -51,6 +52,31 @@ func newReadSudoersCommand() *cobra.Command {
 				return fmt.Errorf("could not summarise the sudoers files: %w", err)
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(raw))
+			return err
+		},
+	}
+}
+
+// newReadGrantCommand is the third delegated read, and the only one whose
+// subject is a file ghostpsy itself installed.
+//
+// The agent needs its own grant to say whether the grant is out of date. It
+// cannot read it: /etc/sudoers.d/ghostpsy is 0440 root:root, and on an SELinux
+// host even making it group-readable is refused — measured on CentOS 6.10, where
+// sudo accepted the file and the agent still could not open it. There is no
+// secret here: this prints back the very text that lists what the agent may do.
+func newReadGrantCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:    "read-grant",
+		Short:  "Print the installed sudo rule, so the agent can check it is current",
+		Args:   cobra.NoArgs,
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			installed, err := os.ReadFile(installedGrantPath)
+			if err != nil {
+				return fmt.Errorf("could not read %s: %w", installedGrantPath, err)
+			}
+			_, err = cmd.OutOrStdout().Write(installed)
 			return err
 		},
 	}

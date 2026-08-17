@@ -104,30 +104,54 @@ func inboundPorts() ([]int, error) {
 	return out, nil
 }
 
-// tcpStateEstablished is the value the kernel writes for a live connection.
-const tcpStateEstablished = "01"
+// The two states the kernel writes that this cares about.
+const (
+	tcpStateEstablished = "01"
+	tcpStateListen      = "0A"
+)
 
-// establishedLocalPorts reads the local port of every established connection
-// whose other end is not this machine.
+// establishedLocalPorts reads the ports somebody is reaching this machine on.
+//
+// A connection is inbound only if its local port is also a port this machine
+// listens on. That is what tells the two directions apart, and getting it wrong
+// is not cosmetic: an outgoing connection's local port is an ephemeral source
+// port, and the agent always has one open — it is how it talks to us. Counting
+// that as a way in made the reachability check ask whether anything was listening
+// on port 41530, and roll back a change that had worked perfectly.
+//
+// Requiring the port to be listening is exact. Guessing which numbers look
+// ephemeral would be a guess, on the one check that must not be wrong.
 func establishedLocalPorts(table string) []int {
-	var ports []int
+	listening := map[string]bool{}
+	rows := strings.Split(table, "\n")
 
-	for i, line := range strings.Split(table, "\n") {
-		if i == 0 {
-			continue // the header
+	for _, line := range rows {
+		if fields := strings.Fields(line); len(fields) >= 4 && fields[3] == tcpStateListen {
+			listening[hexPort(fields[1])] = true
 		}
+	}
+
+	var ports []int
+	seen := map[int]bool{}
+	for _, line := range rows {
 		fields := strings.Fields(line)
 		// local_address is field 1, rem_address 2, st 3.
 		if len(fields) < 4 || fields[3] != tcpStateEstablished {
 			continue
 		}
+		// This machine talking to itself is not a way in.
 		if isLoopbackHex(fields[2]) {
 			continue
 		}
-		port, err := strconv.ParseInt(hexPort(fields[1]), 16, 32)
-		if err != nil {
+		local := hexPort(fields[1])
+		if !listening[local] {
 			continue
 		}
+		port, err := strconv.ParseInt(local, 16, 32)
+		if err != nil || seen[int(port)] {
+			continue
+		}
+		seen[int(port)] = true
 		ports = append(ports, int(port))
 	}
 	return ports

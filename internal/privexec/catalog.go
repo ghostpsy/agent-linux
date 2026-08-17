@@ -106,8 +106,10 @@ var (
 	portShape = regexp.MustCompile(`^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$`)
 
 	// A setting key from internal/confedit. It can never be a path: no slash and
-	// no dot-dot can appear in it.
-	settingKeyShape = regexp.MustCompile(`^[a-z]+\.[a-z_]+$`)
+	// no dot-dot can appear in it. Digits are allowed, because a real key has one
+	// — ssh.x11_forwarding — and leaving them out silently made that fix
+	// unreachable.
+	settingKeyShape = regexp.MustCompile(`^[a-z]+\.[a-z0-9_]+$`)
 
 	// A setting value. Deliberately narrow, and narrowed again per setting by
 	// internal/confedit before anything is written.

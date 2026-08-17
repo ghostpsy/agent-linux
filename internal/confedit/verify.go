@@ -21,15 +21,51 @@ func Verify(s Setting, value string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if matchesEffective(s, value, effective) {
+		return fmt.Sprintf("%s is running with %s.", serviceName(s), directiveLine(s, value)), nil
+	}
+	return "", fmt.Errorf("%s", explainMismatch(s, value, effective))
+}
 
-	want := strings.ToLower(directiveLine(s, value))
+// sameMeaning lists values a service may report back under a different name.
+//
+// OpenSSH takes `prohibit-password` and prints `without-password`: the second is
+// the older name for the same thing, and which one `sshd -T` shows depends on the
+// build. Comparing the text alone therefore reported a correct server as wrong,
+// and rolled back a change that had worked — found on a real machine, on the
+// first end-to-end run.
+//
+// This is a synonym table, not a leniency table. It maps one value to other
+// spellings of that *same* value, and never to a weaker one: `no` is stricter
+// than `without-password`, so those two are not in here together.
+var sameMeaning = map[string][]string{
+	"prohibit-password": {"without-password"},
+	"without-password":  {"prohibit-password"},
+}
+
+// matchesEffective reports whether the running service has this setting.
+func matchesEffective(s Setting, value, effective string) bool {
+	wanted := append([]string{value}, sameMeaning[value]...)
+
 	for _, line := range strings.Split(effective, "\n") {
-		if strings.ToLower(strings.TrimSpace(line)) == want {
-			return fmt.Sprintf("%s is running with %s.", serviceName(s), directiveLine(s, value)), nil
+		if !isLiveDirective(s, line) {
+			continue
+		}
+		current := directiveValue(s, line)
+		for _, candidate := range wanted {
+			if strings.EqualFold(current, candidate) {
+				return true
+			}
 		}
 	}
+	return false
+}
 
-	// Say what it does think, when we can, so the person is not left guessing.
+// explainMismatch says what the service is actually running.
+//
+// Without it a failed check is only "it did not work", which tells the person
+// nothing they can act on.
+func explainMismatch(s Setting, value, effective string) string {
 	current := "something else"
 	for _, line := range strings.Split(effective, "\n") {
 		if isLiveDirective(s, line) {
@@ -37,8 +73,7 @@ func Verify(s Setting, value string) (string, error) {
 			break
 		}
 	}
-	return "", fmt.Errorf(
-		"%s did not take the change: it is running with %s, not %s",
+	return fmt.Sprintf("%s did not take the change: it is running with %s, not %s",
 		serviceName(s), current, directiveLine(s, value))
 }
 

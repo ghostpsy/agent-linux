@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
@@ -314,4 +315,31 @@ func ranAfter(f *fakeExec, first, second privexec.ID) bool {
 		}
 	}
 	return firstAt != -1 && secondAt != -1 && firstAt < secondAt
+}
+
+// The settings confedit can change and the shape harden_ssh_config accepts must
+// agree.
+//
+// They did not: the parameter allowed only letters, and ssh.x11_forwarding has a
+// digit in it. A fix the agent was perfectly able to carry out could never be
+// asked for, and the refusal blamed the value rather than the pattern. Found by
+// trying it against a real machine — the only place the two halves meet.
+func TestEverySettingTheAgentCanChangeCanActuallyBeAskedFor(t *testing.T) {
+	action, known := Lookup("harden_ssh_config")
+	if !known {
+		t.Fatal("harden_ssh_config is not in the catalog")
+	}
+
+	for _, setting := range confedit.All() {
+		if err := checkRequestParams(action, map[string]string{
+			"setting": setting.Key,
+			"value":   "no",
+		}); err != nil {
+			// apt settings are not this action's business — it only edits sshd.
+			if !strings.HasPrefix(setting.Key, "ssh.") {
+				continue
+			}
+			t.Errorf("%s can be changed but cannot be asked for: %v", setting.Key, err)
+		}
+	}
 }

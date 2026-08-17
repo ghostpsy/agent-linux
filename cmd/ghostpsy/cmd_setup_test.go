@@ -369,3 +369,32 @@ func TestATrueNetworkFailureStillBlamesTheNetwork(t *testing.T) {
 		t.Errorf("a lookup failure is a network problem and should say so, got: %v", err)
 	}
 }
+
+// A failure that never left the machine is not a network problem either.
+//
+// Found on a real machine, re-running the installer on a server that was already
+// registered. Registration stopped at a local check — nothing was ever sent —
+// and the installer said:
+//
+//	could not reach the ghostpsy service to register this machine. Check that
+//	this server can make outbound HTTPS connections to api.ghostpsy.com
+//	(register: /etc/ghostpsy/agent.conf already exists. This host is already
+//	registered.)
+//
+// Re-running the installer is what a person does to upgrade, so this is a message
+// they will actually see, and it sends them to inspect a firewall that is fine.
+func TestAnAlreadyRegisteredMachineIsNotReportedAsANetworkProblem(t *testing.T) {
+	err := explainRegisterFailure(errors.New(
+		"register: /etc/ghostpsy/agent.conf already exists. This host is already registered. " +
+			"Use `ghostpsy scan` for subsequent scans, or pass --force to re-register."))
+
+	got := strings.ToLower(err.Error())
+	for _, forbidden := range []string{"could not reach", "outbound", "firewall"} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("nothing was sent, so the message must not mention %q: %v", forbidden, err)
+		}
+	}
+	if !strings.Contains(got, "already registered") {
+		t.Errorf("the message should say the server is already registered, got: %v", err)
+	}
+}

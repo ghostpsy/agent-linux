@@ -303,9 +303,13 @@ func hardenSSHConfig() Action {
 		Summary: "Set {setting} to {value} in the SSH server's configuration.",
 		Params: []Param{
 			{
-				Name:  "setting",
-				Why:   "which SSH setting to correct, from ghostpsy's own list",
-				Allow: regexp.MustCompile(`^ssh\.[a-z_]+$`),
+				Name: "setting",
+				Why:  "which SSH setting to correct, from ghostpsy's own list",
+				// Digits included: ssh.x11_forwarding is a real setting, and a
+				// pattern that excluded it made a fix this agent can carry out
+				// impossible to ask for. internal/confedit narrows this further —
+				// only the keys it declares can be reached at all.
+				Allow: regexp.MustCompile(`^ssh\.[a-z0-9_]+$`),
 			},
 			{
 				Name:  "value",

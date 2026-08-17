@@ -415,6 +415,14 @@ func explainRegisterFailure(err error) error {
 	case strings.Contains(lower, "401"), strings.Contains(lower, "token"), strings.Contains(lower, "rejected"):
 		return fmt.Errorf("the code from the dashboard was not accepted. It works once and stops working "+
 			"after 24 hours, so get a fresh one from the Add machine screen and run this again (%s)", detail)
+	case strings.Contains(lower, "already registered"):
+		// Nothing was sent. Registration stopped at a check on this machine, so
+		// the network is not involved and must not be blamed. Re-running the
+		// installer is what a person does to upgrade, which makes this one of the
+		// messages they are most likely to see.
+		return fmt.Errorf("this server is already registered with ghostpsy, so it was left as it is. " +
+			"To upgrade the agent, use `ghostpsy update`. To attach this server to a different " +
+			"organization, run setup again with --force")
 	case serverAnswered(detail):
 		// Telling someone to inspect a firewall that is working perfectly is
 		// worse than saying nothing. The server's own words are the only thing

@@ -22,6 +22,12 @@ func Sudoers(user string) string {
 	for _, id := range sortedIDs() {
 		declared := registry[id]
 
+		// A command that needs no privilege gets none. The grant file's whole
+		// value is that it is short enough for a sysadmin to read and judge.
+		if declared.Unprivileged {
+			continue
+		}
+
 		// The file is generated on the host it applies to, so grant only what
 		// is actually installed. Privilege for a binary that is not there is
 		// noise in a file whose whole value is that a human can read it.
@@ -33,11 +39,20 @@ func Sudoers(user string) string {
 		if declared.Why != "" {
 			fmt.Fprintf(&b, "# %s\n", declared.Why)
 		}
+		// A wildcard is all sudo understands, so the reader is told in words
+		// what the agent will put there. A grant a sysadmin cannot judge is not
+		// the promise we made.
+		for _, param := range declared.Params {
+			if param.Why != "" {
+				fmt.Fprintf(&b, "#   the * is %s\n", param.Why)
+			}
+		}
 		if keys := envKeys(declared.Env); keys != "" && !envDone[path] {
 			fmt.Fprintf(&b, "Defaults!%s env_keep += %q\n", path, keys)
 			envDone[path] = true
 		}
-		fmt.Fprintf(&b, "%s ALL=(root) NOPASSWD: %s\n", user, strings.TrimRight(path+" "+strings.Join(declared.Args, " "), " "))
+		grant := strings.TrimRight(path+" "+strings.Join(grantArgs(declared), " "), " ")
+		fmt.Fprintf(&b, "%s ALL=(root) NOPASSWD: %s\n", user, grant)
 	}
 
 	return b.String()

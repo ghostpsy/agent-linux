@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ghostpsy/agent-linux/internal/action"
 	"github.com/ghostpsy/agent-linux/internal/agentconfig"
 	"github.com/ghostpsy/agent-linux/internal/schedule"
 	"github.com/ghostpsy/agent-linux/internal/solve"
@@ -231,20 +232,21 @@ func heartbeatSender(machineUUID string) func(context.Context) error {
 	}
 }
 
-// solvePoller asks the service for work and writes down what it was given.
+// solvePoller asks the service for work, carries it out, and reports back.
 //
-// It does not run anything. Carrying out an action is #182's job, and an agent
-// that pretended to would report a preview it never computed — the one thing this
-// design exists to make impossible. So for now the work is logged, which is
-// enough to prove the road reaches the machine.
+// Nothing here decides anything. The service says dry run or run; the runtime in
+// internal/action decides what is allowed and what is possible on this machine,
+// and the whole of what it found goes back untouched. Choosing what the customer
+// gets to see is not this function's job.
 func solvePoller(machineUUID string) func(context.Context) error {
 	return func(ctx context.Context) error {
 		token, err := agentconfig.Load()
 		if err != nil {
 			return fmt.Errorf("no agent token yet: %w", err)
 		}
+		baseURL := envOr("GHOSTPSY_API_URL", defaultAPIBaseURL)
 
-		work, err := solve.NextWork(ctx, envOr("GHOSTPSY_API_URL", defaultAPIBaseURL), token, machineUUID)
+		work, err := solve.NextWork(ctx, baseURL, token, machineUUID)
 		if err != nil {
 			return err
 		}
@@ -255,10 +257,43 @@ func solvePoller(machineUUID string) func(context.Context) error {
 		}
 
 		slog.Info("the service has work for this machine",
-			"mode", work.Mode,
-			"job", work.JobID,
-			"actions", len(work.Actions),
-			"note", "not run: the action runtime is not built yet (#182)")
-		return nil
+			"mode", work.Mode, "job", work.JobID, "actions", len(work.Actions))
+
+		report := action.Run(ctx, action.HostDeps(), action.Job{
+			Mode:    work.Mode,
+			Actions: solveRequests(work.Actions),
+			Backup:  work.Backup,
+		})
+		if report.Refused != "" {
+			slog.Warn("this machine refused the job", "job", work.JobID, "reason", report.Refused)
+		}
+
+		if work.Mode == solve.ModeDryRun {
+			return solve.ReportDryRun(ctx, baseURL, token, solve.DryRunReport{
+				MachineUUID: machineUUID,
+				JobID:       work.JobID,
+				PreviewID:   report.PreviewID,
+				Detail:      report,
+			})
+		}
+		return solve.ReportResult(ctx, baseURL, token, solve.ResultReport{
+			MachineUUID: machineUUID,
+			JobID:       work.JobID,
+			OK:          report.OK,
+			Detail:      report,
+		})
 	}
+}
+
+// solveRequests turns what arrived on the wire into what the runtime accepts.
+//
+// A plain copy, deliberately. Nothing is normalised or filled in on the way past:
+// a value the service did not send has to reach the runtime missing, so the
+// runtime is the one place that decides what a valid action looks like.
+func solveRequests(actions []solve.Action) []action.Request {
+	out := make([]action.Request, 0, len(actions))
+	for _, a := range actions {
+		out = append(out, action.Request{Type: a.Type, Params: a.Params})
+	}
+	return out
 }

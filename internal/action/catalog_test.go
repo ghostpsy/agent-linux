@@ -1,0 +1,317 @@
+//go:build linux
+
+package action
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/ghostpsy/agent-linux/internal/privexec"
+)
+
+// The one failure that would end this product: a fix that locks the operator out
+// of their own server. Two tests per action, because there are two moments it can
+// be caught — before the change, and after.
+
+// Before. ufw prints the rules it would install, and if the port carrying
+// somebody's session is not among them, nothing runs at all.
+func TestEnableFirewallStopsBeforeItWouldCutOffTheOperator(t *testing.T) {
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		// The rules ufw would install mention 80 and 443. Not 22.
+		privexec.UfwDryRunEnable: {Stdout: []byte(
+			"-A ufw-user-input -p tcp --dport 80 -j ACCEPT\n" +
+				"-A ufw-user-input -p tcp --dport 443 -j ACCEPT\n")},
+	}}
+	deps := testDeps(f)
+	deps.InboundPorts = func() ([]int, error) { return []int{22}, nil }
+
+	report := Run(context.Background(), deps, Job{
+		Mode:    ModeDryRun,
+		Actions: []Request{{Type: "enable_firewall", Params: map[string]string{"ssh_port": "22"}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected the plan to be refused: it would have cut off port 22")
+	}
+	if !mentionsInOutput(report, "cut you off") {
+		t.Fatalf("expected the reason to say so in plain words, got:\n%s", allOutput(report))
+	}
+	// A dry run of ufw changes nothing, so this is a refusal to proceed, not a
+	// rollback of something already done.
+	if ranCommand(f, privexec.UfwEnable) {
+		t.Fatal("the firewall was switched on despite the refusal")
+	}
+}
+
+func TestEnableFirewallAllowsAPlanThatKeepsTheOperatorsPortOpen(t *testing.T) {
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		privexec.UfwDryRunAllowPort: {Stdout: []byte(
+			"-A ufw-user-input -p tcp --dport 2222 -j ACCEPT\n")},
+		privexec.UfwDryRunEnable: {Stdout: []byte(
+			"-A ufw-user-input -p tcp --dport 2222 -j ACCEPT\n")},
+	}}
+	deps := testDeps(f)
+	deps.InboundPorts = func() ([]int, error) { return []int{2222}, nil }
+
+	report := Run(context.Background(), deps, Job{
+		Mode:    ModeDryRun,
+		Actions: []Request{{Type: "enable_firewall", Params: map[string]string{"ssh_port": "2222"}}},
+	})
+
+	if !report.OK {
+		t.Fatalf("expected a plan that keeps port 2222 open to be allowed, got:\n%s", allOutput(report))
+	}
+}
+
+// A rule for 2222 must not be read as covering 22. Getting this wrong passes the
+// check on exactly the machine it was written to protect.
+func TestTheReachabilityCheckDoesNotMistake2222For22(t *testing.T) {
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		privexec.UfwDryRunEnable: {Stdout: []byte("-A ufw-user-input -p tcp --dport 2222 -j ACCEPT\n")},
+	}}
+	deps := testDeps(f)
+	deps.InboundPorts = func() ([]int, error) { return []int{22}, nil }
+
+	report := Run(context.Background(), deps, Job{
+		Mode:    ModeDryRun,
+		Actions: []Request{{Type: "enable_firewall", Params: map[string]string{"ssh_port": "22"}}},
+	})
+
+	if report.OK {
+		t.Fatal("a rule for port 2222 was read as covering port 22")
+	}
+}
+
+// After. If the machine stops answering anyway, the firewall goes back off
+// without waiting to be asked.
+func TestEnableFirewallSwitchesItselfBackOffIfTheMachineStopsAnswering(t *testing.T) {
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		privexec.UfwDryRunEnable: {Stdout: []byte("-A ufw-user-input -p tcp --dport 22 -j ACCEPT\n")},
+	}}
+	deps := testDeps(f)
+	deps.InboundPorts = func() ([]int, error) { return []int{22}, nil }
+	deps.Listening = func(int) bool { return false } // it went quiet
+
+	report := Run(context.Background(), deps, Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "enable_firewall", Params: map[string]string{"ssh_port": "22"}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected an unreachable machine to fail the job")
+	}
+	if !ranCommand(f, privexec.UfwDisable) {
+		t.Fatal("the firewall was left on with the machine unreachable")
+	}
+	if report.Undo == nil || !report.Undo.Ran || !report.Undo.Ledger[0].PutBack {
+		t.Fatalf("expected the ledger to say the firewall was switched back off, got %+v", report.Undo)
+	}
+}
+
+// The same failure from the other side: a bad sshd_config leaves a server nobody
+// can log into. sshd is asked to check the file before it is asked to read it.
+func TestHardenSSHChecksTheConfigBeforeAskingSshdToUseIt(t *testing.T) {
+	f := &fakeExec{fails: map[privexec.ID]error{
+		privexec.SSHTestConfig: errors.New("bad configuration option"),
+	}}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode: ModeRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.permit_root_login", "value": "no",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected a configuration sshd refuses to fail the job")
+	}
+	// The only reload allowed here is the one that follows the rollback. A reload
+	// before the file was put back would be sshd reading a configuration it had
+	// already said no to.
+	if ranAfter(f, privexec.ServiceReload, privexec.ConfigRestore) {
+		t.Fatal("sshd was asked to read a configuration it had already refused")
+	}
+	if !ranCommand(f, privexec.ConfigRestore) {
+		t.Fatal("expected sshd_config to be put back after the failure")
+	}
+}
+
+func TestHardenSSHPutsTheFileBackIfTheMachineStopsAnswering(t *testing.T) {
+	f := &fakeExec{}
+	deps := testDeps(f)
+	deps.InboundPorts = func() ([]int, error) { return []int{22}, nil }
+	deps.Listening = func(int) bool { return false }
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.password_authentication", "value": "no",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected an unreachable machine to fail the job")
+	}
+	if !ranCommand(f, privexec.ConfigRestore) {
+		t.Fatal("expected sshd_config to be put back")
+	}
+}
+
+// The machine owner's list beats the cloud, and it is checked before anything is
+// touched rather than after.
+func TestRestartFailedServiceLeavesAProtectedServiceAlone(t *testing.T) {
+	f := &fakeExec{}
+	deps := testDeps(f)
+	deps.Protected = func() ([]string, error) { return []string{"postgresql"}, nil }
+
+	report := Run(context.Background(), deps, Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "postgresql"}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected a protected service to be left alone")
+	}
+	if ranCommand(f, privexec.ServiceRestart) {
+		t.Fatal("a protected service was restarted")
+	}
+	if !mentionsInOutput(report, "protected list") {
+		t.Fatalf("expected the reason to name the protected list, got:\n%s", allOutput(report))
+	}
+}
+
+// postgresql.service and postgresql are the same service. A list that only
+// matches one spelling protects nothing.
+func TestTheProtectedListIgnoresTheServiceSuffix(t *testing.T) {
+	f := &fakeExec{}
+	deps := testDeps(f)
+	deps.Protected = func() ([]string, error) { return []string{"postgresql.service"}, nil }
+
+	report := Run(context.Background(), deps, Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "postgresql"}}},
+	})
+
+	if report.OK || ranCommand(f, privexec.ServiceRestart) {
+		t.Fatal("expected postgresql.service on the list to protect postgresql")
+	}
+}
+
+// The deliberate failure test #183 asks for: the check fails, and the undo has to
+// actually work.
+func TestARestartThatDoesNotHoldIsStoppedAgain(t *testing.T) {
+	f := &fakeExec{fails: map[privexec.ID]error{
+		// It came up, then fell over again. is-active reports that.
+		privexec.ServiceIsActive: errors.New("inactive"),
+	}}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "nginx"}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected a service that did not stay up to fail the job")
+	}
+	if !ranCommand(f, privexec.ServiceStop) {
+		t.Fatal("expected the service to be stopped again, which is how it was found")
+	}
+}
+
+// Every shipped fix must say honestly whether it can be undone, and back that up
+// with a real rollback. A promise with nothing behind it is the one thing this
+// design exists to prevent.
+func TestEveryShippedActionThatClaimsAnUndoHasOne(t *testing.T) {
+	for _, a := range All() {
+		if a.Reversibility == ReverseNone {
+			continue
+		}
+		for i, v := range a.Variants {
+			if len(v.Undo) == 0 {
+				t.Errorf("action %q variant %d says it can be undone but declares no undo step",
+					a.Type, i)
+			}
+		}
+	}
+}
+
+// Every command a shipped fix can run has to be in the one registry that also
+// writes the sudo grant. Otherwise the file a sysadmin reads is not the truth.
+func TestEveryCommandAShippedActionUsesIsDeclaredToPrivexec(t *testing.T) {
+	for _, a := range All() {
+		for _, v := range a.Variants {
+			for _, phase := range [][]Step{v.DryRun, v.Run, v.Verify, v.Undo} {
+				for _, step := range phase {
+					if step.Command == "" {
+						continue
+					}
+					if !privexec.Declared(step.Command) {
+						t.Errorf("action %q uses %q, which privexec does not declare",
+							a.Type, step.Command)
+					}
+				}
+			}
+		}
+	}
+}
+
+// The best-practice fixes ship first, and this is what stops that decision being
+// quietly reversed later. A disk or package action appearing here means somebody
+// added it without reading why the order matters.
+func TestTheShippedCatalogIsTheFirstFourBestPracticeFixes(t *testing.T) {
+	want := []string{
+		"enable_automatic_security_updates",
+		"enable_firewall",
+		"harden_ssh_config",
+		"restart_failed_service",
+	}
+
+	got := make([]string, 0, len(All()))
+	for _, a := range All() {
+		got = append(got, a.Type)
+	}
+
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("the shipped catalog changed.\nwant %v\ngot  %v\n\n"+
+			"Disk cleanup and package updates are deliberately not here yet: a config change "+
+			"can be put back byte for byte and deleting logs cannot, so the reversible fixes "+
+			"go first. If that is being changed on purpose, change this test with it.", want, got)
+	}
+}
+
+func allOutput(report Report) string {
+	var b strings.Builder
+	b.WriteString(report.Refused + "\n")
+	for _, a := range report.Actions {
+		b.WriteString(a.Refused + "\n")
+		for _, c := range a.Commands {
+			b.WriteString(c.Stdout + "\n" + c.Stderr + "\n")
+		}
+	}
+	if report.Verify != nil {
+		for _, c := range report.Verify.Commands {
+			b.WriteString(c.Stdout + "\n" + c.Stderr + "\n")
+		}
+	}
+	return b.String()
+}
+
+func mentionsInOutput(report Report, text string) bool {
+	return strings.Contains(allOutput(report), text)
+}
+
+// ranAfter reports whether first ran before second.
+func ranAfter(f *fakeExec, first, second privexec.ID) bool {
+	firstAt, secondAt := -1, -1
+	for i, id := range f.ran {
+		if id == first && firstAt == -1 {
+			firstAt = i
+		}
+		if id == second && secondAt == -1 {
+			secondAt = i
+		}
+	}
+	return firstAt != -1 && secondAt != -1 && firstAt < secondAt
+}

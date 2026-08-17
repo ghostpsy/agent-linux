@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // sudoPath is pinned rather than looked up on PATH: this is the one place the
@@ -48,12 +49,37 @@ var ErrNotInstalled = errors.New("privexec: command is not installed on this hos
 type Result struct {
 	Stdout []byte
 	Stderr []byte
+
+	// ExitCode is what the command returned. A scan only ever needed to know
+	// whether a command worked, but a fix has to be reported to the person who
+	// approved it, and "exit 7" is the part they will paste to a colleague.
+	//
+	// It is -1 when the command never ran or was killed by a signal.
+	ExitCode int
 }
 
 // Command is one declared privileged command.
 type Command struct {
 	Binary string
-	Args   []string
+
+	// Args is the fixed argument list. An argument may contain a {name}
+	// placeholder, which must be matched by an entry in Params — see params.go
+	// for why a filled-in value is the most closely checked part of a command.
+	Args []string
+
+	// Params declares which values a caller fills in, and the exact shape each
+	// one accepts. Empty for every read: those commands are fixed text.
+	Params []Param
+
+	// Unprivileged marks a command that needs no privilege at all. It runs
+	// directly, never through sudo, and no grant is written for it.
+	//
+	// A fix needs to check its own work — is the service running, did the
+	// setting take — and most of those checks need no privilege. Declaring them
+	// here anyway keeps one readable list of everything an action can run;
+	// granting them root would break the rule that a shorter grant file is a
+	// more trustworthy one.
+	Unprivileged bool
 
 	// Why says, in plain words, what this command is for. It is printed as a
 	// comment above the grant, because a privilege file a sysadmin cannot read
@@ -72,11 +98,34 @@ type Command struct {
 // single source of truth: Run consults it, and the sudoers generator prints it.
 var registry = map[ID]Command{}
 
-// Run executes the declared command named by id.
+// Declared reports whether id names a command in the registry.
+//
+// It lets a caller check its own wiring at startup instead of finding out half
+// way through a fix on a customer's server that a step names a command the sudo
+// grant does not cover.
+func Declared(id ID) bool {
+	_, ok := registry[id]
+	return ok
+}
+
+// Run executes the declared command named by id. It takes no parameters, which
+// is every command the scan uses.
 func Run(ctx context.Context, id ID) (Result, error) {
+	return RunWith(ctx, id, nil)
+}
+
+// RunWith executes the declared command named by id, filling in the values it
+// declared. It refuses an undeclared ID, and refuses a value that does not match
+// the shape the command declared for it.
+func RunWith(ctx context.Context, id ID, values Values) (Result, error) {
 	declared, ok := registry[id]
 	if !ok {
 		return Result{}, fmt.Errorf("%w: %q", ErrNotDeclared, id)
+	}
+
+	filled, err := fill(declared, values)
+	if err != nil {
+		return Result{}, err
 	}
 
 	// Resolve the same way the grant file does, so the path sudo is asked for
@@ -86,7 +135,7 @@ func Run(ctx context.Context, id ID) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %s", ErrNotInstalled, declared.Binary)
 	}
 
-	bin, args := invocation(path, declared.Args, os.Geteuid() == 0)
+	bin, args := invocation(path, filled, declared.Unprivileged || os.Geteuid() == 0)
 	cmd := exec.CommandContext(ctx, bin, args...)
 	// Always explicit, never inherited: sudo resets the environment, so a
 	// command must behave the same whether we reached it directly as root or
@@ -99,7 +148,33 @@ func Run(ctx context.Context, id ID) (Result, error) {
 	cmd.Stderr = &stderr
 	runErr := cmd.Run()
 
-	return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, runErr
+	exitCode := -1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
+	return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: exitCode}, runErr
+}
+
+// Display renders a declared command as a person would type it, so the terminal
+// output a customer reads matches what actually ran.
+//
+// It shows sudo, because that is the truth of it, and it shows the filled-in
+// values, because the whole point of showing the command is that the reader can
+// check it. It is for reading only: nothing parses this back.
+func Display(id ID, values Values) string {
+	declared, ok := registry[id]
+	if !ok {
+		return string(id)
+	}
+	args, err := fill(declared, values)
+	if err != nil {
+		args = grantArgs(declared)
+	}
+	prefix := "sudo "
+	if declared.Unprivileged {
+		prefix = ""
+	}
+	return strings.TrimRight(prefix+declared.Binary+" "+strings.Join(args, " "), " ")
 }
 
 // invocation builds the real command line for a declared command. As root it is

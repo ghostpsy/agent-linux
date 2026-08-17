@@ -37,9 +37,21 @@ const requestTimeout = 15 * time.Second
 
 // Work is the service's answer to "is there anything for me?".
 type Work struct {
-	Mode    string           `json:"mode"`
-	JobID   string           `json:"job_id"`
-	Actions []map[string]any `json:"actions"`
+	Mode    string   `json:"mode"`
+	JobID   string   `json:"job_id"`
+	Actions []Action `json:"actions"`
+
+	// Backup is whether the person asked for a copy to be taken first. It is a
+	// request, not an instruction: whether one is possible is measured on this
+	// machine, at the moment of running.
+	Backup bool `json:"backup"`
+}
+
+// Action is one thing the service is asking for: a type from the agent's own
+// catalog, and the values to fill in. Never a command.
+type Action struct {
+	Type   string            `json:"type"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // HasWork reports whether the service gave us something to do.
@@ -52,19 +64,23 @@ func (w Work) HasWork() bool {
 }
 
 // DryRunReport is what would have changed, had the agent acted.
+//
+// Detail is whatever the runtime produced, passed through untouched: the real
+// commands, their real output and the honest ledger. Summarising it here would be
+// choosing for the customer what they get to see.
 type DryRunReport struct {
-	MachineUUID string         `json:"machine_uuid"`
-	JobID       string         `json:"-"`
-	PreviewID   string         `json:"preview_id"`
-	Detail      map[string]any `json:"detail"`
+	MachineUUID string `json:"machine_uuid"`
+	JobID       string `json:"-"`
+	PreviewID   string `json:"preview_id"`
+	Detail      any    `json:"detail"`
 }
 
 // ResultReport is how a run ended.
 type ResultReport struct {
-	MachineUUID string         `json:"machine_uuid"`
-	JobID       string         `json:"-"`
-	OK          bool           `json:"ok"`
-	Detail      map[string]any `json:"detail"`
+	MachineUUID string `json:"machine_uuid"`
+	JobID       string `json:"-"`
+	OK          bool   `json:"ok"`
+	Detail      any    `json:"detail"`
 }
 
 // NextWork asks whether there is anything to do on this machine.

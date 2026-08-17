@@ -2,6 +2,8 @@
 
 package privexec
 
+import "regexp"
+
 // The catalogue of privileged commands.
 //
 // Every entry here was confirmed by measurement, not assumed: the agent was run
@@ -44,6 +46,72 @@ const (
 	ReadShadow  ID = "read.shadow"
 	ReadSudoers ID = "read.sudoers"
 	ReadGrant   ID = "read.grant"
+
+	// Everything below this line is for a fix, not a scan. They are the only
+	// commands on this machine that change anything, and every one of them is
+	// reachable only from a declared action in internal/action.
+	//
+	// Config files. A sudo rule cannot say "may set this one line", so these
+	// name our own signed binary and the list of what may be touched lives in
+	// internal/confedit.
+	ConfigPreview ID = "config.preview"
+	ConfigApply   ID = "config.apply"
+	ConfigRestore ID = "config.restore"
+	ConfigVerify  ID = "config.verify"
+
+	// Services.
+	ServiceStatus     ID = "service.status"
+	ServiceIsActive   ID = "service.is_active"
+	ServiceIsEnabled  ID = "service.is_enabled"
+	ServiceRestart    ID = "service.restart"
+	ServiceStop       ID = "service.stop"
+	ServiceReload     ID = "service.reload"
+	ServiceEnableNow  ID = "service.enable_now"
+	ServiceDisableNow ID = "service.disable_now"
+
+	// SSH. Checking the config before reloading is what stops a bad edit from
+	// leaving a server nobody can log into.
+	SSHTestConfig ID = "ssh.test_config"
+
+	// Firewall, ufw — Debian and Ubuntu. `ufw --dry-run` is a real dry run: it
+	// prints the exact rules it would install without installing them.
+	UfwDryRunEnable    ID = "firewall.ufw_dry_run_enable"
+	UfwDryRunAllowPort ID = "firewall.ufw_dry_run_allow_port"
+	UfwAllowPort       ID = "firewall.ufw_allow_port"
+	UfwEnable          ID = "firewall.ufw_enable"
+	UfwDisable         ID = "firewall.ufw_disable"
+
+	// Firewall, firewalld — the RHEL family. It has no dry run, so the preview
+	// shows what is configured now and the run adds the port to the permanent
+	// rules *before* the firewall starts.
+	FirewalldState        ID = "firewall.firewalld_state"
+	FirewalldListAll      ID = "firewall.firewalld_list_all"
+	FirewalldAddPort      ID = "firewall.firewalld_add_port"
+	FirewalldRemovePort   ID = "firewall.firewalld_remove_port"
+	FirewalldReload       ID = "firewall.firewalld_reload"
+	FirewalldRuntimePorts ID = "firewall.firewalld_runtime_ports"
+
+	// Automatic security updates.
+	UnattendedUpgradeDryRun ID = "updates.unattended_upgrade_dry_run"
+)
+
+// Shapes a value may take. Declared once and shared, so two commands cannot
+// disagree about what a service name or a port looks like.
+var (
+	// A systemd unit name. No spaces, no slashes, no shell characters — and a
+	// length limit, because systemd has one too.
+	unitShape = regexp.MustCompile(`^[A-Za-z0-9@:._-]{1,64}$`)
+
+	// A TCP port. 1 to 65535, and nothing that is not a number.
+	portShape = regexp.MustCompile(`^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$`)
+
+	// A setting key from internal/confedit. It can never be a path: no slash and
+	// no dot-dot can appear in it.
+	settingKeyShape = regexp.MustCompile(`^[a-z]+\.[a-z_]+$`)
+
+	// A setting value. Deliberately narrow, and narrowed again per setting by
+	// internal/confedit before anything is written.
+	settingValueShape = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,32}$`)
 )
 
 // localeC keeps output in a language the parsers understand. sudo deletes the
@@ -124,6 +192,174 @@ func init() {
 		Why:    "read this very file, to report whether it is still the one this agent version needs",
 		Env:    localeC,
 	})
+
+	declareFixCommands()
+}
+
+// declareFixCommands declares everything an approved fix can run.
+//
+// Kept apart from the reads above so the two are easy to tell apart in the grant
+// file and in review. Every command here changes something or checks something a
+// change did, and none of them can be reached except from a declared action.
+func declareFixCommands() {
+	declareConfigCommands()
+	declareServiceCommands()
+	declareFirewallCommands()
+
+	declare(SSHTestConfig, Command{
+		Binary: "sshd",
+		Args:   []string{"-t"},
+		Why: "check the SSH configuration is valid before reloading it. " +
+			"This is what stops a bad edit leaving a server nobody can log in to",
+		Env: localeC,
+	})
+	declare(UnattendedUpgradeDryRun, Command{
+		Binary: "unattended-upgrade",
+		Args:   []string{"--dry-run", "--verbose"},
+		Why: "show which security updates would be installed automatically in future. " +
+			"--dry-run installs nothing",
+		Env: localeC,
+	})
+}
+
+func declareConfigCommands() {
+	configParams := []Param{
+		{Name: "key", Why: "the name of one setting from ghostpsy's own list, never a file path", Allow: settingKeyShape},
+		{Name: "value", Why: "the value for that setting, which each setting narrows further", Allow: settingValueShape},
+	}
+
+	declare(ConfigPreview, Command{
+		Binary: agentBinaryPath,
+		Args:   []string{"write-config", "--mode=preview", "--key={key}", "--value={value}"},
+		Why: "show what a configuration change would do. It writes nothing. " +
+			"The list of settings that can be named is in the agent itself",
+		Params: configParams,
+		Env:    localeC,
+	})
+	declare(ConfigApply, Command{
+		Binary: agentBinaryPath,
+		Args:   []string{"write-config", "--mode=apply", "--key={key}", "--value={value}"},
+		Why: "make one configuration change from ghostpsy's own list, after copying the file aside. " +
+			"Only the settings in that list can be reached, and only with the values it allows",
+		Params: configParams,
+		Env:    localeC,
+	})
+	declare(ConfigVerify, Command{
+		Binary: agentBinaryPath,
+		Args:   []string{"write-config", "--mode=verify", "--key={key}", "--value={value}"},
+		Why:    "ask the running service whether a configuration change actually took effect",
+		Params: configParams,
+		Env:    localeC,
+	})
+	declare(ConfigRestore, Command{
+		Binary: agentBinaryPath,
+		Args:   []string{"write-config", "--mode=restore", "--key={key}"},
+		Why:    "put back the copy of a configuration file that was taken before it was changed",
+		Params: []Param{configParams[0]},
+		Env:    localeC,
+	})
+}
+
+func declareServiceCommands() {
+	unit := []Param{{Name: "unit", Why: "the name of one service", Allow: unitShape}}
+
+	// These three need no privilege, so they get none. A shorter grant file is a
+	// more trustworthy one, and they are declared here only so that one readable
+	// list holds everything an action can run.
+	declare(ServiceIsActive, Command{
+		Binary: "systemctl", Args: []string{"is-active", "{unit}"},
+		Why: "check whether a service is running", Params: unit, Env: localeC, Unprivileged: true,
+	})
+	declare(ServiceIsEnabled, Command{
+		Binary: "systemctl", Args: []string{"is-enabled", "{unit}"},
+		Why: "check whether a service starts at boot", Params: unit, Env: localeC, Unprivileged: true,
+	})
+	declare(ServiceStatus, Command{
+		Binary: "systemctl", Args: []string{"status", "--no-pager", "--lines=20", "{unit}"},
+		Why: "show a service's state and its last few log lines", Params: unit, Env: localeC,
+		Unprivileged: true,
+	})
+
+	declare(ServiceRestart, Command{
+		Binary: "systemctl", Args: []string{"restart", "{unit}"},
+		Why: "restart one service that has stopped or failed", Params: unit, Env: localeC,
+	})
+	declare(ServiceStop, Command{
+		Binary: "systemctl", Args: []string{"stop", "{unit}"},
+		Why: "stop one service again, to undo a restart", Params: unit, Env: localeC,
+	})
+	declare(ServiceReload, Command{
+		Binary: "systemctl", Args: []string{"reload", "{unit}"},
+		Why: "make one service re-read its configuration, without stopping it", Params: unit, Env: localeC,
+	})
+	declare(ServiceEnableNow, Command{
+		Binary: "systemctl", Args: []string{"enable", "--now", "{unit}"},
+		Why: "start one service and make it start at boot", Params: unit, Env: localeC,
+	})
+	declare(ServiceDisableNow, Command{
+		Binary: "systemctl", Args: []string{"disable", "--now", "{unit}"},
+		Why: "stop one service and stop it starting at boot, to undo the above", Params: unit, Env: localeC,
+	})
+}
+
+func declareFirewallCommands() {
+	port := []Param{{Name: "port", Why: "one TCP port number", Allow: portShape}}
+
+	declare(UfwDryRunEnable, Command{
+		Binary: "ufw", Args: []string{"--dry-run", "--force", "enable"},
+		Why: "print the firewall rules that switching the firewall on would install. " +
+			"--dry-run installs nothing",
+		Env: localeC,
+	})
+	declare(UfwDryRunAllowPort, Command{
+		Binary: "ufw", Args: []string{"--dry-run", "allow", "{port}/tcp"},
+		Why:    "print the rule that allowing one port would add. --dry-run installs nothing",
+		Params: port, Env: localeC,
+	})
+	declare(UfwAllowPort, Command{
+		Binary: "ufw", Args: []string{"allow", "{port}/tcp"},
+		Why: "allow one TCP port through the firewall. This runs before the firewall is " +
+			"switched on, so the way you reach this machine is open first",
+		Params: port, Env: localeC,
+	})
+	declare(UfwEnable, Command{
+		Binary: "ufw", Args: []string{"--force", "enable"},
+		Why: "switch the firewall on", Env: localeC,
+	})
+	declare(UfwDisable, Command{
+		Binary: "ufw", Args: []string{"--force", "disable"},
+		Why: "switch the firewall off again, to undo the above. This is what runs if the check " +
+			"finds the machine stopped answering",
+		Env: localeC,
+	})
+
+	declare(FirewalldState, Command{
+		Binary: "firewall-cmd", Args: []string{"--state"},
+		Why: "check whether the firewall is running", Env: localeC,
+	})
+	declare(FirewalldListAll, Command{
+		Binary: "firewall-cmd", Args: []string{"--list-all"},
+		Why: "read the firewall rules as they are now", Env: localeC,
+	})
+	declare(FirewalldRuntimePorts, Command{
+		Binary: "firewall-cmd", Args: []string{"--list-ports"},
+		Why: "read which ports the running firewall allows", Env: localeC,
+	})
+	declare(FirewalldAddPort, Command{
+		Binary: "firewall-cmd", Args: []string{"--permanent", "--add-port={port}/tcp"},
+		Why: "allow one TCP port through the firewall from now on. This runs before the " +
+			"firewall starts, so the way you reach this machine is open first",
+		Params: port, Env: localeC,
+	})
+	declare(FirewalldRemovePort, Command{
+		Binary: "firewall-cmd", Args: []string{"--permanent", "--remove-port={port}/tcp"},
+		Why:    "take one allowed port back out, to undo the above",
+		Params: port, Env: localeC,
+	})
+	declare(FirewalldReload, Command{
+		Binary: "firewall-cmd", Args: []string{"--reload"},
+		Why: "make the firewall re-read its rules", Env: localeC,
+	})
 }
 
 // agentBinaryPath is where the installer puts the agent. The grant names this
@@ -136,6 +372,9 @@ const agentBinaryPath = "/usr/local/bin/ghostpsy"
 func declare(id ID, c Command) {
 	if _, exists := registry[id]; exists {
 		panic("privexec: duplicate command ID " + string(id))
+	}
+	if err := checkPlaceholders(id, c); err != nil {
+		panic("privexec: " + err.Error())
 	}
 	registry[id] = c
 }

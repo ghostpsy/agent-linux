@@ -44,6 +44,8 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newReadShadowCommand())
 	root.AddCommand(newReadSudoersCommand())
 	root.AddCommand(newReadGrantCommand())
+	root.AddCommand(newWriteConfigCommand())
+	root.AddCommand(newActionsCommand())
 	root.AddCommand(newServeCommand())
 	root.AddCommand(newUninstallCommand())
 	root.AddCommand(newSetupCommand())

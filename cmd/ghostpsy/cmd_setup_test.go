@@ -325,3 +325,47 @@ func TestTheServiceIsToldTheAddressOnlyWhenItIsNotTheDefault(t *testing.T) {
 		t.Errorf("a custom address must be carried by the service, got %v", env)
 	}
 }
+
+// A reply from the server means the server was reached, so blaming the network
+// is wrong. Found on a real machine: registration hit the discovery limit and
+// the installer told the user to check their firewall.
+//
+//	could not reach the ghostpsy service to register this machine. Check that
+//	this server can make outbound HTTPS connections to api.ghostpsy.com
+//	(Response: 403 Forbidden {"detail":"Discovery allows up to three machines..."})
+//
+// A sysadmin would go and inspect a firewall that was working perfectly.
+func TestAServerReplyIsNotReportedAsANetworkProblem(t *testing.T) {
+	err := explainRegisterFailure(errors.New(
+		`Response: 403 Forbidden {"detail":"Discovery allows up to three machines per organization."}`))
+
+	got := strings.ToLower(err.Error())
+	for _, forbidden := range []string{"could not reach", "outbound", "firewall"} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("the server answered, so the message must not mention %q: %v", forbidden, err)
+		}
+	}
+	if !strings.Contains(got, "refused") && !strings.Contains(got, "declined") {
+		t.Errorf("the message should say the service refused the machine, got: %v", err)
+	}
+}
+
+// The detail from the server is what tells the user which limit they hit, so it
+// has to survive into the message.
+func TestAServerReplyKeepsWhatTheServerSaid(t *testing.T) {
+	err := explainRegisterFailure(errors.New(
+		`Response: 403 Forbidden {"detail":"Discovery allows up to three machines per organization."}`))
+
+	if !strings.Contains(err.Error(), "three machines") {
+		t.Errorf("the server's own explanation must be kept, got: %v", err)
+	}
+}
+
+// A genuine network failure has no status code, and must still say so plainly.
+func TestATrueNetworkFailureStillBlamesTheNetwork(t *testing.T) {
+	err := explainRegisterFailure(errors.New(`post: dial tcp: lookup api.ghostpsy.com: no such host`))
+
+	if !strings.Contains(strings.ToLower(err.Error()), "could not reach") {
+		t.Errorf("a lookup failure is a network problem and should say so, got: %v", err)
+	}
+}

@@ -415,10 +415,36 @@ func explainRegisterFailure(err error) error {
 	case strings.Contains(lower, "401"), strings.Contains(lower, "token"), strings.Contains(lower, "rejected"):
 		return fmt.Errorf("the code from the dashboard was not accepted. It works once and stops working "+
 			"after 24 hours, so get a fresh one from the Add machine screen and run this again (%s)", detail)
+	case serverAnswered(detail):
+		// Telling someone to inspect a firewall that is working perfectly is
+		// worse than saying nothing. The server's own words are the only thing
+		// here that identifies which rule was hit, so they are kept.
+		return fmt.Errorf("the ghostpsy service refused this machine. Nothing is wrong with this "+
+			"server's network — the service answered and declined. What it said: %s", detail)
 	default:
 		return fmt.Errorf("could not reach the ghostpsy service to register this machine. Check that this "+
 			"server can make outbound HTTPS connections to api.ghostpsy.com, then run this again (%s)", detail)
 	}
+}
+
+// serverAnswered reports whether the failure carries an HTTP status line.
+//
+// A status means the request arrived and was answered, which rules out every
+// network explanation. Matching on the word "Response" plus a 4xx or 5xx keeps
+// it to what the agent itself prints, rather than guessing at arbitrary text.
+func serverAnswered(detail string) bool {
+	if !strings.Contains(detail, "Response:") {
+		return false
+	}
+	for _, code := range []string{" 4", " 5"} {
+		if idx := strings.Index(detail, "Response:"); idx >= 0 {
+			rest := detail[idx+len("Response:"):]
+			if strings.HasPrefix(rest, code) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func runCommand(name string, args ...string) error {

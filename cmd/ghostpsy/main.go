@@ -6,6 +6,8 @@ package main
 import "os"
 
 func main() {
+	setUpLogging()
+
 	root := newRootCommand()
 	if err := root.Execute(); err != nil {
 		printErrorLine(err.Error())

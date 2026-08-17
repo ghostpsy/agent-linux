@@ -55,7 +55,11 @@ func servePass(ctx context.Context, d *serveDeps) error {
 			// Same trap as the scan path: a failure leaves lastHeartbeat unset,
 			// so the next pass asks for another one and Wait stays zero. Without
 			// this sleep the loop spins as fast as the CPU allows, forever.
-			slog.Debug("heartbeat failed, will try again", "error", err, "retry_in", retryDelay)
+			//
+			// Warn, not Debug. This is the line that explains why a machine has
+			// gone quiet in the dashboard, and at Debug nobody could ever see
+			// it: the agent set no log level, so Debug went nowhere.
+			slog.Warn("heartbeat failed, will try again", "error", err, "retry_in", retryDelay)
 			if !act.Scan {
 				return d.sleep(ctx, retryDelay)
 			}

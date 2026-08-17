@@ -95,6 +95,17 @@ func mix(x uint64) uint64 {
 // agent. At sixty servers it is about 5,800 tiny requests a day.
 const HeartbeatInterval = 15 * time.Minute
 
+// SolvePollInterval is how often the agent asks whether there is work for it.
+//
+// This is what decides how long a person waits after clicking approve, so it is
+// the shortest rhythm in the loop. A minute per machine is about 1,440 questions
+// a day each — more than the heartbeat's 96, and still a tiny request that reads
+// one row. Much faster than this would buy a feeling of speed no ops fix needs;
+// much slower and an approved fix would sit there while somebody watched.
+//
+// Nothing listens on the customer's server for this. The agent asks us, always.
+const SolvePollInterval = time.Minute
+
 // Action is what the service loop should do on this pass.
 //
 // Keeping the decision in a pure function is deliberate: the loop around it is
@@ -105,9 +116,9 @@ type Action struct {
 	Heartbeat bool
 
 	// Wait is how long to sleep when there is nothing to do. It is capped at
-	// the heartbeat interval so the loop stays responsive — a daemon that
-	// sleeps for twenty hours cannot be told anything, and Solve will need it
-	// awake to receive work.
+	// the Solve poll interval so the loop stays responsive: a daemon that sleeps
+	// for twenty hours cannot be told anything, and Solve needs it awake to
+	// collect work somebody has just approved.
 	Wait time.Duration
 }
 
@@ -127,9 +138,11 @@ func Decide(machineID string, lastScan, lastHeartbeat, startedAt, now time.Time)
 		return act
 	}
 
-	act.Wait = min(Next(machineID, lastScan, startedAt, now).Sub(now), HeartbeatInterval)
+	// Capped at the poll interval, not the heartbeat: the loop has to come back
+	// often enough to notice an approved job, and it polls on every pass.
+	act.Wait = min(Next(machineID, lastScan, startedAt, now).Sub(now), SolvePollInterval)
 	if act.Wait <= 0 {
-		act.Wait = HeartbeatInterval
+		act.Wait = SolvePollInterval
 	}
 	return act
 }

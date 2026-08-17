@@ -147,3 +147,33 @@ func TestDecideSendsTheFirstHeartbeatImmediately(t *testing.T) {
 		t.Fatalf("expected the first heartbeat to go at once, got %+v", got)
 	}
 }
+
+// Solve is the reason the loop sleeps in minutes rather than hours. A person
+// clicks approve and then waits, so the wait between two questions to the
+// service has to be short enough that the fix feels quick.
+func TestTheLoopWakesOftenEnoughForSolveToFeelQuick(t *testing.T) {
+	now := time.Now().UTC()
+	// A machine with nothing due: scanned moments ago, heartbeat moments ago.
+	got := Decide("m-1", now, now, now, now)
+
+	if got.Scan || got.Heartbeat {
+		t.Fatalf("nothing should be due yet, got %+v", got)
+	}
+	if got.Wait > SolvePollInterval {
+		t.Fatalf("wait %v is longer than the solve poll interval %v", got.Wait, SolvePollInterval)
+	}
+	if got.Wait <= 0 {
+		t.Fatalf("wait must be positive, got %v", got.Wait)
+	}
+}
+
+// And long enough that a fleet does not flood us. One question a minute per
+// machine is about 1,440 a day each; the heartbeat, at fifteen minutes, is 96.
+func TestTheSolvePollIsNotSoFastItFloodsTheService(t *testing.T) {
+	if SolvePollInterval < 30*time.Second {
+		t.Errorf("a poll every %v would be a lot of requests for little gain", SolvePollInterval)
+	}
+	if SolvePollInterval > HeartbeatInterval {
+		t.Errorf("polling less often than the heartbeat would make an approved fix feel slow")
+	}
+}

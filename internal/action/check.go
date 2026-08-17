@@ -3,10 +3,13 @@
 package action
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 )
 
 // The judgements no single command can make.
@@ -20,8 +23,10 @@ import (
 // The third belongs to the machine's owner: a service on their protected list is
 // never touched, whatever the cloud says.
 
-func runCheck(deps Deps, p plan, step Step, before []CommandRun) (CommandRun, bool) {
+func runCheck(ctx context.Context, deps Deps, p plan, step Step, before []CommandRun) (CommandRun, bool) {
 	switch step.Check {
+	case CheckSomebodyCanStillLogIn:
+		return somebodyCanStillLogIn(ctx, deps, p, step.Why)
 	case CheckPlanKeepsMeReachable:
 		return planKeepsMeReachable(deps, step.Why, before)
 	case CheckKeepsMeReachable:
@@ -196,4 +201,49 @@ func portList(ports []int) string {
 		text = append(text, fmt.Sprintf("port %d", port))
 	}
 	return strings.Join(text, ", ")
+}
+
+// somebodyCanStillLogIn refuses a hardening change that would close the last door.
+//
+// It runs in the dry run, before anything is touched, because this is a failure
+// that cannot be repaired afterwards: a machine nobody can log in to cannot be
+// fixed by logging in to it. The other reachability checks ask whether the port
+// answers, and that question passed on the machine it locked me out of.
+func somebodyCanStillLogIn(ctx context.Context, deps Deps, p plan, why string) (CommandRun, bool) {
+	run := CommandRun{Why: why, Display: "ghostpsy check somebody-can-still-log-in"}
+
+	// Check, not Lookup: the value is judged here too. A value this setting does
+	// not allow has to be refused by the first step, with the real reason, rather
+	// than reaching a later step and being reported as "the preview did not work".
+	setting, err := confedit.Check(p.values["setting"], p.values["value"])
+	if err != nil {
+		run.Stderr = err.Error()
+		run.ExitCode = 1
+		return run, false
+	}
+	if setting.NeedsAWayIn == confedit.WayInNothing {
+		run.Stdout = "this change cannot affect anybody's ability to log in"
+		return run, true
+	}
+
+	access, accessErr := deps.SSHAccess(ctx)
+	if accessErr != nil {
+		// Refuse. Not knowing whether anybody can get in is not a reason to close
+		// a door — it is the strongest possible reason not to.
+		run.Stderr = fmt.Sprintf("ghostpsy could not count how many accounts can log in to this "+
+			"server, so it will not turn one of those ways off: %v", accessErr)
+		run.ExitCode = -1
+		return run, false
+	}
+
+	if allowed, missing := access.AllowsChange(setting.NeedsAWayIn); !allowed {
+		run.Stderr = "ghostpsy stopped before changing anything. " + missing + "."
+		run.ExitCode = 1
+		return run, false
+	}
+
+	run.Stdout = fmt.Sprintf(
+		"%d account(s) on this server can log in with an SSH key, %d of them not root, "+
+			"so this change leaves a way in", access.AccountsWithKeys, access.NonRootAccountsWithKeys)
+	return run, true
 }

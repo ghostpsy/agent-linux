@@ -160,6 +160,26 @@ type fakeRunner struct {
 
 func newFakeRunner() *fakeRunner { return &fakeRunner{written: map[string]string{}} }
 
+// A manager whose service comes up straight away, for the tests that are about
+// what gets written rather than about the confirm step.
+func systemdWith(f *fakeRunner) systemdManager {
+	return systemdManager{
+		run: f.run, write: f.write, remove: f.remove,
+		output: func(string, ...string) (string, error) { return "active", nil },
+		settle: noSettle,
+	}
+}
+
+func upstartWith(f *fakeRunner) upstartManager {
+	return upstartManager{
+		run: f.run, write: f.write, remove: f.remove,
+		output: func(string, ...string) (string, error) {
+			return "ghostpsy start/running, process 1234", nil
+		},
+		settle: noSettle,
+	}
+}
+
 func (f *fakeRunner) run(name string, args ...string) error {
 	call := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, call)
@@ -191,7 +211,7 @@ func (f *fakeRunner) did(substr string) bool {
 
 func TestSystemdInstallWritesTheUnitEnablesAndStarts(t *testing.T) {
 	f := newFakeRunner()
-	m := systemdManager{run: f.run, write: f.write, remove: f.remove}
+	m := systemdWith(f)
 
 	if err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"}); err != nil {
 		t.Fatalf("install failed: %v", err)
@@ -211,7 +231,7 @@ func TestSystemdInstallWritesTheUnitEnablesAndStarts(t *testing.T) {
 // people hesitate to install.
 func TestSystemdRemoveStopsDisablesAndDeletesTheUnit(t *testing.T) {
 	f := newFakeRunner()
-	m := systemdManager{run: f.run, write: f.write, remove: f.remove}
+	m := systemdWith(f)
 	_ = m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
 
 	if err := m.Remove(); err != nil {
@@ -227,7 +247,7 @@ func TestSystemdRemoveStopsDisablesAndDeletesTheUnit(t *testing.T) {
 
 func TestUpstartInstallWritesTheJobAndStarts(t *testing.T) {
 	f := newFakeRunner()
-	m := upstartManager{run: f.run, write: f.write, remove: f.remove}
+	m := upstartWith(f)
 
 	if err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"}); err != nil {
 		t.Fatalf("install failed: %v", err)
@@ -246,7 +266,7 @@ func TestUpstartInstallWritesTheJobAndStarts(t *testing.T) {
 func TestRemoveFinishesEvenIfStopFails(t *testing.T) {
 	f := newFakeRunner()
 	f.fail = "stop"
-	m := systemdManager{run: f.run, write: f.write, remove: f.remove}
+	m := systemdWith(f)
 	_ = m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
 
 	if err := m.Remove(); err != nil {
@@ -294,5 +314,108 @@ func TestUpstartJobCarriesTheEnvironmentItWasGiven(t *testing.T) {
 
 	if !strings.Contains(job, "env GHOSTPSY_API_URL=http://192.168.64.1:8000") {
 		t.Errorf("the job must pass the address on to the service:\n%s", job)
+	}
+}
+
+// --- the installer must not say a service started when it did not -----------
+
+// fakeStatus answers `systemctl is-active` and friends from a script.
+type fakeStatus struct {
+	*fakeRunner
+	states []string // one answer per call, the last one repeating
+	asked  int
+	detail string
+}
+
+func (f *fakeStatus) output(name string, args ...string) (string, error) {
+	call := name + " " + strings.Join(args, " ")
+	f.calls = append(f.calls, call)
+
+	if strings.Contains(call, "is-active") || strings.Contains(call, "status") {
+		state := f.states[min(f.asked, len(f.states)-1)]
+		f.asked++
+		if strings.Contains(call, "status") || strings.Contains(call, "show") {
+			return f.detail, nil
+		}
+		if state != "active" {
+			return state, errFakeFailure
+		}
+		return state, nil
+	}
+	return "", nil
+}
+
+func newFakeStatus(states ...string) *fakeStatus {
+	return &fakeStatus{fakeRunner: newFakeRunner(), states: states}
+}
+
+// The bug this exists for, found on a real Rocky 9 machine.
+//
+// `systemctl enable --now` returned success. The process then died immediately —
+// SELinux refused to execute a binary that had been moved in from /tmp — and
+// systemd put the unit into auto-restart. So the installer printed
+//
+//	ok  Start the ghostpsy service (systemd)
+//	Done. This server is now reporting.
+//
+// and the server was not reporting, and never would. It is the same shape as the
+// unreadable state.json before it: a step that checks whether a command was
+// accepted rather than whether the thing it asked for happened.
+func TestInstallFailsWhenTheServiceStartsAndImmediatelyDies(t *testing.T) {
+	f := newFakeStatus("activating", "activating", "activating")
+	f.detail = "Active: activating (auto-restart) (Result: exit-code)\nMain PID: 4893 (code=exited, status=203/EXEC)"
+	m := systemdManager{run: f.run, write: f.write, remove: f.remove, output: f.output, settle: noSettle}
+
+	err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
+
+	if err == nil {
+		t.Fatal("expected install to fail: the service did not stay running")
+	}
+	if !strings.Contains(err.Error(), "203") {
+		t.Errorf("the message should carry what systemd said, got: %v", err)
+	}
+}
+
+// 203/EXEC has one overwhelmingly likely cause on a machine with SELinux, and a
+// message that does not name it sends a sysadmin looking in the wrong place.
+func TestAnExecFailureMentionsSelinux(t *testing.T) {
+	f := newFakeStatus("failed")
+	f.detail = "Main PID: 4893 (code=exited, status=203/EXEC)"
+	m := systemdManager{run: f.run, write: f.write, remove: f.remove, output: f.output, settle: noSettle}
+
+	err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"})
+
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "selinux") {
+		t.Errorf("expected the message to name SELinux as the likely cause, got: %v", err)
+	}
+}
+
+// A service that takes a moment to come up must not be called a failure.
+func TestInstallWaitsForAServiceThatIsStillStarting(t *testing.T) {
+	f := newFakeStatus("activating", "active")
+	m := systemdManager{run: f.run, write: f.write, remove: f.remove, output: f.output, settle: noSettle}
+
+	if err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"}); err != nil {
+		t.Fatalf("expected a service that comes up on the second look to pass, got: %v", err)
+	}
+}
+
+func TestUpstartInstallAlsoChecksTheServiceIsReallyRunning(t *testing.T) {
+	f := newFakeStatus("stop/waiting")
+	f.detail = "ghostpsy stop/waiting"
+	m := upstartManager{run: f.run, write: f.write, remove: f.remove, output: f.output, settle: noSettle}
+
+	if err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"}); err == nil {
+		t.Fatal("expected install to fail when the job is not running")
+	}
+}
+
+func TestUpstartInstallPassesWhenTheJobIsRunning(t *testing.T) {
+	f := newFakeStatus("active")
+	f.detail = "ghostpsy start/running, process 1234"
+	m := upstartManager{run: f.run, write: f.write, remove: f.remove, output: f.output, settle: noSettle}
+
+	if err := m.Install(Spec{ExecStart: "/usr/local/bin/ghostpsy serve", User: "ghostpsy"}); err != nil {
+		t.Fatalf("expected a running job to pass, got: %v", err)
 	}
 }

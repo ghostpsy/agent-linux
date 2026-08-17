@@ -273,6 +273,15 @@ func runSetup(cmd *cobra.Command, token string, dryRun bool) error {
 			},
 		},
 		{
+			// Before the service starts, never after. A binary with the wrong
+			// SELinux label cannot be executed at all, and the service would
+			// crash-loop while this step reported success.
+			describe: "Put the SELinux labels back, if this server uses SELinux",
+			do: func() error {
+				return relabelForSELinux(append(agentOwnedPaths(), self), lookPath, runCmd)
+			},
+		},
+		{
 			describe: fmt.Sprintf("Start the ghostpsy service (%s)", kind),
 			do: func() error {
 				return manager.Install(service.Spec{
@@ -420,9 +429,12 @@ func explainRegisterFailure(err error) error {
 		// the network is not involved and must not be blamed. Re-running the
 		// installer is what a person does to upgrade, which makes this one of the
 		// messages they are most likely to see.
+		// The two suggestions name commands that exist. `setup` has no --force of
+		// its own, and sending somebody to a flag that is not there is worse than
+		// saying nothing.
 		return fmt.Errorf("this server is already registered with ghostpsy, so it was left as it is. " +
 			"To upgrade the agent, use `ghostpsy update`. To attach this server to a different " +
-			"organization, run setup again with --force")
+			"organization, use `ghostpsy register --force` with a new code from the dashboard")
 	case serverAnswered(detail):
 		// Telling someone to inspect a firewall that is working perfectly is
 		// worse than saying nothing. The server's own words are the only thing

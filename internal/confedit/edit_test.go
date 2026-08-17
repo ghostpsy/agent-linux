@@ -183,3 +183,36 @@ func TestCheckRefusesAValueThatWouldWeakenTheServer(t *testing.T) {
 		}
 	}
 }
+
+// The lock-out this catalogue exists to make impossible.
+//
+// Found on a real Rocky 9 machine, by locking myself out of it. On a cloud image
+// root is usually the only account with an authorized_keys file, so
+// `PermitRootLogin no` means nobody can log in again — and the machine looks
+// perfectly healthy from outside: sshd is up, port 22 accepts the connection, and
+// then refuses every login. The reachability check passed for exactly that reason.
+//
+// `prohibit-password` is safe and does most of the work: it stops password logins
+// for root and keeps key logins, so an operator who reaches the server with a key
+// cannot lose access. `no` is only safe on a machine where somebody else can get
+// in, and this agent cannot yet prove that. Until it can, it is not offered.
+func TestRootLoginCannotBeTurnedOffCompletelyUntilWeCanProveSomebodyElseCanGetIn(t *testing.T) {
+	if _, err := Check("ssh.permit_root_login", "no"); err == nil {
+		t.Fatal("'no' locks out every account on a machine where root is the only one. " +
+			"It must not be settable until the agent can prove another account can log in.")
+	}
+
+	if _, err := Check("ssh.permit_root_login", "prohibit-password"); err != nil {
+		t.Fatalf("prohibit-password keeps key logins working, so it must stay allowed: %v", err)
+	}
+}
+
+// The refusal has to explain itself. "Not allowed" without a reason reads like a
+// bug in ghostpsy rather than a deliberate protection.
+func TestTheRefusalExplainsWhyRootLoginCannotBeTurnedOffCompletely(t *testing.T) {
+	_, err := Check("ssh.permit_root_login", "no")
+
+	if err == nil || !strings.Contains(err.Error(), "prohibit-password") {
+		t.Fatalf("expected the refusal to point at the safe value, got: %v", err)
+	}
+}

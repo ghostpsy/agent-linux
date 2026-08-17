@@ -4,6 +4,8 @@ package action
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
@@ -28,8 +31,25 @@ func HostDeps() Deps {
 		InboundPorts: inboundPorts,
 		Listening:    listening,
 		Protected:    Protected,
+		SSHAccess:    sshAccess,
 		Sleep:        sleep,
 	}
+}
+
+// sshAccess counts the ways into this machine, through the delegated read.
+//
+// It goes through privexec like everything else, so the one privilege it needs is
+// declared in the same file that writes the sudo grant.
+func sshAccess(ctx context.Context) (confedit.Access, error) {
+	res, err := privexec.RunWith(ctx, privexec.ReadSSHAccess, nil)
+	if err != nil {
+		return confedit.Access{}, fmt.Errorf("could not ask this machine who can log in: %w", err)
+	}
+	var access confedit.Access
+	if err := json.Unmarshal(res.Stdout, &access); err != nil {
+		return confedit.Access{}, fmt.Errorf("could not read the answer about who can log in: %w", err)
+	}
+	return access, nil
 }
 
 func installed(binary string) bool {

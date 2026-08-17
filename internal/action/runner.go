@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
@@ -46,6 +47,10 @@ type Deps struct {
 	// not touch. Their list beats an approved job.
 	Protected func() ([]string, error)
 
+	// SSHAccess counts how many accounts could still log in over SSH. It is what
+	// stops a hardening change closing the last door.
+	SSHAccess func(context.Context) (confedit.Access, error)
+
 	Sleep func(context.Context, time.Duration) error
 }
 
@@ -55,6 +60,30 @@ type Deps struct {
 // approved this is waiting to be told what happened on their server, and an error
 // swallowed on the way home is the failure this whole product exists to remove.
 func Run(ctx context.Context, deps Deps, job Job) Report {
+	report := carryOut(ctx, deps, job)
+
+	// Always a list, never null. A switched-off machine plans nothing, and a nil
+	// slice becomes JSON null — which the app could not tell from a report with no
+	// actions field at all, so it showed the person nothing instead of the reason
+	// their machine refused.
+	if report.Actions == nil {
+		report.Actions = []ActionReport{}
+	}
+
+	// Every dry run gets a preview id, including one that refused everything.
+	//
+	// A refusal is an answer to "what would happen here": nothing, and this is
+	// why. The service will not accept a report without an id, so without this
+	// the machine cannot deliver its refusal at all — the job sits in "proposed"
+	// for ever and the screen tells somebody to wait for something that will
+	// never happen. Found on a real machine with no firewall tool installed.
+	if job.Mode == ModeDryRun && report.PreviewID == "" {
+		report.PreviewID = previewID(report.Actions)
+	}
+	return report
+}
+
+func carryOut(ctx context.Context, deps Deps, job Job) Report {
 	report := Report{Mode: job.Mode, Backup: BackupReport{Asked: job.Backup}}
 
 	if off, why := deps.SwitchedOff(); off {
@@ -154,7 +183,11 @@ func dryRun(ctx context.Context, deps Deps, plans []plan, report Report) Report 
 		report.Actions[i].Commands = runs
 		report.Actions[i].OK = ok
 		if !ok {
-			report.Actions[i].Refused = "the preview itself did not work, so nothing was changed"
+			// The step's own words, not a sentence of ours. "The preview did not
+			// work" tells somebody nothing they can act on, and the reason is
+			// right there in what failed.
+			report.Actions[i].Refused = whyItStopped(runs,
+				"the preview did not work, so nothing was changed")
 		}
 		report.Actions[i].FreedBytes = freedFrom(plans[i], runs)
 	}
@@ -178,7 +211,8 @@ func realRun(ctx context.Context, deps Deps, job Job, plans []plan, report Repor
 		report.Actions[i].Commands = append(report.Actions[i].Commands, runs...)
 		report.Actions[i].OK = ok
 		if !ok {
-			report.Actions[i].Refused = "this action failed, so the rest of the plan was stopped"
+			report.Actions[i].Refused = whyItStopped(runs,
+				"this action failed, so the rest of the plan was stopped")
 			markNotReached(report.Actions[i+1:])
 			break
 		}
@@ -311,7 +345,7 @@ func runPhase(ctx context.Context, deps Deps, p plan, steps []Step) ([]CommandRu
 
 func runStep(ctx context.Context, deps Deps, p plan, step Step, before []CommandRun) (CommandRun, bool) {
 	if step.Check != "" {
-		return runCheck(deps, p, step, before)
+		return runCheck(ctx, deps, p, step, before)
 	}
 
 	values, err := stepValues(step, p.values)
@@ -360,6 +394,21 @@ func stepValues(step Step, params map[string]string) (privexec.Values, error) {
 		values[name] = value
 	}
 	return values, nil
+}
+
+// whyItStopped is the reason the last step gave, or a fallback.
+//
+// A summary that says "it did not work" wastes the one place a person looks
+// first, when the step that failed already said exactly what was wrong.
+func whyItStopped(runs []CommandRun, fallback string) string {
+	if len(runs) == 0 {
+		return fallback
+	}
+	last := runs[len(runs)-1]
+	if reason := strings.TrimSpace(last.Stderr); reason != "" {
+		return reason
+	}
+	return fallback
 }
 
 // markNotReached says so out loud for the actions after a failure.

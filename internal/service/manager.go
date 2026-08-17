@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 const (
@@ -31,9 +32,15 @@ type removeFn func(path string) error
 func For(kind Kind) (Manager, error) {
 	switch kind {
 	case Systemd:
-		return systemdManager{run: runCommand, write: writeFile, remove: os.Remove}, nil
+		return systemdManager{
+			run: runCommand, write: writeFile, remove: os.Remove,
+			output: commandOutput, settle: realSettle,
+		}, nil
 	case Upstart:
-		return upstartManager{run: runCommand, write: writeFile, remove: os.Remove}, nil
+		return upstartManager{
+			run: runCommand, write: writeFile, remove: os.Remove,
+			output: commandOutput, settle: realSettle,
+		}, nil
 	default:
 		return nil, errors.New("this server does not use systemd or Upstart, so ghostpsy cannot install itself as a service here")
 	}
@@ -43,6 +50,8 @@ type systemdManager struct {
 	run    runFn
 	write  writeFn
 	remove removeFn
+	output outputFn
+	settle settleFn
 }
 
 func (m systemdManager) Install(s Spec) error {
@@ -57,7 +66,29 @@ func (m systemdManager) Install(s Spec) error {
 	if err := m.run("systemctl", "enable", "--now", unitName); err != nil {
 		return fmt.Errorf("could not start the ghostpsy service: %w", err)
 	}
-	return nil
+	// And then check it actually stayed up. `enable --now` succeeds the moment
+	// systemd accepts the unit, so a process that dies immediately leaves this
+	// step looking like a success — see confirm.go.
+	return confirmRunning(m.settle, m.state, systemdIsRunning, m.detail)
+}
+
+func (m systemdManager) state() string {
+	out, _ := m.output("systemctl", "is-active", unitName)
+	return out
+}
+
+func (m systemdManager) detail() string {
+	out, _ := m.output("systemctl", "status", unitName, "--no-pager", "--lines=10")
+	return out
+}
+
+// systemdIsRunning is deliberately strict about "activating".
+//
+// A unit in auto-restart reports activating for as long as it keeps failing, so
+// treating that as good enough would accept exactly the crash loop this check
+// exists to catch.
+func systemdIsRunning(state string) bool {
+	return state == "active"
 }
 
 func (m systemdManager) Remove() error {
@@ -76,6 +107,8 @@ type upstartManager struct {
 	run    runFn
 	write  writeFn
 	remove removeFn
+	output outputFn
+	settle settleFn
 }
 
 func (m upstartManager) Install(s Spec) error {
@@ -85,7 +118,22 @@ func (m upstartManager) Install(s Spec) error {
 	if err := m.run("initctl", "start", unitName); err != nil {
 		return fmt.Errorf("could not start the ghostpsy service: %w", err)
 	}
-	return nil
+	return confirmRunning(m.settle, m.state, upstartIsRunning, m.detail)
+}
+
+func (m upstartManager) state() string {
+	out, _ := m.output("initctl", "status", unitName)
+	return out
+}
+
+func (m upstartManager) detail() string {
+	return m.state()
+}
+
+// upstartIsRunning reads `initctl status`, which answers in the form
+// "ghostpsy start/running, process 1234".
+func upstartIsRunning(state string) bool {
+	return strings.Contains(state, "start/running")
 }
 
 func (m upstartManager) Remove() error {

@@ -397,4 +397,59 @@ func TestAnAlreadyRegisteredMachineIsNotReportedAsANetworkProblem(t *testing.T) 
 	if !strings.Contains(got, "already registered") {
 		t.Errorf("the message should say the server is already registered, got: %v", err)
 	}
+	// Every command a message suggests has to exist. `setup` has no --force flag,
+	// and sending somebody to one is worse than saying nothing.
+	if strings.Contains(got, "setup again with --force") {
+		t.Errorf("the message names a flag setup does not have: %v", err)
+	}
+	if !strings.Contains(got, "register --force") {
+		t.Errorf("the message should point at the command that does exist, got: %v", err)
+	}
+}
+
+// --- SELinux labels ---------------------------------------------------------
+
+// A binary that arrived in /tmp and was moved into place keeps its temporary
+// label, and systemd then refuses to execute it: 203/EXEC, forever, while the
+// installer reports success. Found on a real Rocky 9 machine.
+func TestSetupPutsTheSelinuxLabelsBackOnEveryPathItNeeds(t *testing.T) {
+	var relabelled []string
+	look := func(string) (string, error) { return "/usr/sbin/restorecon", nil }
+	run := func(_ string, args ...string) error {
+		relabelled = append(relabelled, args[len(args)-1])
+		return nil
+	}
+
+	if err := relabelForSELinux([]string{"/usr/local/bin/ghostpsy", "/etc/ghostpsy"}, look, run); err != nil {
+		t.Fatalf("expected the relabel to succeed, got %v", err)
+	}
+
+	if len(relabelled) != 2 || relabelled[0] != "/usr/local/bin/ghostpsy" {
+		t.Fatalf("expected both paths relabelled, binary first, got %v", relabelled)
+	}
+}
+
+// Most servers have no SELinux at all. Not finding restorecon is not a failure —
+// it means there is no policy here to put right.
+func TestSetupIsQuietOnAServerWithoutSelinux(t *testing.T) {
+	look := func(string) (string, error) { return "", errors.New("not found") }
+	run := func(string, ...string) error {
+		t.Fatal("nothing should run when this server has no SELinux")
+		return nil
+	}
+
+	if err := relabelForSELinux([]string{"/usr/local/bin/ghostpsy"}, look, run); err != nil {
+		t.Fatalf("expected no error on a server without SELinux, got %v", err)
+	}
+}
+
+// restorecon exits non-zero for a path its policy says nothing about. That is
+// normal, and refusing to install over it would break machines that were fine.
+func TestSetupCarriesOnWhenRestoreconHasNothingToSayAboutAPath(t *testing.T) {
+	look := func(string) (string, error) { return "/usr/sbin/restorecon", nil }
+	run := func(string, ...string) error { return errors.New("exit status 1") }
+
+	if err := relabelForSELinux([]string{"/var/lib/ghostpsy"}, look, run); err != nil {
+		t.Fatalf("expected a restorecon complaint not to fail the install, got %v", err)
+	}
 }

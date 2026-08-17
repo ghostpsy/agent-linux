@@ -273,6 +273,7 @@ func solvePoller(machineUUID string) func(context.Context) error {
 				MachineUUID: machineUUID,
 				JobID:       work.JobID,
 				PreviewID:   report.PreviewID,
+				OK:          report.OK,
 				Detail:      report,
 			})
 		}

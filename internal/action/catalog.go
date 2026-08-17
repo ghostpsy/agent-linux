@@ -338,6 +338,13 @@ func sshVariant(needs, unit string) Variant {
 		Backup: BackupPlan{Kind: BackupCopyFiles, Target: "/etc/ssh/sshd_config"},
 		DryRun: []Step{
 			{
+				// First, and in the dry run, because this failure cannot be
+				// repaired afterwards: a machine nobody can log in to cannot be
+				// fixed by logging in to it.
+				Why:   "make sure somebody would still be able to log in afterwards",
+				Check: CheckSomebodyCanStillLogIn,
+			},
+			{
 				Why:     "show the exact line that would change",
 				Command: privexec.ConfigPreview,
 				Args:    map[string]string{"key": "{setting}", "value": "{value}"},
@@ -416,6 +423,13 @@ func restartFailedService() Action {
 		Variants: []Variant{{
 			DryRun: []Step{
 				{
+					// In the preview as well as in the run. Only in the run meant a
+					// person approved a plan, waited, and was then told it was never
+					// allowed — a round trip to learn something we already knew.
+					Why:   "check the machine's owner has not marked this service as hands off",
+					Check: CheckUnitNotProtected,
+				},
+				{
 					Why:     "show the service's state and its last log lines, so you can see why it stopped",
 					Command: privexec.ServiceStatus,
 					Args:    map[string]string{"unit": "{unit}"},
@@ -423,8 +437,9 @@ func restartFailedService() Action {
 			},
 			Run: []Step{
 				{
-					// First, so a service the owner protected is never touched at
-					// all — not even for a moment.
+					// And again here, because the list can change between the
+					// preview and the run, and the machine's answer at the moment
+					// of acting is the one that counts.
 					Why:   "check the machine's owner has not marked this service as hands off",
 					Check: CheckUnitNotProtected,
 				},

@@ -343,3 +343,143 @@ func TestEverySettingTheAgentCanChangeCanActuallyBeAskedFor(t *testing.T) {
 		}
 	}
 }
+
+// The lock-out, as a test. This is the "do not lock yourself out" case #183 asks
+// for by name, and it is written from a real failure rather than an imagined one:
+// I locked myself out of a Rocky 9 machine with exactly this change.
+func TestHardenSSHRefusesToTurnOffTheLastWayIn(t *testing.T) {
+	f := &fakeExec{}
+	deps := testDeps(f)
+	// A cloud image: root has a key, nobody else has one, and nobody has a
+	// password worth having. Turning off password logins is fine here; turning off
+	// root logins is not.
+	deps.SSHAccess = func(context.Context) (confedit.Access, error) {
+		return confedit.Access{AccountsWithKeys: 0, NonRootAccountsWithKeys: 0}, nil
+	}
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.password_authentication", "value": "no",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("no account has a key, so turning off password logins leaves no way in")
+	}
+	if !mentionsInOutput(report, "no way to log in") {
+		t.Fatalf("expected the reason to say so plainly, got:\n%s", allOutput(report))
+	}
+	// The dry run must have stopped before it even described the change: this is a
+	// failure that cannot be repaired afterwards.
+	if ranCommand(f, privexec.ConfigPreview) {
+		t.Fatal("the check has to come first, before anything else is done")
+	}
+}
+
+// And it must not become a check that refuses everything. A machine with a key
+// still gets its hardening.
+func TestHardenSSHAllowsTheChangeWhenSomebodyHasAKey(t *testing.T) {
+	deps := testDeps(&fakeExec{})
+	deps.SSHAccess = func(context.Context) (confedit.Access, error) {
+		return confedit.Access{AccountsWithKeys: 1}, nil
+	}
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.password_authentication", "value": "no",
+		}}},
+	})
+
+	if !report.OK {
+		t.Fatalf("expected a machine with a key to be allowed, got:\n%s", allOutput(report))
+	}
+}
+
+// Not knowing is not permission. Failing to count the accounts must stop the
+// change, not wave it through.
+func TestHardenSSHRefusesWhenItCannotTellWhoCanLogIn(t *testing.T) {
+	deps := testDeps(&fakeExec{})
+	deps.SSHAccess = func(context.Context) (confedit.Access, error) {
+		return confedit.Access{}, errors.New("could not read /etc/passwd")
+	}
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.password_authentication", "value": "no",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("not knowing whether anybody can get in is a reason to stop, not to continue")
+	}
+}
+
+// A setting that has nothing to do with logging in is not held up by the check.
+func TestHardenSSHDoesNotAskAboutLoginsForASettingThatCannotAffectThem(t *testing.T) {
+	deps := testDeps(&fakeExec{})
+	deps.SSHAccess = func(context.Context) (confedit.Access, error) {
+		return confedit.Access{}, errors.New("nobody should be asking")
+	}
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.x11_forwarding", "value": "no",
+		}}},
+	})
+
+	if !report.OK {
+		t.Fatalf("X11 forwarding has nothing to do with logging in, got:\n%s", allOutput(report))
+	}
+}
+
+// A refusal has to say what was actually wrong.
+//
+// "The preview did not work" is the least useful sentence available, and the step
+// that failed already said exactly what the problem was. Found by reading a real
+// report from a real machine, where the useful words were buried one level down.
+func TestARefusalCarriesTheReasonTheStepGave(t *testing.T) {
+	deps := testDeps(&fakeExec{})
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			// A value this setting does not allow, on purpose.
+			"setting": "ssh.permit_root_login", "value": "yes",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected a value the setting does not allow to be refused")
+	}
+	refused := report.Actions[0].Refused
+	if strings.Contains(refused, "the preview did not work") {
+		t.Fatalf("the summary hid the reason: %q", refused)
+	}
+	if !strings.Contains(refused, "PermitRootLogin") {
+		t.Fatalf("expected the real reason in the summary, got %q", refused)
+	}
+}
+
+// And the value is judged by the first step, before anything describes a change
+// that is never going to happen.
+func TestAValueTheSettingDoesNotAllowIsRefusedByTheFirstStep(t *testing.T) {
+	f := &fakeExec{}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.permit_root_login", "value": "yes",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected the value to be refused")
+	}
+	if ranCommand(f, privexec.ConfigPreview) {
+		t.Fatal("nothing should describe a change that cannot be made")
+	}
+}

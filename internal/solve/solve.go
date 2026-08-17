@@ -72,7 +72,14 @@ type DryRunReport struct {
 	MachineUUID string `json:"machine_uuid"`
 	JobID       string `json:"-"`
 	PreviewID   string `json:"preview_id"`
-	Detail      any    `json:"detail"`
+
+	// OK is false when this machine cannot carry the actions out at all. That is
+	// still a preview: the answer to "what would happen here" is "nothing, and
+	// this is why". The service refuses to let such a preview be approved, so a
+	// person is not sent to a server to be told a second time.
+	OK bool `json:"ok"`
+
+	Detail any `json:"detail"`
 }
 
 // ResultReport is how a run ended.

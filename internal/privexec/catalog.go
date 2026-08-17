@@ -47,6 +47,10 @@ const (
 	ReadSudoers ID = "read.sudoers"
 	ReadGrant   ID = "read.grant"
 
+	// ReadSSHAccess counts how many accounts could still log in over SSH. It is
+	// what stops a hardening change locking the operator out of their own server.
+	ReadSSHAccess ID = "read.ssh_access"
+
 	// Everything below this line is for a fix, not a scan. They are the only
 	// commands on this machine that change anything, and every one of them is
 	// reachable only from a declared action in internal/action.
@@ -193,6 +197,14 @@ func init() {
 		Args:   []string{"read-grant"},
 		Why:    "read this very file, to report whether it is still the one this agent version needs",
 		Env:    localeC,
+	})
+
+	declare(ReadSSHAccess, Command{
+		Binary: agentBinaryPath,
+		Args:   []string{"read-ssh-access"},
+		Why: "count how many accounts could still log in over SSH, before turning one of " +
+			"those ways off. Returns only the counts — no key and no file name leaves this command",
+		Env: localeC,
 	})
 
 	declareFixCommands()

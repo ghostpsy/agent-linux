@@ -44,10 +44,34 @@ type Setting struct {
 	// notice afterwards.
 	Allow *regexp.Regexp
 
+	// NeedsAWayIn says what must still be true for this change to be safe.
+	//
+	// Closing a door is not automatically safe. Turning off password logins on a
+	// server nobody has a key for locks everybody out, and the machine then looks
+	// perfectly healthy from outside: sshd is up, the port accepts the connection,
+	// and every login is refused. Found by locking myself out of a real machine.
+	NeedsAWayIn WayIn
+
 	// Why says in plain words what this setting does and why changing it is
 	// safe. It reaches the approval screen.
 	Why string
 }
+
+// WayIn is what has to remain possible after a change.
+type WayIn string
+
+const (
+	// WayInNothing means this setting cannot affect anybody's ability to log in.
+	WayInNothing WayIn = ""
+
+	// WayInAnyKey means at least one account must have an SSH key, or turning off
+	// password logins leaves no way in at all.
+	WayInAnyKey WayIn = "any_key"
+
+	// WayInOtherAccountKey means some account *other than root* must have a key.
+	// Needed before root logins are refused outright.
+	WayInOtherAccountKey WayIn = "other_account_key"
+)
 
 // settings is every change this agent can make to a config file.
 var settings = map[string]Setting{}
@@ -101,24 +125,40 @@ func init() {
 	// SSH. Every value below is one that closes a door; none of them can open
 	// one. That is the rule for this list: a setting whose allowed values could
 	// weaken a server does not belong here, whoever asks for it.
+	//
+	// Closing a door is not automatically safe, though. Two of these can close the
+	// door on the operator, and the action that uses them asks the machine whether
+	// anybody would still be able to get in — see NeedsAWayIn below.
+
+	// Deliberately not `no` yet. That locks out every account on a machine where
+	// root is the only one with a key — which is nearly every cloud image — and the
+	// machine then looks perfectly healthy: sshd is up, port 22 accepts the
+	// connection, and refuses every login. Found by locking myself out of a real
+	// Rocky 9 machine.
+	//
+	// `prohibit-password` keeps key logins, so it is safe as long as somebody has
+	// a key — which is what the action checks before it runs.
 	declare(Setting{
-		Key:       "ssh.permit_root_login",
-		File:      sshdConfigPath,
-		Directive: "PermitRootLogin",
-		Style:     StyleSSH,
-		Allow:     regexp.MustCompile(`^(no|prohibit-password)$`),
-		Why: "It stops somebody logging in directly as root with a password. " +
-			"Only 'no' and 'prohibit-password' can be set here, so this can never " +
-			"be used to allow root login.",
+		Key:         "ssh.permit_root_login",
+		File:        sshdConfigPath,
+		Directive:   "PermitRootLogin",
+		Style:       StyleSSH,
+		Allow:       regexp.MustCompile(`^prohibit-password$`),
+		NeedsAWayIn: WayInAnyKey,
+		Why: "It stops somebody logging in as root with a password, and keeps key " +
+			"logins working. Only 'prohibit-password' can be set here — never 'no', " +
+			"which on a server where root is the only account would lock everybody out.",
 	})
 	declare(Setting{
-		Key:       "ssh.password_authentication",
-		File:      sshdConfigPath,
-		Directive: "PasswordAuthentication",
-		Style:     StyleSSH,
-		Allow:     regexp.MustCompile(`^no$`),
-		Why: "It turns off password logins, leaving keys only. Only 'no' can be " +
-			"set here. Make sure your key works before using this.",
+		Key:         "ssh.password_authentication",
+		File:        sshdConfigPath,
+		Directive:   "PasswordAuthentication",
+		Style:       StyleSSH,
+		Allow:       regexp.MustCompile(`^no$`),
+		NeedsAWayIn: WayInAnyKey,
+		Why: "It turns off password logins, leaving keys only. Only 'no' can be set " +
+			"here, and ghostpsy checks first that at least one account has an SSH key " +
+			"— otherwise this would lock everybody out.",
 	})
 	declare(Setting{
 		Key:       "ssh.permit_empty_passwords",

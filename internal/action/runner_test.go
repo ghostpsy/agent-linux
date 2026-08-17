@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
@@ -52,7 +53,10 @@ func testDeps(f *fakeExec) Deps {
 		InboundPorts: func() ([]int, error) { return nil, nil },
 		Listening:    func(int) bool { return true },
 		Protected:    func() ([]string, error) { return nil, nil },
-		Sleep:        func(context.Context, time.Duration) error { return nil },
+		SSHAccess: func(context.Context) (confedit.Access, error) {
+			return confedit.Access{AccountsWithKeys: 1}, nil
+		},
+		Sleep: func(context.Context, time.Duration) error { return nil },
 	}
 }
 
@@ -479,3 +483,77 @@ func ranCommand(f *fakeExec, id privexec.ID) bool {
 // exitError is what a real failing command produces, so the runner has to read
 // an exit code out of one.
 var _ = exec.ExitError{}
+
+// A machine that cannot do something has to be able to say so.
+//
+// Found on a real Rocky 9 machine. `enable_firewall` has no variant that fits a
+// host with neither ufw nor firewall-cmd, so the whole job was refused before any
+// step ran — and the refusal carried no preview id, because only the dry-run path
+// produced one. The service rejects a report with no preview id, so the agent
+// could not deliver the refusal at all. The job sat in "proposed" for ever and the
+// screen said "waiting for the machine to work out what would change".
+//
+// Waiting for something that will never happen is the exact failure this product
+// exists to remove. A refusal is an answer, and it has to be reportable.
+func TestARefusedDryRunStillProducesAPreviewIDSoItCanBeReported(t *testing.T) {
+	report := Run(context.Background(), testDeps(&fakeExec{}), Job{
+		Mode:    ModeDryRun,
+		Actions: []Request{{Type: "no_such_action"}},
+	})
+
+	if report.OK {
+		t.Fatal("expected the unknown action to be refused")
+	}
+	if report.PreviewID == "" {
+		t.Fatal("a refusal is an answer: without a preview id the service will not accept it, " +
+			"and the job waits for ever")
+	}
+}
+
+// The same for a machine whose owner switched actions off. Without a preview id
+// the cloud never learns why nothing happened, and the person is told to keep
+// waiting.
+func TestASwitchedOffMachineCanStillReportThatItIsSwitchedOff(t *testing.T) {
+	declareForTest(t, simpleAction("test_switch_reportable"))
+	deps := testDeps(&fakeExec{})
+	deps.SwitchedOff = func() (bool, string) { return true, "actions are switched off on this machine" }
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeDryRun, Actions: []Request{{Type: "test_switch_reportable"}},
+	})
+
+	if report.PreviewID == "" {
+		t.Fatal("a switched-off machine has to be able to say so, which needs a preview id")
+	}
+}
+
+// And a real run does not gain one, whatever went wrong. There is nothing left to
+// approve.
+func TestARefusedRealRunStillHasNoPreviewID(t *testing.T) {
+	report := Run(context.Background(), testDeps(&fakeExec{}), Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "no_such_action"}},
+	})
+
+	if report.PreviewID != "" {
+		t.Fatalf("a real run has nothing to approve, got preview id %q", report.PreviewID)
+	}
+}
+
+// A report is read by another program, so it must not have two ways of saying
+// "none". A nil slice becomes JSON null, and the app could not tell that from a
+// report with no actions at all — so it showed the person nothing instead of the
+// reason their own machine had refused.
+func TestAReportAlwaysCarriesAListOfActionsEvenWhenThereAreNone(t *testing.T) {
+	deps := testDeps(&fakeExec{})
+	deps.SwitchedOff = func() (bool, string) { return true, "actions are switched off here" }
+
+	report := Run(context.Background(), deps, Job{Mode: ModeDryRun, Actions: []Request{{Type: "x"}}})
+
+	if report.Actions == nil {
+		t.Fatal("a refused job still has to report an empty list, not null")
+	}
+	if report.Refused == "" {
+		t.Fatal("and it has to say why")
+	}
+}

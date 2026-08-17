@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ghostpsy/agent-linux/internal/collect/identity"
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 )
 
 // newReadShadowCommand is the one place the agent delegates a privileged file
@@ -77,6 +78,30 @@ func newReadGrantCommand() *cobra.Command {
 				return fmt.Errorf("could not read %s: %w", installedGrantPath, err)
 			}
 			_, err = cmd.OutOrStdout().Write(installed)
+			return err
+		},
+	}
+}
+
+// newReadSSHAccessCommand is the fourth delegated read, and the reason it exists
+// is a real lock-out.
+//
+// Before ghostpsy turns off a way of logging in, it has to know whether another
+// one is left. That means counting accounts with an SSH key, and an authorized_keys
+// file lives in a home directory the agent cannot read. Only the counts are
+// printed: no key, no comment, no file name.
+func newReadSSHAccessCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:    "read-ssh-access",
+		Short:  "Count how many accounts could still log in over SSH, without printing any key",
+		Args:   cobra.NoArgs,
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			raw, err := confedit.AccessJSON()
+			if err != nil {
+				return fmt.Errorf("could not count the ways into this server: %w", err)
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(raw))
 			return err
 		},
 	}

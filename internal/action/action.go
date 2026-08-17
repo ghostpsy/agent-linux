@@ -119,14 +119,25 @@ const (
 	// listed as hands off. It runs first, so a protected service is never
 	// touched at all — not even for a moment.
 	CheckUnitNotProtected CheckID = "unit_not_protected"
+
+	// CheckSomebodyCanStillLogIn refuses a hardening change that would leave
+	// nobody able to log in.
+	//
+	// The other reachability checks ask whether the port still answers. That is
+	// not the same question, and the difference locked me out of a real machine:
+	// `PermitRootLogin no` on a cloud image left sshd running and port 22
+	// accepting every connection, then refusing every login. This one counts
+	// accounts instead of ports.
+	CheckSomebodyCanStillLogIn CheckID = "somebody_can_still_log_in"
 )
 
 // checks is every judgement the runner knows how to make. A step naming anything
 // else is refused at startup.
 var checks = map[CheckID]bool{
-	CheckPlanKeepsMeReachable: true,
-	CheckKeepsMeReachable:     true,
-	CheckUnitNotProtected:     true,
+	CheckPlanKeepsMeReachable:  true,
+	CheckKeepsMeReachable:      true,
+	CheckUnitNotProtected:      true,
+	CheckSomebodyCanStillLogIn: true,
 }
 
 // Step is one thing a phase does.

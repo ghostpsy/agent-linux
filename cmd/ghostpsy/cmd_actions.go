@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -54,13 +55,13 @@ func printActions(out io.Writer) {
 	for _, s := range confedit.All() {
 		_, _ = fmt.Fprintf(out, "%s\n", s.Key)
 		_, _ = fmt.Fprintf(out, "  Sets           %s in %s\n", s.Directive, s.File)
-		// A setting with no safe value has no pattern to print. Saying so is the
+		// A setting with no safe value has nothing to print. Saying so is the
 		// only honest option: "Allowed values <nil>" is worse than nothing, and it
 		// is what crashed this command the first time such a setting existed.
-		if s.Allow == nil {
+		if len(s.Allow) == 0 {
 			_, _ = fmt.Fprintf(out, "  Allowed values ghostpsy never sets this itself — see the list below\n")
 		} else {
-			_, _ = fmt.Fprintf(out, "  Allowed values %s\n", s.Allow.String())
+			_, _ = fmt.Fprintf(out, "  Allowed values %s\n", strings.Join(s.Allow, ", "))
 		}
 		_, _ = fmt.Fprintf(out, "  Why            %s\n\n", s.Why)
 	}

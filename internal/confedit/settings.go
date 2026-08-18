@@ -15,7 +15,7 @@ package confedit
 
 import (
 	"fmt"
-	"regexp"
+	"slices"
 	"sort"
 )
 
@@ -39,13 +39,17 @@ type Setting struct {
 	Directive string
 	Style     Style
 
-	// Allow is the only value accepted, anchored. Deliberately narrow: the point
-	// of this catalogue is that a bad value cannot be written, not that we would
-	// notice afterwards.
+	// Allow is every value accepted, written out one by one.
 	//
-	// Nil means there is no value of this setting ghostpsy sets itself. The entry
+	// It is a list rather than a pattern because three other things are generated
+	// from it and a pattern cannot be enumerated: the sudo grant needs one line
+	// per value, the shipped drop-in files need one file per value, and the app
+	// needs the values it may offer. `^[3-6]$` cannot produce those; {"3","4",
+	// "5","6"} can.
+	//
+	// Empty means there is no value of this setting ghostpsy sets itself. The entry
 	// exists to explain the change, not to make it — see Dangerous.
-	Allow *regexp.Regexp
+	Allow []string
 
 	// Dangerous is the values ghostpsy explains but never sets, by value.
 	//
@@ -54,6 +58,18 @@ type Setting struct {
 	// change out entirely is not caution, it is unhelpfulness — they will do it
 	// from memory instead. See danger.go.
 	Dangerous map[string]DangerousChange
+
+	// Units are the services that must be reloaded for a change to this file to
+	// take effect, most specific name first.
+	//
+	// This is where the unit name comes from, instead of from the distribution.
+	// internal/action/catalog.go used to pick `ssh` or `sshd` by looking for
+	// /etc/debian_version or /etc/redhat-release — a guess about the machine when the
+	// machine could simply be asked which unit it has.
+	//
+	// Empty is a real answer: apt re-reads apt.conf.d on every periodic run, so
+	// nothing has to be reloaded, and naming a unit would grant a restart nobody needs.
+	Units []string
 
 	// NeedsAWayIn says what must still be true for this change to be safe.
 	//
@@ -96,7 +112,7 @@ func declare(s Setting) {
 	}
 	// A setting that can neither be set nor explained has no purpose, and would
 	// show up on screen as a choice that does nothing.
-	if s.Allow == nil && len(s.Dangerous) == 0 {
+	if len(s.Allow) == 0 && len(s.Dangerous) == 0 {
 		panic("confedit: setting " + s.Key + " can neither be set nor explained")
 	}
 	settings[s.Key] = s
@@ -139,7 +155,7 @@ func Check(key, value string) (Setting, error) {
 		return Setting{}, &danger
 	}
 
-	if s.Allow == nil || !s.Allow.MatchString(value) {
+	if !slices.Contains(s.Allow, value) {
 		return Setting{}, fmt.Errorf(
 			"ghostpsy will not set %s to that value. %s", s.Directive, s.Why)
 	}
@@ -156,6 +172,13 @@ func sortedDangerValues(s Setting) []string {
 	sort.Strings(values)
 	return values
 }
+
+// sshUnits is what the SSH server is called, most specific first.
+//
+// Debian calls it ssh, the RHEL family calls it sshd, and some machines have both
+// names for the same thing. Both are declared and the agent uses whichever is
+// actually there, so nothing has to know which distribution this is.
+var sshUnits = []string{"sshd", "ssh"}
 
 func init() {
 	// SSH. Every value below is one that closes a door; none of them can open
@@ -179,7 +202,8 @@ func init() {
 		File:        sshdConfigPath,
 		Directive:   "PermitRootLogin",
 		Style:       StyleSSH,
-		Allow:       regexp.MustCompile(`^prohibit-password$`),
+		Units:       sshUnits,
+		Allow:       []string{"prohibit-password"},
 		NeedsAWayIn: WayInAnyKey,
 		Why: "It stops somebody logging in as root with a password, and keeps key " +
 			"logins working. Only 'prohibit-password' can be set here.",
@@ -224,6 +248,7 @@ func init() {
 		File:      sshdConfigPath,
 		Directive: "PasswordAuthentication",
 		Style:     StyleSSH,
+		Units:     sshUnits,
 		Why: "It turns off password logins, leaving keys only. ghostpsy never makes " +
 			"this change itself: only you can be sure your own key works, and getting " +
 			"it wrong locks you out of your own server.",
@@ -272,7 +297,8 @@ func init() {
 		File:      sshdConfigPath,
 		Directive: "PermitEmptyPasswords",
 		Style:     StyleSSH,
-		Allow:     regexp.MustCompile(`^no$`),
+		Units:     sshUnits,
+		Allow:     []string{"no"},
 		Why:       "It refuses accounts with no password at all. Only 'no' can be set here.",
 	})
 	declare(Setting{
@@ -280,7 +306,8 @@ func init() {
 		File:      sshdConfigPath,
 		Directive: "X11Forwarding",
 		Style:     StyleSSH,
-		Allow:     regexp.MustCompile(`^no$`),
+		Units:     sshUnits,
+		Allow:     []string{"no"},
 		Why: "It stops SSH forwarding graphical windows, which a server does not " +
 			"need. Only 'no' can be set here.",
 	})
@@ -289,7 +316,8 @@ func init() {
 		File:      sshdConfigPath,
 		Directive: "MaxAuthTries",
 		Style:     StyleSSH,
-		Allow:     regexp.MustCompile(`^[3-6]$`),
+		Units:     sshUnits,
+		Allow:     []string{"3", "4", "5", "6"},
 		Why: "It limits how many times one connection may guess. Only 3 to 6 can " +
 			"be set here, so it can never be raised to something useless.",
 	})
@@ -302,7 +330,7 @@ func init() {
 		File:      aptAutoUpgradesPath,
 		Directive: "APT::Periodic::Update-Package-Lists",
 		Style:     StyleAPTConf,
-		Allow:     regexp.MustCompile(`^1$`),
+		Allow:     []string{"1"},
 		Why:       "It makes the machine check daily for new packages. Only '1' can be set here.",
 	})
 	declare(Setting{
@@ -310,7 +338,7 @@ func init() {
 		File:      aptAutoUpgradesPath,
 		Directive: "APT::Periodic::Unattended-Upgrade",
 		Style:     StyleAPTConf,
-		Allow:     regexp.MustCompile(`^1$`),
+		Allow:     []string{"1"},
 		Why: "It makes the machine install security updates on its own. Only '1' " +
 			"can be set here. This is the one change that stops future problems " +
 			"appearing rather than fixing one that already has.",

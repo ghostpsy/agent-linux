@@ -4,6 +4,7 @@ package confedit
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -89,7 +90,7 @@ func TestEveryDangerousChangeIsFullyDescribed(t *testing.T) {
 				t.Errorf("%s=%s is on the dangerous list but not fully described", s.Key, value)
 			}
 			// It must not also be a value we would set ourselves. One or the other.
-			if s.Allow != nil && s.Allow.MatchString(value) {
+			if slices.Contains(s.Allow, value) {
 				t.Errorf("%s=%s is both allowed and dangerous, which cannot both be true",
 					s.Key, value)
 			}
@@ -108,7 +109,7 @@ func TestASettingCanBeAdviceOnly(t *testing.T) {
 	if !known {
 		t.Fatal("the setting has to stay on the list, or the app cannot offer the advice")
 	}
-	if s.Allow != nil {
+	if len(s.Allow) > 0 {
 		t.Fatal("there is no value of this setting ghostpsy sets itself")
 	}
 	if len(s.Dangerous) == 0 {
@@ -156,7 +157,7 @@ func TestAnAdviceOnlySettingRefusesEverythingElsePlainly(t *testing.T) {
 // That is an entry with no purpose, and it would show up as a dead choice on screen.
 func TestEverySettingCanEitherBeSetOrExplained(t *testing.T) {
 	for _, s := range All() {
-		if s.Allow == nil && len(s.Dangerous) == 0 {
+		if len(s.Allow) == 0 && len(s.Dangerous) == 0 {
 			t.Errorf("%s can neither be set nor explained, so it should not be on the list", s.Key)
 		}
 	}
@@ -167,7 +168,7 @@ func TestEverySettingCanEitherBeSetOrExplained(t *testing.T) {
 // configuration, and dead configuration is where a wrong assumption hides.
 func TestNoAdviceOnlySettingStillDeclaresAWayInRule(t *testing.T) {
 	for _, s := range All() {
-		if s.Allow == nil && s.NeedsAWayIn != WayInNothing {
+		if len(s.Allow) == 0 && s.NeedsAWayIn != WayInNothing {
 			t.Errorf("%s is advice only, so its way-in rule can never fire", s.Key)
 		}
 	}

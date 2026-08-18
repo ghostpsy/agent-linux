@@ -19,7 +19,7 @@ import (
 func TestActionsPrintsWithoutCrashingOnASettingThatHasNoSafeValue(t *testing.T) {
 	advisory := 0
 	for _, s := range confedit.All() {
-		if s.Allow == nil {
+		if len(s.Allow) == 0 {
 			advisory++
 		}
 	}

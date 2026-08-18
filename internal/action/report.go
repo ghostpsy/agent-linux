@@ -30,6 +30,23 @@ type CommandRun struct {
 	Stderr   string `json:"stderr"`
 	ExitCode int    `json:"exit_code"`
 	Millis   int64  `json:"duration_ms"`
+
+	// Advice is set by a step that refused a change as too dangerous, and carries
+	// the way to make it by hand. The runner lifts it onto the action so the app
+	// does not have to hunt for it among the commands.
+	Advice *DoItYourself `json:"-"`
+}
+
+// DoItYourself is a change ghostpsy refused to make, with the way to make it.
+//
+// It exists because refusing is not the same as helping. Somebody who asked for a
+// change still wants it, and if all we say is no, they go and do it from memory
+// without the one check that would have saved them. So the refusal carries the
+// risk, the thing to confirm first, and the commands — ready to paste.
+type DoItYourself struct {
+	Risk       string `json:"risk"`
+	CheckFirst string `json:"check_first"`
+	Script     string `json:"script"`
 }
 
 // ActionReport is what happened for one action.
@@ -50,6 +67,11 @@ type ActionReport struct {
 	// FreedBytes is what the dry run said would be freed, where the action frees
 	// space. Zero for everything else.
 	FreedBytes int64 `json:"freed_bytes,omitempty"`
+
+	// DoItYourself is set when this action was refused because it is too dangerous
+	// for us to carry out, and carries the way to do it by hand. Absent for every
+	// other kind of refusal: explaining how to weaken a server is not help.
+	DoItYourself *DoItYourself `json:"do_it_yourself,omitempty"`
 }
 
 // BackupReport is the honest story of the backup.

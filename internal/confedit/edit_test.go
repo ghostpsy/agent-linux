@@ -207,12 +207,21 @@ func TestRootLoginCannotBeTurnedOffCompletelyUntilWeCanProveSomebodyElseCanGetIn
 	}
 }
 
-// The refusal has to explain itself. "Not allowed" without a reason reads like a
-// bug in ghostpsy rather than a deliberate protection.
-func TestTheRefusalExplainsWhyRootLoginCannotBeTurnedOffCompletely(t *testing.T) {
+// The refusal has to explain itself, and hand over the work.
+//
+// "Not allowed" without a reason reads like a bug in ghostpsy rather than a
+// deliberate protection — and it leaves somebody who still wants the change to do
+// it from memory. See danger.go: the answer is "not by us, and here is how".
+func TestTheRefusalExplainsItselfAndHandsOverTheCommands(t *testing.T) {
 	_, err := Check("ssh.permit_root_login", "no")
 
-	if err == nil || !strings.Contains(err.Error(), "prohibit-password") {
-		t.Fatalf("expected the refusal to point at the safe value, got: %v", err)
+	if err == nil {
+		t.Fatal("expected 'no' to be refused")
+	}
+	message := err.Error()
+	for _, want := range []string{"only account with an SSH key", "Check first", "sshd -t"} {
+		if !strings.Contains(message, want) {
+			t.Errorf("expected the refusal to contain %q, got:\n%s", want, message)
+		}
 	}
 }

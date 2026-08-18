@@ -57,9 +57,37 @@ func printActions(out io.Writer) {
 		_, _ = fmt.Fprintf(out, "  Why it is safe %s\n\n", s.Why)
 	}
 
+	printDangerous(out)
+
 	_, _ = fmt.Fprintf(out, "To stop ghostpsy changing anything: create /etc/ghostpsy/%s\n",
 		action.SwitchFileName)
 	_, _ = fmt.Fprintf(out, "To protect one service: add its name to %s\n", action.ProtectedFileName)
+}
+
+// printDangerous lists what ghostpsy will explain but never do.
+//
+// It belongs in the same output as the rest. A person deciding whether to trust
+// this agent is as interested in where it stops as in what it does — and somebody
+// who wants one of these changes gets the commands here, without asking us.
+func printDangerous(out io.Writer) {
+	dangerous := confedit.Dangerous()
+	if len(dangerous) == 0 {
+		return
+	}
+
+	_, _ = fmt.Fprintf(out, "It will never make these changes itself. "+
+		"Only you can judge whether your server survives them, so here is how to do "+
+		"them by hand:\n\n")
+	for _, d := range dangerous {
+		_, _ = fmt.Fprintf(out, "%s %s\n", d.Setting, d.Value)
+		_, _ = fmt.Fprintf(out, "  The risk      %s\n", d.Risk)
+		_, _ = fmt.Fprintf(out, "  Check first   %s\n", d.CheckFirst)
+		_, _ = fmt.Fprintf(out, "  Commands\n")
+		for _, line := range d.Commands {
+			_, _ = fmt.Fprintf(out, "    %s\n", line)
+		}
+		_, _ = fmt.Fprintln(out)
+	}
 }
 
 func undoWords(r action.Reversibility) string {

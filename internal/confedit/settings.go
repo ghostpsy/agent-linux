@@ -44,6 +44,14 @@ type Setting struct {
 	// notice afterwards.
 	Allow *regexp.Regexp
 
+	// Dangerous is the values ghostpsy explains but never sets, by value.
+	//
+	// A change can be worth making and still be one we must not make: only the
+	// person who knows the server can judge whether it survives. Leaving such a
+	// change out entirely is not caution, it is unhelpfulness — they will do it
+	// from memory instead. See danger.go.
+	Dangerous map[string]DangerousChange
+
 	// NeedsAWayIn says what must still be true for this change to be safe.
 	//
 	// Closing a door is not automatically safe. Turning off password logins on a
@@ -114,11 +122,31 @@ func Check(key, value string) (Setting, error) {
 	if !known {
 		return Setting{}, fmt.Errorf("%q is not a setting ghostpsy is allowed to change", key)
 	}
+
+	// The dangerous list first. A value on it gets the advice rather than a plain
+	// refusal, and a caller can pass that straight on to the person who asked.
+	if danger, listed := s.Dangerous[value]; listed {
+		danger.Setting = s.Directive
+		danger.Value = value
+		return Setting{}, &danger
+	}
+
 	if !s.Allow.MatchString(value) {
 		return Setting{}, fmt.Errorf(
 			"ghostpsy will not set %s to that value. %s", s.Directive, s.Why)
 	}
 	return s, nil
+}
+
+// sortedDangerValues lists a setting's dangerous values in a stable order, so the
+// printed list and the API's answer do not shuffle between calls.
+func sortedDangerValues(s Setting) []string {
+	values := make([]string, 0, len(s.Dangerous))
+	for value := range s.Dangerous {
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	return values
 }
 
 func init() {
@@ -146,8 +174,36 @@ func init() {
 		Allow:       regexp.MustCompile(`^prohibit-password$`),
 		NeedsAWayIn: WayInAnyKey,
 		Why: "It stops somebody logging in as root with a password, and keeps key " +
-			"logins working. Only 'prohibit-password' can be set here — never 'no', " +
-			"which on a server where root is the only account would lock everybody out.",
+			"logins working. Only 'prohibit-password' can be set here.",
+		Dangerous: map[string]DangerousChange{
+			"no": {
+				Risk: "on a server where root is the only account with an SSH key, this " +
+					"refuses every login and leaves nobody able to get in. The server looks " +
+					"perfectly healthy afterwards: it accepts the connection and then " +
+					"refuses the login, so the problem only shows up when somebody needs to " +
+					"log in. Only you can tell whether this server has another way in",
+				CheckFirst: "open a second SSH session as a non-root user now, and keep it " +
+					"open while you do this. If you cannot, do not do this",
+				Commands: []string{
+					"# 1. Keep a second session open before you start.",
+					"cp /etc/ssh/sshd_config /etc/ssh/sshd_config.before-hardening",
+					"",
+					"# 2. Make the change.",
+					"sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config",
+					"grep -q '^PermitRootLogin no' /etc/ssh/sshd_config || echo 'PermitRootLogin no' >> /etc/ssh/sshd_config",
+					"",
+					"# 3. Check it before anything reads it. Stop here if this fails.",
+					"sshd -t",
+					"",
+					"# 4. Apply it, then log in again from a NEW terminal before closing this one.",
+					"systemctl reload sshd || systemctl reload ssh",
+					"sshd -T | grep -i permitrootlogin",
+					"",
+					"# If you are locked out, the way back is:",
+					"#   cp /etc/ssh/sshd_config.before-hardening /etc/ssh/sshd_config && systemctl reload sshd",
+				},
+			},
+		},
 	})
 	declare(Setting{
 		Key:         "ssh.password_authentication",

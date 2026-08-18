@@ -483,3 +483,52 @@ func TestAValueTheSettingDoesNotAllowIsRefusedByTheFirstStep(t *testing.T) {
 		t.Fatal("nothing should describe a change that cannot be made")
 	}
 }
+
+// A dangerous change is refused and handed over, not just refused.
+//
+// The person still wants it. If the report only says no, they go and do it from
+// memory instead — at midnight, without the check that would have saved them. So
+// the refusal carries the commands, and the report carries them somewhere the app
+// can render as a copy-paste block.
+func TestADangerousChangeIsRefusedWithTheCommandsToDoItByHand(t *testing.T) {
+	report := Run(context.Background(), testDeps(&fakeExec{}), Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.permit_root_login", "value": "no",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("ghostpsy must never make this change itself")
+	}
+
+	advice := report.Actions[0].DoItYourself
+	if advice == nil {
+		t.Fatal("a dangerous change has to hand over the commands, or the refusal is just unhelpful")
+	}
+	if advice.Risk == "" || advice.CheckFirst == "" || advice.Script == "" {
+		t.Fatalf("the advice is incomplete: %+v", advice)
+	}
+	if !strings.Contains(advice.Script, "sshd -t") {
+		t.Errorf("the commands must check the config before reloading it, got:\n%s", advice.Script)
+	}
+}
+
+// A refusal that is not a dangerous change carries no advice. Offering "here is
+// how to do it yourself" for a value that would weaken the server would be worse
+// than saying nothing.
+func TestAnOrdinaryRefusalCarriesNoAdvice(t *testing.T) {
+	report := Run(context.Background(), testDeps(&fakeExec{}), Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.permit_root_login", "value": "yes",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected 'yes' to be refused")
+	}
+	if report.Actions[0].DoItYourself != nil {
+		t.Fatal("'yes' opens a door — we do not explain how to do that")
+	}
+}

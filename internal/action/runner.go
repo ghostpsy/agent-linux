@@ -188,6 +188,7 @@ func dryRun(ctx context.Context, deps Deps, plans []plan, report Report) Report 
 			// right there in what failed.
 			report.Actions[i].Refused = whyItStopped(runs,
 				"the preview did not work, so nothing was changed")
+			report.Actions[i].DoItYourself = adviceFrom(runs)
 		}
 		report.Actions[i].FreedBytes = freedFrom(plans[i], runs)
 	}
@@ -409,6 +410,19 @@ func whyItStopped(runs []CommandRun, fallback string) string {
 		return reason
 	}
 	return fallback
+}
+
+// adviceFrom lifts a step's hand-it-over advice onto the action.
+//
+// The app should not have to hunt through a list of commands to find the one thing
+// the person needs, so it is carried where they will look.
+func adviceFrom(runs []CommandRun) *DoItYourself {
+	for _, run := range runs {
+		if run.Advice != nil {
+			return run.Advice
+		}
+	}
+	return nil
 }
 
 // markNotReached says so out loud for the actions after a failure.

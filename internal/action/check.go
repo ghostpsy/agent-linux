@@ -4,6 +4,7 @@ package action
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -219,6 +220,16 @@ func somebodyCanStillLogIn(ctx context.Context, deps Deps, p plan, why string) (
 	if err != nil {
 		run.Stderr = err.Error()
 		run.ExitCode = 1
+		// A change that is dangerous rather than wrong is handed over instead of
+		// simply refused — see internal/confedit/danger.go.
+		var danger *confedit.DangerousChange
+		if errors.As(err, &danger) {
+			run.Advice = &DoItYourself{
+				Risk:       danger.Risk,
+				CheckFirst: danger.CheckFirst,
+				Script:     danger.Script(),
+			}
+		}
 		return run, false
 	}
 	if setting.NeedsAWayIn == confedit.WayInNothing {

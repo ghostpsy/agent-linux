@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
 // catalog is every action the agent will carry out. Nothing outside it can run.
@@ -140,9 +138,8 @@ func checkStep(a Action, step Step) error {
 		}
 		return nil
 	}
-	if !privexec.Declared(step.Command) {
-		return fmt.Errorf("action %q step %q names command %q, which privexec does not declare",
-			a.Type, step.Why, step.Command)
+	if err := checkStepCommand(a, step); err != nil {
+		return err
 	}
 	for name := range step.Args {
 		if value := step.Args[name]; isParamRef(value) && !declaresParam(a, refName(value)) {

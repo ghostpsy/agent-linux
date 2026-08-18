@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ghostpsy/agent-linux/internal/confedit"
+	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
 // The judgements no single command can make.
@@ -34,6 +35,8 @@ func runCheck(ctx context.Context, deps Deps, p plan, step Step, before []Comman
 		return keepsMeReachable(deps, step.Why)
 	case CheckUnitNotProtected:
 		return unitNotProtected(deps, p, step.Why)
+	case CheckServiceIsOneWeConfigure:
+		return serviceIsOneWeConfigure(p, step.Why)
 	}
 	return CommandRun{
 		Why:      step.Why,
@@ -257,4 +260,37 @@ func somebodyCanStillLogIn(ctx context.Context, deps Deps, p plan, why string) (
 		"%d account(s) on this server can log in with an SSH key, %d of them not root, "+
 			"so this change leaves a way in", access.AccountsWithKeys, access.NonRootAccountsWithKeys)
 	return run, true
+}
+
+// serviceIsOneWeConfigure refuses a service ghostpsy does not configure, with the
+// commands to restart it by hand.
+//
+// The grant is the source of truth, not a second list: if there is no declared
+// command to restart this unit, ghostpsy cannot restart it, and saying so here means
+// the answer comes from the preview rather than after somebody approves a plan.
+func serviceIsOneWeConfigure(p plan, why string) (CommandRun, bool) {
+	unit := p.values["unit"]
+	run := CommandRun{Why: why, Display: "ghostpsy check " + string(CheckServiceIsOneWeConfigure)}
+
+	if privexec.Declared(privexec.ServiceRestart(unit)) {
+		run.Stdout = fmt.Sprintf("ghostpsy configures %s, so it knows what a restart affects", unit)
+		return run, true
+	}
+
+	run.Stderr = fmt.Sprintf("ghostpsy does not configure %s, so it will not restart it. "+
+		"It restarts only services whose configuration it writes, because it cannot tell what a "+
+		"restart of anything else would interrupt", unit)
+	run.ExitCode = 1
+	run.Advice = &DoItYourself{
+		Risk: fmt.Sprintf("restarting %s drops whatever it is doing right now. ghostpsy cannot see "+
+			"what that is — requests being served, a job half finished, a connection somebody is using", unit),
+		CheckFirst: fmt.Sprintf("read `systemctl status %s` and decide whether an interruption is "+
+			"acceptable at this moment", unit),
+		Script: strings.Join([]string{
+			fmt.Sprintf("sudo systemctl status %s     # read this first", unit),
+			fmt.Sprintf("sudo systemctl restart %s", unit),
+			fmt.Sprintf("sudo systemctl is-active %s   # confirm it stayed up", unit),
+		}, "\n"),
+	}
+	return run, false
 }

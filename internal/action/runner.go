@@ -357,16 +357,24 @@ func runStep(ctx context.Context, deps Deps, p plan, step Step, before []Command
 		return CommandRun{Why: step.Why, Stderr: err.Error(), ExitCode: -1}, false
 	}
 
+	// Which declared command to run can depend on what was asked for, because the
+	// grant lists one command per possible change rather than one command with a
+	// wildcard. A combination the grant does not cover stops here, and says so.
+	command, err := stepCommand(step, p.values)
+	if err != nil {
+		return CommandRun{Why: step.Why, Stderr: err.Error(), ExitCode: -1}, false
+	}
+
 	stepCtx, cancel := context.WithTimeout(ctx, stepTimeout)
 	defer cancel()
 
 	started := time.Now()
-	res, runErr := deps.Exec(stepCtx, step.Command, values)
+	res, runErr := deps.Exec(stepCtx, command, values)
 	elapsed := time.Since(started)
 
 	run := CommandRun{
 		Why:      step.Why,
-		Display:  privexec.Display(step.Command, values),
+		Display:  privexec.Display(command, values),
 		Stdout:   strings.TrimRight(string(res.Stdout), "\n"),
 		Stderr:   strings.TrimRight(string(res.Stderr), "\n"),
 		ExitCode: res.ExitCode,

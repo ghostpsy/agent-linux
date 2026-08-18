@@ -131,7 +131,7 @@ func TestHardenSSHChecksTheConfigBeforeAskingSshdToUseIt(t *testing.T) {
 	// The only reload allowed here is the one that follows the rollback. A reload
 	// before the file was put back would be sshd reading a configuration it had
 	// already said no to.
-	if ranAfter(f, privexec.ServiceReload, privexec.ConfigRestore) {
+	if ranAfter(f, privexec.ServiceReload("sshd"), privexec.ConfigRestore) {
 		t.Fatal("sshd was asked to read a configuration it had already refused")
 	}
 	if !ranCommand(f, privexec.ConfigRestore) {
@@ -165,17 +165,17 @@ func TestHardenSSHPutsTheFileBackIfTheMachineStopsAnswering(t *testing.T) {
 func TestRestartFailedServiceLeavesAProtectedServiceAlone(t *testing.T) {
 	f := &fakeExec{}
 	deps := testDeps(f)
-	deps.Protected = func() ([]string, error) { return []string{"postgresql"}, nil }
+	deps.Protected = func() ([]string, error) { return []string{"sshd"}, nil }
 
 	report := Run(context.Background(), deps, Job{
 		Mode:    ModeRun,
-		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "postgresql"}}},
+		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "sshd"}}},
 	})
 
 	if report.OK {
 		t.Fatal("expected a protected service to be left alone")
 	}
-	if ranCommand(f, privexec.ServiceRestart) {
+	if ranCommand(f, privexec.ServiceRestart("sshd")) {
 		t.Fatal("a protected service was restarted")
 	}
 	if !mentionsInOutput(report, "protected list") {
@@ -183,20 +183,20 @@ func TestRestartFailedServiceLeavesAProtectedServiceAlone(t *testing.T) {
 	}
 }
 
-// postgresql.service and postgresql are the same service. A list that only
-// matches one spelling protects nothing.
+// sshd.service and sshd are the same service. A list that only matches one
+// spelling protects nothing.
 func TestTheProtectedListIgnoresTheServiceSuffix(t *testing.T) {
 	f := &fakeExec{}
 	deps := testDeps(f)
-	deps.Protected = func() ([]string, error) { return []string{"postgresql.service"}, nil }
+	deps.Protected = func() ([]string, error) { return []string{"sshd.service"}, nil }
 
 	report := Run(context.Background(), deps, Job{
 		Mode:    ModeRun,
-		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "postgresql"}}},
+		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "sshd"}}},
 	})
 
-	if report.OK || ranCommand(f, privexec.ServiceRestart) {
-		t.Fatal("expected postgresql.service on the list to protect postgresql")
+	if report.OK || ranCommand(f, privexec.ServiceRestart("sshd")) {
+		t.Fatal("expected sshd.service on the list to protect sshd")
 	}
 }
 
@@ -210,13 +210,13 @@ func TestARestartThatDoesNotHoldIsStoppedAgain(t *testing.T) {
 
 	report := Run(context.Background(), testDeps(f), Job{
 		Mode:    ModeRun,
-		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "nginx"}}},
+		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "sshd"}}},
 	})
 
 	if report.OK {
 		t.Fatal("expected a service that did not stay up to fail the job")
 	}
-	if !ranCommand(f, privexec.ServiceStop) {
+	if !ranCommand(f, privexec.ServiceStop("sshd")) {
 		t.Fatal("expected the service to be stopped again, which is how it was found")
 	}
 }
@@ -248,9 +248,11 @@ func TestEveryCommandAShippedActionUsesIsDeclaredToPrivexec(t *testing.T) {
 					if step.Command == "" {
 						continue
 					}
-					if !privexec.Declared(step.Command) {
-						t.Errorf("action %q uses %q, which privexec does not declare",
-							a.Type, step.Command)
+					// checkStepCommand rather than Declared: a command may name the
+					// action's parameters, because the grant lists one command per
+					// possible change instead of one command with a wildcard.
+					if err := checkStepCommand(a, step); err != nil {
+						t.Errorf("action %q: %v", a.Type, err)
 					}
 				}
 			}
@@ -532,5 +534,60 @@ func TestAnOrdinaryRefusalCarriesNoAdvice(t *testing.T) {
 	}
 	if report.Actions[0].DoItYourself != nil {
 		t.Fatal("'yes' opens a door — we do not explain how to do that")
+	}
+}
+
+// Refusing is not the same as helping.
+//
+// ghostpsy restarts only services it configures, because it cannot see what nginx is
+// serving or what a restart of it interrupts. But somebody whose nginx has failed
+// still wants it running, and if all we say is no they will do it from memory without
+// looking at the status first. So the refusal carries the commands.
+func TestRestartingAServiceWeDoNotConfigureHandsOverTheCommands(t *testing.T) {
+	f := &fakeExec{}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode:    ModeDryRun,
+		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "nginx"}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected a service ghostpsy does not configure to be refused")
+	}
+	if len(report.Actions) == 0 || report.Actions[0].DoItYourself == nil {
+		t.Fatalf("the refusal carried no way to do it by hand:\n%s", allOutput(report))
+	}
+
+	advice := report.Actions[0].DoItYourself
+	// The status first. Copying the restart without the look is copying the risk.
+	if !strings.Contains(advice.Script, "systemctl status nginx") {
+		t.Errorf("the commands do not look at the service first:\n%s", advice.Script)
+	}
+	if !strings.Contains(advice.Script, "systemctl restart nginx") {
+		t.Errorf("the commands do not restart the service:\n%s", advice.Script)
+	}
+	if advice.Risk == "" || advice.CheckFirst == "" {
+		t.Errorf("the advice does not say what the risk is or what to confirm: %+v", advice)
+	}
+	// And nothing was run.
+	if len(f.ran) != 0 {
+		t.Errorf("commands ran despite the refusal: %v", f.ran)
+	}
+}
+
+// The other half of the same rule: a service we do configure is still restarted.
+func TestRestartingAServiceWeConfigureStillWorks(t *testing.T) {
+	f := &fakeExec{}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "restart_failed_service", Params: map[string]string{"unit": "sshd"}}},
+	})
+
+	if !report.OK {
+		t.Fatalf("expected sshd to be restartable, got:\n%s", allOutput(report))
+	}
+	if !ranCommand(f, privexec.ServiceRestart("sshd")) {
+		t.Error("sshd was not restarted")
 	}
 }

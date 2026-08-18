@@ -142,8 +142,7 @@ func enableFirewall() Action {
 					},
 					{
 						Why:     "start the firewall and make it start at boot",
-						Command: privexec.ServiceEnableNow,
-						Args:    map[string]string{"unit": "firewalld"},
+						Command: privexec.ServiceEnableNow("firewalld"),
 					},
 					{
 						Why:     "make the firewall read the rules it was just given",
@@ -163,8 +162,7 @@ func enableFirewall() Action {
 				Undo: []Step{
 					{
 						Why:     "stop the firewall again",
-						Command: privexec.ServiceDisableNow,
-						Args:    map[string]string{"unit": "firewalld"},
+						Command: privexec.ServiceDisableNow("firewalld"),
 					},
 					{
 						Why:     "take the port rule back out",
@@ -226,8 +224,7 @@ func enableAutomaticSecurityUpdates() Action {
 					},
 					{
 						Why:     "start the service that does the work",
-						Command: privexec.ServiceEnableNow,
-						Args:    map[string]string{"unit": "unattended-upgrades"},
+						Command: privexec.ServiceEnableNow("unattended-upgrades"),
 					},
 				},
 				Verify: []Step{
@@ -268,8 +265,7 @@ func enableAutomaticSecurityUpdates() Action {
 				Run: []Step{
 					{
 						Why:     "switch on the timer that installs updates",
-						Command: privexec.ServiceEnableNow,
-						Args:    map[string]string{"unit": "dnf-automatic.timer"},
+						Command: privexec.ServiceEnableNow("dnf-automatic.timer"),
 					},
 				},
 				Verify: []Step{
@@ -282,8 +278,7 @@ func enableAutomaticSecurityUpdates() Action {
 				Undo: []Step{
 					{
 						Why:     "switch the timer off again",
-						Command: privexec.ServiceDisableNow,
-						Args:    map[string]string{"unit": "dnf-automatic.timer"},
+						Command: privexec.ServiceDisableNow("dnf-automatic.timer"),
 					},
 				},
 			},
@@ -321,20 +316,22 @@ func hardenSSHConfig() Action {
 		UndoWhy: "sshd_config is put back byte for byte from the copy taken before it was " +
 			"edited, and the SSH server is asked to read it again.",
 		Variants: []Variant{
-			sshVariant("/etc/debian_version", "ssh"),
-			sshVariant("/etc/redhat-release", "sshd"),
+			sshVariant("sshd"),
+			sshVariant("ssh"),
 		},
 	}
 }
 
-// sshVariant builds the SSH action for one family, which differ only in what the
-// service is called: ssh on Debian and Ubuntu, sshd on the RHEL family.
+// sshVariant builds the SSH action for one name of the SSH service.
 //
-// A machine that is neither gets an honest refusal rather than a reload of a
-// service that does not exist.
-func sshVariant(needs, unit string) Variant {
+// Debian and Ubuntu call it ssh, the RHEL family calls it sshd. This used to be
+// decided by looking for /etc/debian_version or /etc/redhat-release — a guess about
+// the machine when the machine can simply be asked which unit file it has. A server
+// with neither gets an honest refusal rather than a reload of a service that is not
+// there.
+func sshVariant(unit string) Variant {
 	return Variant{
-		Needs:  needs,
+		Needs:  privexec.UnitPath(unit),
 		Backup: BackupPlan{Kind: BackupCopyFiles, Target: "/etc/ssh/sshd_config"},
 		DryRun: []Step{
 			{
@@ -364,8 +361,7 @@ func sshVariant(needs, unit string) Variant {
 			},
 			{
 				Why:     "ask the SSH server to read it, without dropping anybody's session",
-				Command: privexec.ServiceReload,
-				Args:    map[string]string{"unit": unit},
+				Command: privexec.ServiceReload(unit),
 			},
 		},
 		Verify: []Step{
@@ -392,8 +388,7 @@ func sshVariant(needs, unit string) Variant {
 			},
 			{
 				Why:     "ask the SSH server to read the old file again",
-				Command: privexec.ServiceReload,
-				Args:    map[string]string{"unit": unit},
+				Command: privexec.ServiceReload(unit),
 			},
 		},
 	}
@@ -423,6 +418,10 @@ func restartFailedService() Action {
 		Variants: []Variant{{
 			DryRun: []Step{
 				{
+					Why:   "check this is a service ghostpsy configures, and so understands",
+					Check: CheckServiceIsOneWeConfigure,
+				},
+				{
 					// In the preview as well as in the run. Only in the run meant a
 					// person approved a plan, waited, and was then told it was never
 					// allowed — a round trip to learn something we already knew.
@@ -437,6 +436,10 @@ func restartFailedService() Action {
 			},
 			Run: []Step{
 				{
+					Why:   "check this is a service ghostpsy configures, and so understands",
+					Check: CheckServiceIsOneWeConfigure,
+				},
+				{
 					// And again here, because the list can change between the
 					// preview and the run, and the machine's answer at the moment
 					// of acting is the one that counts.
@@ -445,8 +448,7 @@ func restartFailedService() Action {
 				},
 				{
 					Why:     "restart the service",
-					Command: privexec.ServiceRestart,
-					Args:    map[string]string{"unit": "{unit}"},
+					Command: privexec.ServiceRestart("{unit}"),
 				},
 			},
 			Verify: []Step{
@@ -459,8 +461,7 @@ func restartFailedService() Action {
 			Undo: []Step{
 				{
 					Why:     "stop the service again",
-					Command: privexec.ServiceStop,
-					Args:    map[string]string{"unit": "{unit}"},
+					Command: privexec.ServiceStop("{unit}"),
 				},
 			},
 		}},

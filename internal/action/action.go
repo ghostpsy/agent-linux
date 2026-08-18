@@ -129,15 +129,26 @@ const (
 	// accepting every connection, then refusing every login. This one counts
 	// accounts instead of ports.
 	CheckSomebodyCanStillLogIn CheckID = "somebody_can_still_log_in"
+
+	// CheckServiceIsOneWeConfigure refuses to restart a service ghostpsy does not
+	// configure, and hands over the commands instead.
+	//
+	// The rule is not only about the sudo grant. We cannot see what nginx is
+	// serving or what a restart of it interrupts, so "systemd says it failed, so
+	// restart it" is a guess dressed up as a fix. Where we wrote the configuration
+	// we know what changed and why; where we did not, the honest answer is the
+	// command and a look at the status first.
+	CheckServiceIsOneWeConfigure CheckID = "service_is_one_we_configure"
 )
 
 // checks is every judgement the runner knows how to make. A step naming anything
 // else is refused at startup.
 var checks = map[CheckID]bool{
-	CheckPlanKeepsMeReachable:  true,
-	CheckKeepsMeReachable:      true,
-	CheckUnitNotProtected:      true,
-	CheckSomebodyCanStillLogIn: true,
+	CheckPlanKeepsMeReachable:    true,
+	CheckKeepsMeReachable:        true,
+	CheckUnitNotProtected:        true,
+	CheckSomebodyCanStillLogIn:   true,
+	CheckServiceIsOneWeConfigure: true,
 }
 
 // Step is one thing a phase does.

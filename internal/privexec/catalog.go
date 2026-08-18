@@ -63,15 +63,12 @@ const (
 	ConfigRestore ID = "config.restore"
 	ConfigVerify  ID = "config.verify"
 
-	// Services.
-	ServiceStatus     ID = "service.status"
-	ServiceIsActive   ID = "service.is_active"
-	ServiceIsEnabled  ID = "service.is_enabled"
-	ServiceRestart    ID = "service.restart"
-	ServiceStop       ID = "service.stop"
-	ServiceReload     ID = "service.reload"
-	ServiceEnableNow  ID = "service.enable_now"
-	ServiceDisableNow ID = "service.disable_now"
+	// Services. Restarting, stopping and switching on are declared one command per
+	// service in service.go, from the list of services ghostpsy actually configures —
+	// `systemctl restart *` was a grant to restart anything on the machine.
+	ServiceStatus    ID = "service.status"
+	ServiceIsActive  ID = "service.is_active"
+	ServiceIsEnabled ID = "service.is_enabled"
 
 	// SSH. Checking the config before reloading is what stops a bad edit from
 	// leaving a server nobody can log into.
@@ -294,26 +291,6 @@ func declareServiceCommands() {
 		Unprivileged: true,
 	})
 
-	declare(ServiceRestart, Command{
-		Binary: "systemctl", Args: []string{"restart", "{unit}"},
-		Why: "restart one service that has stopped or failed", Params: unit, Env: localeC,
-	})
-	declare(ServiceStop, Command{
-		Binary: "systemctl", Args: []string{"stop", "{unit}"},
-		Why: "stop one service again, to undo a restart", Params: unit, Env: localeC,
-	})
-	declare(ServiceReload, Command{
-		Binary: "systemctl", Args: []string{"reload", "{unit}"},
-		Why: "make one service re-read its configuration, without stopping it", Params: unit, Env: localeC,
-	})
-	declare(ServiceEnableNow, Command{
-		Binary: "systemctl", Args: []string{"enable", "--now", "{unit}"},
-		Why: "start one service and make it start at boot", Params: unit, Env: localeC,
-	})
-	declare(ServiceDisableNow, Command{
-		Binary: "systemctl", Args: []string{"disable", "--now", "{unit}"},
-		Why: "stop one service and stop it starting at boot, to undo the above", Params: unit, Env: localeC,
-	})
 }
 
 func declareFirewallCommands() {

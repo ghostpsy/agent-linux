@@ -44,18 +44,49 @@ func Preview(s Setting, value string) (string, error) {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n", filePath(s))
-	if current, found := Value(s, content); found {
-		fmt.Fprintf(&b, "  - %s\n", directiveLine(s, current))
-	} else {
-		fmt.Fprintf(&b, "  - nothing: %s is not set, so the built-in default applies\n", s.Directive)
+	if _, found := Value(s, content); !found {
+		fmt.Fprintf(&b, "%s does not set %s at present, so the built-in default applies.\n\n",
+			filePath(s), s.Directive)
 	}
-	fmt.Fprintf(&b, "  + %s\n", directiveLine(s, value))
-	fmt.Fprintf(&b, "\nA copy of the file is written to %s first, and that copy is what an undo puts back.\n",
-		filePath(s)+BackupSuffix)
-	fmt.Fprintf(&b, "%d lines before, %d after. Nothing else in the file is touched.\n",
-		countLines(content), countLines(after))
+	writeSteps(&b, s, false)
+	b.WriteString(unifiedDiff(filePath(s), content, after))
+	writeRecipe(&b, s, value, content)
 	return b.String(), nil
+}
+
+// writeSteps lists the operations ghostpsy performs, in the order it performs them.
+//
+// It exists because the copy-aside used to appear only in the by-hand recipe, under a
+// heading saying we do not run those commands — so the one step that makes the change
+// reversible looked hypothetical. Every operation we perform has to be visible as ours,
+// or "you can see exactly what we do" is not a true claim.
+//
+// The order is part of the information: the copy exists before the write, which is why
+// an undo is always possible.
+func writeSteps(b *strings.Builder, s Setting, done bool) {
+	path := filePath(s)
+	tense := "will do"
+	if done {
+		tense = "did"
+	}
+
+	fmt.Fprintf(b, "ghostpsy does this itself — it %s:\n", tense)
+	fmt.Fprintf(b, "  1. copy %s to %s\n", path, path+BackupSuffix)
+	fmt.Fprintf(b, "  2. replace %s with the version below, written whole to a temporary file "+
+		"in the same directory and then moved into place, so a half-written file is impossible\n\n",
+		path)
+}
+
+// writeRecipe adds the by-hand version of the change.
+//
+// It is here rather than left to the screen because only this package knows which
+// line is being changed and whether it is already there. A person who wants to check
+// what we did, or do it themselves, gets both without asking anybody.
+func writeRecipe(b *strings.Builder, s Setting, value, content string) {
+	fmt.Fprintf(b, "\n# %s\n", explainWhatWeDid)
+	for _, command := range equivalentCommands(s, value, content) {
+		fmt.Fprintf(b, "%s\n", command)
+	}
 }
 
 // Apply takes the copy and makes the change.
@@ -86,8 +117,14 @@ func Apply(s Setting, value string) (string, error) {
 		return "", fmt.Errorf("could not write %s: %w", filePath(s), err)
 	}
 
-	return fmt.Sprintf("%s now says %s. The file it replaced is at %s.",
-		filePath(s), directiveLine(s, value), filePath(s)+BackupSuffix), nil
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s now says %s.\n\n", filePath(s), directiveLine(s, value))
+	writeSteps(&b, s, true)
+	// The diff of what really changed, so the result can be checked against the
+	// preview that was approved rather than taken on trust.
+	b.WriteString(unifiedDiff(filePath(s), content, after))
+	writeRecipe(&b, s, value, content)
+	return b.String(), nil
 }
 
 // Restore puts back the copy Apply took.
@@ -114,7 +151,21 @@ func Restore(s Setting) (string, error) {
 	// to put back something it already did.
 	_ = os.Remove(backup)
 
-	return fmt.Sprintf("%s is back to what it was before this job.", filePath(s)), nil
+	// The undo performs operations too, and they were one sentence before. Both are
+	// worth naming: the copy is gone afterwards, which is why a second undo cannot
+	// claim to have put anything back.
+	return fmt.Sprintf(
+		"%s is back to what it was before this job.\n\n"+
+			"ghostpsy does this itself — it did:\n"+
+			"  1. replace %s with the copy at %s\n"+
+			"  2. removed %s, so nothing can claim to put this back twice\n\n"+
+			"# The same by hand:\n"+
+			"cp %s %s\nrm %s\n%s\n",
+		filePath(s),
+		filePath(s), backup,
+		backup,
+		backup, filePath(s), backup,
+		strings.Join(checkCommands(s), "\n")), nil
 }
 
 // read returns a file's content, treating a missing file as empty.
@@ -180,9 +231,4 @@ func writeAtomic(path, content string, mode os.FileMode) error {
 	return os.Rename(name, path)
 }
 
-func countLines(content string) int {
-	if content == "" {
-		return 0
-	}
-	return strings.Count(strings.TrimRight(content, "\n"), "\n") + 1
-}
+

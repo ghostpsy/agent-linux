@@ -44,8 +44,8 @@ func (a Access) AllowsChange(need WayIn) (bool, string) {
 		if a.AccountsWithKeys > 0 {
 			return true, ""
 		}
-		return false, "no account on this server has an SSH key, so turning off password " +
-			"logins would leave no way to log in at all. Add your key first, then run this again"
+		return false, "no account on this server has an SSH key, so this change would leave " +
+			"no way to log in at all. Add your key first, then run this again"
 	case WayInOtherAccountKey:
 		if a.NonRootAccountsWithKeys > 0 {
 			return true, ""

@@ -49,12 +49,20 @@ func printActions(out io.Writer) {
 		_, _ = fmt.Fprintln(out)
 	}
 
-	_, _ = fmt.Fprintf(out, "It can change these settings in a configuration file, and no others:\n\n")
+	_, _ = fmt.Fprintf(out, "These are the settings it knows about in a configuration file, "+
+		"and no others:\n\n")
 	for _, s := range confedit.All() {
 		_, _ = fmt.Fprintf(out, "%s\n", s.Key)
 		_, _ = fmt.Fprintf(out, "  Sets           %s in %s\n", s.Directive, s.File)
-		_, _ = fmt.Fprintf(out, "  Allowed values %s\n", s.Allow.String())
-		_, _ = fmt.Fprintf(out, "  Why it is safe %s\n\n", s.Why)
+		// A setting with no safe value has no pattern to print. Saying so is the
+		// only honest option: "Allowed values <nil>" is worse than nothing, and it
+		// is what crashed this command the first time such a setting existed.
+		if s.Allow == nil {
+			_, _ = fmt.Fprintf(out, "  Allowed values ghostpsy never sets this itself — see the list below\n")
+		} else {
+			_, _ = fmt.Fprintf(out, "  Allowed values %s\n", s.Allow.String())
+		}
+		_, _ = fmt.Fprintf(out, "  Why            %s\n\n", s.Why)
 	}
 
 	printDangerous(out)

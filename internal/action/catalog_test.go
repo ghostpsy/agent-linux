@@ -148,7 +148,7 @@ func TestHardenSSHPutsTheFileBackIfTheMachineStopsAnswering(t *testing.T) {
 	report := Run(context.Background(), deps, Job{
 		Mode: ModeRun,
 		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
-			"setting": "ssh.password_authentication", "value": "no",
+			"setting": "ssh.permit_root_login", "value": "prohibit-password",
 		}}},
 	})
 
@@ -360,12 +360,14 @@ func TestHardenSSHRefusesToTurnOffTheLastWayIn(t *testing.T) {
 	report := Run(context.Background(), deps, Job{
 		Mode: ModeDryRun,
 		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
-			"setting": "ssh.password_authentication", "value": "no",
+			// prohibit-password keeps key logins, so it is safe — but only if
+			// somebody actually has a key. On this machine nobody does.
+			"setting": "ssh.permit_root_login", "value": "prohibit-password",
 		}}},
 	})
 
 	if report.OK {
-		t.Fatal("no account has a key, so turning off password logins leaves no way in")
+		t.Fatal("no account has a key, so refusing root passwords leaves no way in")
 	}
 	if !mentionsInOutput(report, "no way to log in") {
 		t.Fatalf("expected the reason to say so plainly, got:\n%s", allOutput(report))
@@ -388,7 +390,7 @@ func TestHardenSSHAllowsTheChangeWhenSomebodyHasAKey(t *testing.T) {
 	report := Run(context.Background(), deps, Job{
 		Mode: ModeDryRun,
 		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
-			"setting": "ssh.password_authentication", "value": "no",
+			"setting": "ssh.permit_root_login", "value": "prohibit-password",
 		}}},
 	})
 
@@ -408,7 +410,7 @@ func TestHardenSSHRefusesWhenItCannotTellWhoCanLogIn(t *testing.T) {
 	report := Run(context.Background(), deps, Job{
 		Mode: ModeDryRun,
 		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
-			"setting": "ssh.password_authentication", "value": "no",
+			"setting": "ssh.permit_root_login", "value": "prohibit-password",
 		}}},
 	})
 

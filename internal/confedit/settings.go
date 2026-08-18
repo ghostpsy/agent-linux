@@ -42,6 +42,9 @@ type Setting struct {
 	// Allow is the only value accepted, anchored. Deliberately narrow: the point
 	// of this catalogue is that a bad value cannot be written, not that we would
 	// notice afterwards.
+	//
+	// Nil means there is no value of this setting ghostpsy sets itself. The entry
+	// exists to explain the change, not to make it — see Dangerous.
 	Allow *regexp.Regexp
 
 	// Dangerous is the values ghostpsy explains but never sets, by value.
@@ -88,8 +91,13 @@ func declare(s Setting) {
 	if _, exists := settings[s.Key]; exists {
 		panic("confedit: duplicate setting " + s.Key)
 	}
-	if s.Allow == nil || s.File == "" || s.Directive == "" || s.Why == "" {
+	if s.File == "" || s.Directive == "" || s.Why == "" {
 		panic("confedit: setting " + s.Key + " is not fully declared")
+	}
+	// A setting that can neither be set nor explained has no purpose, and would
+	// show up on screen as a choice that does nothing.
+	if s.Allow == nil && len(s.Dangerous) == 0 {
+		panic("confedit: setting " + s.Key + " can neither be set nor explained")
 	}
 	settings[s.Key] = s
 }
@@ -131,7 +139,7 @@ func Check(key, value string) (Setting, error) {
 		return Setting{}, &danger
 	}
 
-	if !s.Allow.MatchString(value) {
+	if s.Allow == nil || !s.Allow.MatchString(value) {
 		return Setting{}, fmt.Errorf(
 			"ghostpsy will not set %s to that value. %s", s.Directive, s.Why)
 	}
@@ -205,16 +213,59 @@ func init() {
 			},
 		},
 	})
+	// Advice only. ghostpsy never turns password logins off itself.
+	//
+	// It can prove that somebody has a key. It cannot prove that the key belongs to
+	// the person about to be shut out, and on a hand-built server the operator may
+	// be reaching it with a password right this minute. That is not a judgement to
+	// make on somebody else's server, so the answer is the commands and the check.
 	declare(Setting{
-		Key:         "ssh.password_authentication",
-		File:        sshdConfigPath,
-		Directive:   "PasswordAuthentication",
-		Style:       StyleSSH,
-		Allow:       regexp.MustCompile(`^no$`),
-		NeedsAWayIn: WayInAnyKey,
-		Why: "It turns off password logins, leaving keys only. Only 'no' can be set " +
-			"here, and ghostpsy checks first that at least one account has an SSH key " +
-			"— otherwise this would lock everybody out.",
+		Key:       "ssh.password_authentication",
+		File:      sshdConfigPath,
+		Directive: "PasswordAuthentication",
+		Style:     StyleSSH,
+		Why: "It turns off password logins, leaving keys only. ghostpsy never makes " +
+			"this change itself: only you can be sure your own key works, and getting " +
+			"it wrong locks you out of your own server.",
+		Dangerous: map[string]DangerousChange{
+			"no": {
+				Risk: "if the key you log in with does not work, or you have been using a " +
+					"password without realising, this shuts you out of your own server and " +
+					"there is no way back in over the network. ghostpsy can see that some " +
+					"account has a key; it cannot see whether that key is yours",
+				CheckFirst: "prove your key works before you change anything: from your own " +
+					"machine, run `ssh -o PasswordAuthentication=no you@this-server true`. If " +
+					"that fails, stop",
+				Commands: []string{
+					"# 1. Prove your key works, from your own machine, before touching anything:",
+					"#    ssh -o PasswordAuthentication=no you@this-server true",
+					"# Keep that session open while you do the rest.",
+					"",
+					"# 2. On a cloud image a drop-in file usually overrides sshd_config, so the",
+					"#    edit below would take and the setting would not. Look first:",
+					"grep -rniH passwordauthentication /etc/ssh/sshd_config.d/ 2>/dev/null",
+					"#    Edit whichever file you find there instead of the one below.",
+					"",
+					"cp /etc/ssh/sshd_config /etc/ssh/sshd_config.before-hardening",
+					"",
+					"# 3. Make the change.",
+					"sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config",
+					"grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config",
+					"",
+					"# 4. Check it before anything reads it. Stop here if this fails.",
+					"sshd -t",
+					"",
+					"# 5. Apply it, then confirm what sshd actually believes.",
+					"systemctl reload sshd || systemctl reload ssh",
+					"sshd -T | grep -i passwordauthentication",
+					"",
+					"# 6. Log in again from a NEW terminal before closing this one.",
+					"",
+					"# If you are locked out, the way back is:",
+					"#   cp /etc/ssh/sshd_config.before-hardening /etc/ssh/sshd_config && systemctl reload sshd",
+				},
+			},
+		},
 	})
 	declare(Setting{
 		Key:       "ssh.permit_empty_passwords",

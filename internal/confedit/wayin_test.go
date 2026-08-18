@@ -45,7 +45,7 @@ func TestTurningOffPasswordLoginsNeedsAtLeastOneKey(t *testing.T) {
 	if allowed {
 		t.Fatal("with no key anywhere, turning off password logins leaves no way in")
 	}
-	if !strings.Contains(why, "Add your key first") {
+	if !strings.Contains(why, "no way to log in at all") {
 		t.Fatalf("expected the reason to say what to do about it, got %q", why)
 	}
 }

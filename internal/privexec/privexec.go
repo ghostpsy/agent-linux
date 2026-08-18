@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -85,6 +86,15 @@ type Command struct {
 	// comment above the grant, because a privilege file a sysadmin cannot read
 	// is not the promise we made.
 	Why string
+
+	// NeedsPath is a directory or file that must exist on this host for the grant
+	// to be written. Empty means the command applies anywhere.
+	//
+	// The grant file promises it "grants nothing for software you do not have", and
+	// checking the binary is not enough to keep that promise. Found on rocky-9: it
+	// has no /etc/apt/apt.conf.d, but /usr/bin/install exists on every Linux, so the
+	// two apt grants were written on a machine where they can never apply.
+	NeedsPath string
 
 	// Env is the environment the command needs to behave predictably, for
 	// example LC_ALL=C so its output stays parseable. It must be declared here
@@ -191,4 +201,18 @@ func invocation(path string, declaredArgs []string, amRoot bool) (string, []stri
 	args = append(args, "-n", path)
 	args = append(args, declaredArgs...)
 	return sudoPath, args
+}
+
+// AnyDeclaredMatches reports whether any declared command's ID matches pattern.
+//
+// It lets a caller check at startup that a command chosen from a person's values
+// could resolve to something, instead of finding out half way through a fix on a
+// customer's server that a template has a typo in it.
+func AnyDeclaredMatches(pattern *regexp.Regexp) bool {
+	for id := range registry {
+		if pattern.MatchString(string(id)) {
+			return true
+		}
+	}
+	return false
 }

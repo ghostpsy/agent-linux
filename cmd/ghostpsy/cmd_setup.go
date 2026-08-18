@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ghostpsy/agent-linux/internal/agentconfig"
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 	"github.com/ghostpsy/agent-linux/internal/service"
 	"github.com/ghostpsy/agent-linux/internal/state"
 )
@@ -249,6 +250,19 @@ func runSetup(cmd *cobra.Command, token string, dryRun bool) error {
 		{
 			describe: fmt.Sprintf("Create %s, owned by %s", agentStateDir, agentUser),
 			do:       func() error { return createAgentStateDir() },
+		},
+		{
+			// Before the sudo rule, because the rule names each of these files by
+			// path. A grant pointing at a file that is not there is a fix that
+			// fails at the moment somebody approves it, on their server.
+			//
+			// Root writes them, and they are read-only afterwards. That is the whole
+			// point: the agent asks root to copy one of these files into
+			// sshd_config.d, so if the agent could change their content the grant
+			// would bound the destination and nothing else.
+			describe: fmt.Sprintf("Write the configuration files ghostpsy can install, into %s",
+				confedit.DropInSourceDir()),
+			do: func() error { return writeDropIns(out, "") },
 		},
 		{
 			describe: "Install the sudo rule, after checking it with visudo",

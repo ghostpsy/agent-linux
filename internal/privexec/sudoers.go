@@ -36,6 +36,15 @@ func Sudoers(user string) string {
 			continue
 		}
 
+		// The same rule one level further on: a command whose destination is not
+		// here cannot apply here, and a grant that can never apply is noise in a
+		// file whose whole value is that a human can read it.
+		if declared.NeedsPath != "" {
+			if _, err := os.Stat(declared.NeedsPath); err != nil {
+				continue
+			}
+		}
+
 		if declared.Why != "" {
 			fmt.Fprintf(&b, "# %s\n", declared.Why)
 		}

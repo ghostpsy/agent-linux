@@ -172,3 +172,46 @@ func TestAMissingPasswdIsAnError(t *testing.T) {
 		t.Fatal("expected an error rather than an empty list")
 	}
 }
+
+// A word is only an address when the whole word is an address.
+//
+// Found on debian-13, in the real output of `apt-config dump`: `APT::Architecture`
+// became `APT:*:*:*:*:*:*:*rchitecture`. The reason is that `::A` on its own is a valid
+// IPv6 address — `::a` — and A to F are hex letters, so every apt setting whose name
+// began with one of them was mangled. Any C++-style name is at risk, and apt's whole
+// configuration is written that way.
+//
+// It also means a check reading that output could not find what it was looking for.
+func TestAConfigurationNameIsNotAnAddress(t *testing.T) {
+	for _, line := range []string{
+		`APT::Architecture "arm64";`,
+		`APT::Build-Essential:: "build-essential";`,
+		`APT::Periodic::Unattended-Upgrade "1";`,
+		`APT::Cache-Limit "0";`,
+		`Dir::Etc::sourcelist "sources.list";`,
+		`std::vector<int>::iterator`,
+	} {
+		if got := Text(nil, line); got != line {
+			t.Errorf("mangled a name:\n  in:  %s\n  out: %s", line, got)
+		}
+	}
+}
+
+// And the addresses that really are addresses still have to be hidden, including the
+// forms that carry a port or a zone.
+func TestARealIPv6AddressIsStillHidden(t *testing.T) {
+	cases := map[string]string{
+		"listenaddress 2001:db8::1":     "2001:db8::1",
+		"-A INPUT -s fe80::1/64 -j A":   "fe80::1",
+		"listening on [2001:db8::7]:22": "2001:db8::7",
+	}
+	for line, secret := range cases {
+		got := Text(nil, line)
+		if strings.Contains(got, secret) {
+			t.Errorf("the address survived: %q -> %q", line, got)
+		}
+		if !strings.Contains(got, ":*") {
+			t.Errorf("nothing was masked in %q -> %q", line, got)
+		}
+	}
+}

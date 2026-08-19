@@ -122,10 +122,15 @@ var alwaysReadable = map[string]bool{
 // ipv4 matches an address with an optional prefix length.
 var ipv4 = regexp.MustCompile(`\b((?:\d{1,3}\.){3}\d{1,3})(/\d{1,2})?\b`)
 
-// ipv6Token matches a run of characters that might be an IPv6 address. net.ParseIP
-// decides whether it really is one, because a regexp that gets IPv6 right is a regexp
-// nobody can read.
-var ipv6Token = regexp.MustCompile(`\b[0-9A-Fa-f:]{2,}:[0-9A-Fa-f:]*\b(/\d{1,3})?|::[0-9A-Fa-f:]*(/\d{1,3})?`)
+// word is a whole run of the characters an address can be made of, plus the letters and
+// dashes it cannot.
+//
+// Matching the whole word is the point. A pattern that matched only the address-shaped
+// part of a word found `::A` inside `APT::Architecture` — a valid IPv6 address, because
+// A to F are hex letters — and mangled every apt setting whose name began with one.
+// Found in the real output of `apt-config dump` on debian-13. net.ParseIP then decides,
+// because a regexp that gets IPv6 right is a regexp nobody can read.
+var word = regexp.MustCompile(`[0-9A-Za-z:._%/-]+`)
 
 func maskAddresses(s string) string {
 	s = ipv4.ReplaceAllStringFunc(s, func(match string) string {
@@ -137,13 +142,14 @@ func maskAddresses(s string) string {
 		return first + ".*.*.*" + prefix
 	})
 
-	return ipv6Token.ReplaceAllStringFunc(s, func(match string) string {
+	return word.ReplaceAllStringFunc(s, func(match string) string {
 		address, prefix := splitPrefix(match)
+		address, zone := splitZone(address)
 		parsed := net.ParseIP(address)
 		if parsed == nil || parsed.To4() != nil || alwaysReadable[address] {
 			return match
 		}
-		return firstGroup(address) + strings.Repeat(":*", 7) + prefix
+		return firstGroup(address) + strings.Repeat(":*", groupsInIPv6-1) + zone + prefix
 	})
 }
 
@@ -155,6 +161,22 @@ func maskAddresses(s string) string {
 func firstGroup(address string) string {
 	group, _, _ := strings.Cut(address, ":")
 	return group
+}
+
+// groupsInIPv6 is how many colon-separated groups an address has when it is written out
+// in full. Keeping the count makes a masked address recognisable as one.
+const groupsInIPv6 = 8
+
+// splitZone separates a link-local address from its interface — fe80::1%eth0.
+//
+// The interface name is not personal data and it is the useful half: "which network
+// card" is a question a sysadmin asks. net.ParseIP does not accept a zone, so it has to
+// come off before the address can be recognised at all.
+func splitZone(address string) (bare, zone string) {
+	if i := strings.Index(address, "%"); i >= 0 {
+		return address[:i], address[i:]
+	}
+	return address, ""
 }
 
 func splitPrefix(match string) (address, prefix string) {

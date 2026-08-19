@@ -165,9 +165,10 @@ func DropInSourceDir() string { return dropInSourceDir }
 func SSHConfigPath() string { return sshdConfigPath }
 
 // DropInDirFor is where this setting's drop-in goes, for a message that names it.
+//
+// Derived from the destination rather than decided again, so a message can never name
+// a directory the file does not go into. Dest does not depend on the value: every value
+// of a setting writes the same path, which is what makes the undo one `rm`.
 func DropInDirFor(s Setting) string {
-	if s.Style == StyleSSH {
-		return sshDropInDir
-	}
-	return aptDropInDir
+	return filepath.Dir(Change{Setting: s}.DropIn().Dest)
 }

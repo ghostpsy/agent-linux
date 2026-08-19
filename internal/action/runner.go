@@ -374,6 +374,7 @@ func runStep(ctx context.Context, deps Deps, p plan, step Step, before []Command
 
 	run := CommandRun{
 		Why:      step.Why,
+		id:       command,
 		Display:  privexec.Display(command, values),
 		Stdout:   strings.TrimRight(string(res.Stdout), "\n"),
 		Stderr:   strings.TrimRight(string(res.Stderr), "\n"),

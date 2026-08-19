@@ -339,9 +339,8 @@ func dropInWillTakeEffect(p plan, why string, before []CommandRun) (CommandRun, 
 
 // outputOf returns what a named command printed earlier in this phase.
 func outputOf(runs []CommandRun, id privexec.ID) string {
-	display := privexec.Display(id, nil)
 	for _, r := range runs {
-		if r.Display == display {
+		if r.id == id {
 			return r.Stdout
 		}
 	}
@@ -362,21 +361,24 @@ func settingTookEffect(p plan, why string, before []CommandRun) (CommandRun, boo
 		return run, false
 	}
 
-	effective := outputOf(before, privexec.SSHEffectiveConfig)
+	// Which command answers "what are you really running with" is the setting's own
+	// business — naming one here would make this check usable for one style only.
+	service := confedit.ServiceName(setting)
+	effective := outputOf(before, privexec.EffectiveConfig(setting))
 	if effective == "" {
-		run.Stderr = "the SSH server did not say what it is running with, so there is no way to " +
-			"tell whether the change took. Treating that as success would be a guess"
+		run.Stderr = fmt.Sprintf("%s did not say what it is running with, so there is no way to "+
+			"tell whether the change took. Treating that as success would be a guess", service)
 		run.ExitCode = 1
 		return run, false
 	}
 
 	if got, ok := confedit.Effective(setting, p.values["value"], effective); !ok {
-		run.Stderr = fmt.Sprintf("%s asked for %s and the SSH server reports %q",
-			setting.Directive, p.values["value"], got)
+		run.Stderr = fmt.Sprintf("%s asked for %s and %s reports %q",
+			setting.Directive, p.values["value"], service, got)
 		run.ExitCode = 1
 		return run, false
 	}
-	run.Stdout = fmt.Sprintf("the SSH server is running with %s %s",
-		setting.Directive, p.values["value"])
+	run.Stdout = fmt.Sprintf("%s is running with %s %s",
+		service, setting.Directive, p.values["value"])
 	return run, true
 }

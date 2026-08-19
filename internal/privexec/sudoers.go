@@ -85,7 +85,7 @@ func resolve(binary string) (string, error) {
 		return binary, nil
 	}
 
-	for _, dir := range searchDirs() {
+	for _, dir := range searchDirs {
 		candidate := filepath.Join(dir, binary)
 		info, err := os.Stat(candidate)
 		if err != nil || info.IsDir() || info.Mode().Perm()&0o111 == 0 {
@@ -93,13 +93,11 @@ func resolve(binary string) (string, error) {
 		}
 		return candidate, nil
 	}
-	return "", fmt.Errorf("%s is in none of %s", binary, strings.Join(searchDirs(), ", "))
+	return "", fmt.Errorf("%s is in none of %s", binary, strings.Join(searchDirs, ", "))
 }
 
 // searchDirs are the directories a bare binary name may be found in.
-func searchDirs() []string {
-	return strings.Split(strings.TrimPrefix(securePath, "PATH="), ":")
-}
+var searchDirs = strings.Split(strings.TrimPrefix(securePath, "PATH="), ":")
 
 func sortedIDs() []ID {
 	ids := make([]ID, 0, len(registry))

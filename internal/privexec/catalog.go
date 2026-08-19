@@ -201,7 +201,6 @@ func init() {
 // file and in review. Every command here changes something or checks something a
 // change did, and none of them can be reached except from a declared action.
 func declareFixCommands() {
-	declareConfigCommands()
 	declareServiceCommands()
 	declareFirewallCommands()
 
@@ -219,9 +218,6 @@ func declareFixCommands() {
 			"--dry-run installs nothing",
 		Env: localeC,
 	})
-}
-
-func declareConfigCommands() {
 }
 
 func declareServiceCommands() {

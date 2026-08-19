@@ -16,96 +16,6 @@ func sshSetting(t *testing.T) Setting {
 	return s
 }
 
-func TestSetReplacesTheLineThatIsAlreadyThere(t *testing.T) {
-	before := "Port 22\nPermitRootLogin yes\nX11Forwarding no\n"
-
-	after, changed := Set(sshSetting(t), before, "no")
-
-	if !changed {
-		t.Fatal("expected the file to change")
-	}
-	if !strings.Contains(after, "PermitRootLogin no\n") {
-		t.Fatalf("expected the setting to be replaced, got:\n%s", after)
-	}
-	if strings.Contains(after, "PermitRootLogin yes") {
-		t.Fatalf("expected the old value to be gone, got:\n%s", after)
-	}
-	if !strings.Contains(after, "Port 22") || !strings.Contains(after, "X11Forwarding no") {
-		t.Fatalf("expected every other line to be left alone, got:\n%s", after)
-	}
-}
-
-// The default in sshd_config is usually written as a comment. Editing the comment
-// would change nothing, and adding a second line below it would leave the file
-// with two answers to the same question.
-func TestSetAddsTheSettingWhenOnlyACommentedDefaultIsThere(t *testing.T) {
-	before := "#PermitRootLogin prohibit-password\nPort 22\n"
-
-	after, changed := Set(sshSetting(t), before, "no")
-
-	if !changed {
-		t.Fatal("expected the file to change")
-	}
-	if strings.Count(after, "\nPermitRootLogin ") != 1 && !strings.HasPrefix(after, "PermitRootLogin ") {
-		t.Fatalf("expected exactly one live PermitRootLogin line, got:\n%s", after)
-	}
-	if !strings.Contains(after, "#PermitRootLogin prohibit-password") {
-		t.Fatalf("expected the commented default to be left as a record, got:\n%s", after)
-	}
-}
-
-func TestSetAppendsWhenTheSettingIsAbsent(t *testing.T) {
-	before := "Port 22\n"
-
-	after, changed := Set(sshSetting(t), before, "no")
-
-	if !changed || !strings.Contains(after, "PermitRootLogin no") {
-		t.Fatalf("expected the setting to be added, got:\n%s", after)
-	}
-	if !strings.HasSuffix(after, "\n") {
-		t.Fatalf("expected the file to still end in a newline, got %q", after)
-	}
-}
-
-// sshd uses the first occurrence of a keyword and ignores the rest. A fix that
-// edited the last one would look right in the file and change nothing at all.
-func TestSetChangesTheFirstOccurrenceBecauseThatIsTheOneSshdUses(t *testing.T) {
-	before := "PermitRootLogin yes\nPort 22\nPermitRootLogin yes\n"
-
-	after, _ := Set(sshSetting(t), before, "no")
-
-	lines := strings.Split(strings.TrimRight(after, "\n"), "\n")
-	if lines[0] != "PermitRootLogin no" {
-		t.Fatalf("expected the first occurrence to be the one changed, got:\n%s", after)
-	}
-}
-
-func TestSetIsAwareThatSshKeywordsAreNotCaseSensitive(t *testing.T) {
-	before := "permitrootlogin yes\n"
-
-	after, changed := Set(sshSetting(t), before, "no")
-
-	if !changed {
-		t.Fatal("expected a differently cased keyword to be recognised")
-	}
-	if strings.Contains(strings.ToLower(after), "permitrootlogin yes") {
-		t.Fatalf("expected the old value to be gone, got:\n%s", after)
-	}
-}
-
-func TestSetReportsNoChangeWhenTheValueIsAlreadyRight(t *testing.T) {
-	before := "PermitRootLogin no\n"
-
-	after, changed := Set(sshSetting(t), before, "no")
-
-	if changed {
-		t.Fatal("expected no change when the setting already has that value")
-	}
-	if after != before {
-		t.Fatalf("expected the file to be untouched, got:\n%s", after)
-	}
-}
-
 func aptSetting(t *testing.T) Setting {
 	t.Helper()
 	s, ok := Lookup("apt.unattended_upgrade")
@@ -113,34 +23,6 @@ func aptSetting(t *testing.T) Setting {
 		t.Fatal("expected apt.unattended_upgrade to be a declared setting")
 	}
 	return s
-}
-
-func TestSetWritesAptStyleWithQuotesAndASemicolon(t *testing.T) {
-	after, changed := Set(aptSetting(t), "", "1")
-
-	if !changed {
-		t.Fatal("expected the setting to be added to an empty file")
-	}
-	want := `APT::Periodic::Unattended-Upgrade "1";`
-	if !strings.Contains(after, want) {
-		t.Fatalf("expected %q, got:\n%s", want, after)
-	}
-}
-
-func TestSetReplacesAnAptSettingThatIsAlreadyThere(t *testing.T) {
-	before := "APT::Periodic::Update-Package-Lists \"1\";\nAPT::Periodic::Unattended-Upgrade \"0\";\n"
-
-	after, changed := Set(aptSetting(t), before, "1")
-
-	if !changed {
-		t.Fatal("expected the file to change")
-	}
-	if strings.Contains(after, `Unattended-Upgrade "0"`) {
-		t.Fatalf("expected the old value to be gone, got:\n%s", after)
-	}
-	if !strings.Contains(after, `Update-Package-Lists "1"`) {
-		t.Fatalf("expected the other setting to be left alone, got:\n%s", after)
-	}
 }
 
 func TestValueReadsWhatIsThere(t *testing.T) {

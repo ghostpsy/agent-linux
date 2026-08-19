@@ -7,77 +7,16 @@ import (
 	"strings"
 )
 
-// How a person checks what we did, and does it themselves if they want to.
+// How somebody makes a change ghostpsy refuses to make.
 //
-// The output used to be the command we invoked — `ghostpsy write-config --mode=apply
-// --key=… --value=…` — which tells a sysadmin nothing at all. They cannot see what
-// changed, cannot reproduce it, and cannot verify it afterwards. That is exactly the
-// opacity this design exists to avoid, sitting in the middle of it.
+// There is one such change: the main configuration file already sets the directive
+// above its Include line, so no drop-in can ever be read, and editing a line this
+// server's owner wrote is not something ghostpsy does. Refusing and stopping there
+// would send them to do it from memory at midnight, so the refusal carries the
+// commands instead.
 //
-// Two things fix that, and both are needed:
-//
-//	the diff      what actually changed, so it can be checked
-//	the recipe    the same change as ordinary commands, so it can be repeated
-//
-// What is deliberately *not* claimed is that we ran those commands. We do not: the
-// file is written atomically in Go, so that only the settings on the declared list
-// can be reached and a half-written sshd_config is impossible. Printing a sed line as
-// "what ran" would be a lie in the other direction, so the recipe says what it is.
-
-// diffContext is how many unchanged lines to show either side of a change. Two is
-// enough to find the place in the file without printing the file.
-const diffContext = 2
-
-// unifiedDiff shows what changed between two versions of a file.
-//
-// Deliberately simple, because the change is always simple: this package replaces one
-// line or appends a few. Anything more elaborate would be machinery for a case that
-// cannot arise.
-func unifiedDiff(path, before, after string) string {
-	if before == after {
-		return ""
-	}
-
-	oldLines := strings.Split(strings.TrimRight(before, "\n"), "\n")
-	newLines := strings.Split(strings.TrimRight(after, "\n"), "\n")
-	first, lastOld, lastNew := changedRange(oldLines, newLines)
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "--- %s\n+++ %s   (after this change)\n", path, path)
-
-	for i := max(0, first-diffContext); i < first; i++ {
-		fmt.Fprintf(&b, " %s\n", oldLines[i])
-	}
-	for i := first; i <= lastOld && i < len(oldLines); i++ {
-		fmt.Fprintf(&b, "-%s\n", oldLines[i])
-	}
-	for i := first; i <= lastNew && i < len(newLines); i++ {
-		fmt.Fprintf(&b, "+%s\n", newLines[i])
-	}
-	for i := lastOld + 1; i < len(oldLines) && i <= lastOld+diffContext; i++ {
-		fmt.Fprintf(&b, " %s\n", oldLines[i])
-	}
-	return b.String()
-}
-
-// changedRange finds the first line that differs and the last on each side.
-//
-// Walking in from both ends keeps the unchanged parts of the file out of the diff,
-// which is the whole point: a person checking one setting should not have to read a
-// hundred lines they did not ask about.
-func changedRange(oldLines, newLines []string) (first, lastOld, lastNew int) {
-	first = 0
-	for first < len(oldLines) && first < len(newLines) && oldLines[first] == newLines[first] {
-		first++
-	}
-
-	endOld, endNew := len(oldLines)-1, len(newLines)-1
-	for endOld >= first && endNew >= first && oldLines[endOld] == newLines[endNew] {
-		endOld--
-		endNew--
-	}
-	return first, endOld, endNew
-}
+// Everything here is advice. ghostpsy runs none of it — it installs its own file, and
+// that is the only way it changes a setting.
 
 // equivalentCommands is the same change, written as ordinary system commands.
 //
@@ -177,7 +116,21 @@ func ByHandCommands(s Setting, value, content string) []string {
 	commands := equivalentCommands(s, value, content)
 	out := make([]string, 0, len(commands))
 	for _, c := range commands {
-		out = append(out, "sudo "+c)
+		out = append(out, asRoot(c))
 	}
 	return out
+}
+
+// asRoot puts sudo on every command in a line, not only on the first.
+//
+// One line is `systemctl reload sshd || systemctl reload ssh`, the two names Debian and
+// RHEL use for the same service. Prefixing the line left the fallback half
+// unprivileged, so it failed for the person pasting it — on exactly the path that
+// exists because the first name can be the wrong one.
+func asRoot(line string) string {
+	commands := strings.Split(line, "||")
+	for i, command := range commands {
+		commands[i] = "sudo " + strings.TrimSpace(command)
+	}
+	return strings.Join(commands, " || ")
 }

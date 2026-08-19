@@ -187,8 +187,9 @@ func enableAutomaticSecurityUpdates() Action {
 		Summary: "Switch on automatic security updates, so this machine installs them " +
 			"itself instead of waiting to be noticed.",
 		Reversibility: ReverseFull,
-		UndoWhy: "ghostpsy's own file in apt.conf.d is deleted, and the service is stopped " +
-			"again. Nothing this machine came with was edited, so there is nothing to put back.",
+		UndoWhy: "ghostpsy's own files in apt.conf.d are deleted, or the update timer is " +
+			"switched off again, depending on which of the two this machine uses. Nothing this " +
+			"machine came with was edited, so there is nothing to put back.",
 		Variants: []Variant{
 			{
 				// Debian and Ubuntu. unattended-upgrades has a genuine dry run
@@ -365,7 +366,7 @@ func sshVariant(unit string) Variant {
 			},
 			{
 				Why:     "show the exact file that would be installed",
-				Command: privexec.ID("config.show.{setting}={value}"),
+				Command: privexec.ShowDropInStep,
 			},
 			{
 				Why:     "ask the SSH server what it believes today, to compare afterwards",
@@ -386,7 +387,7 @@ func sshVariant(unit string) Variant {
 			},
 			{
 				Why:     "install the file that makes the change",
-				Command: privexec.ID("config.install.{setting}={value}"),
+				Command: privexec.InstallDropInStep,
 			},
 			{
 				// Before the reload, never after. A configuration sshd refuses is
@@ -427,7 +428,7 @@ func sshVariant(unit string) Variant {
 				// to restore: we never touched the server's own configuration, so
 				// putting it back means taking our file away again.
 				Why:     "remove the file ghostpsy added",
-				Command: privexec.ID("config.remove.{setting}"),
+				Command: privexec.RemoveDropInStep,
 			},
 			{
 				Why:     "ask the SSH server to read the old file again",
@@ -516,8 +517,7 @@ func restartFailedService() Action {
 // The value is written out here rather than passed in because there is only one: apt's
 // periodic settings are on or off, and off is not something ghostpsy asks for.
 func aptChange(key string) confedit.Change {
-	s := mustSetting(key)
-	return confedit.Change{Setting: s, Value: s.Allow[0]}
+	return privexec.Change(mustSetting(key))
 }
 
 // mustSetting panics on an unknown key, at startup rather than on somebody's server.

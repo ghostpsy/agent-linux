@@ -7,58 +7,11 @@ import (
 	"testing"
 )
 
-// A change nobody can check is a change nobody should trust.
+// A refusal nobody can act on is a refusal that gets worked around.
 //
-// The output used to be `sudo ghostpsy write-config --mode=apply --key=… --value=…`,
-// which tells a sysadmin nothing. They cannot see what it did, cannot reproduce it,
-// and cannot verify it afterwards. That is the opacity this whole design exists to
-// avoid, and it was sitting in the middle of it.
-//
-// Two things answer that, and both are needed. A diff says what actually changed. A
-// by-hand recipe says how to do the same thing without us. Neither claims we ran
-// shell — we do not, and saying we did would be a different lie.
-
-func TestTheDiffShowsExactlyWhichLineChanged(t *testing.T) {
-	before := "Port 22\n#PermitRootLogin prohibit-password\nX11Forwarding yes\n"
-	after, _ := Set(sshSetting(t), before, "prohibit-password")
-
-	diff := unifiedDiff("/etc/ssh/sshd_config", before, after)
-
-	if !strings.Contains(diff, "+PermitRootLogin prohibit-password") {
-		t.Errorf("the added line has to be visible, got:\n%s", diff)
-	}
-	if !strings.Contains(diff, "/etc/ssh/sshd_config") {
-		t.Errorf("the diff has to name the file, got:\n%s", diff)
-	}
-	// A line nobody touched must not appear as a change.
-	for _, line := range strings.Split(diff, "\n") {
-		if strings.HasPrefix(line, "-") && strings.Contains(line, "Port 22") {
-			t.Errorf("an untouched line was reported as removed:\n%s", diff)
-		}
-	}
-}
-
-func TestTheDiffOfAReplacedLineShowsBothSides(t *testing.T) {
-	before := "PermitRootLogin yes\n"
-	after, _ := Set(sshSetting(t), before, "prohibit-password")
-
-	diff := unifiedDiff("/etc/ssh/sshd_config", before, after)
-
-	if !strings.Contains(diff, "-PermitRootLogin yes") {
-		t.Errorf("the old line has to be shown, got:\n%s", diff)
-	}
-	if !strings.Contains(diff, "+PermitRootLogin prohibit-password") {
-		t.Errorf("the new line has to be shown, got:\n%s", diff)
-	}
-}
-
-func TestNoDiffWhenNothingChanges(t *testing.T) {
-	same := "PermitRootLogin prohibit-password\n"
-
-	if diff := unifiedDiff("/etc/ssh/sshd_config", same, same); diff != "" {
-		t.Errorf("expected no diff at all, got:\n%s", diff)
-	}
-}
+// These commands are handed over when ghostpsy will not make the change itself. They
+// are pasted into a root shell by a person, so they have to be right and runnable as
+// they stand: a recipe that fails on its first line is worse than no recipe.
 
 // The recipe for a setting that is not in the file yet is exactly what we do:
 // append it, with the note saying who put it there.
@@ -126,6 +79,23 @@ func TestByHandCommandsCanBePastedAsTheyAre(t *testing.T) {
 	for _, want := range []string{".ghostpsy-backup", "MaxAuthTries 5", "sshd -t"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("the recipe is missing %q:\n%s", want, joined)
+		}
+	}
+}
+
+// sudo has to be on every command, not on every line.
+//
+// One line is `systemctl reload sshd || systemctl reload ssh` — the two names Debian
+// and RHEL use for the same service. Prefixing the line gave
+// `sudo systemctl reload sshd || systemctl reload ssh`, so the fallback half ran
+// unprivileged and failed with "Access denied" for the person who pasted it. It failed
+// on exactly the path that exists because the first name can be the wrong one.
+func TestEveryCommandInTheAdviceRunsAsRoot(t *testing.T) {
+	for _, line := range ByHandCommands(sshSetting(t), "prohibit-password", "PermitRootLogin yes\n") {
+		for _, command := range strings.Split(line, "||") {
+			if !strings.HasPrefix(strings.TrimSpace(command), "sudo ") {
+				t.Errorf("this command is not run as root:\n\t%s\nin the line:\n\t%s", command, line)
+			}
 		}
 	}
 }

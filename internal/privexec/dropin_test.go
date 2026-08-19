@@ -144,3 +144,23 @@ func TestEveryDropInGrantDependsOnItsDestinationDirectory(t *testing.T) {
 		}
 	}
 }
+
+// A setting must name the command that can answer for it.
+//
+// settingTookEffect used to name SSHEffectiveConfig itself, so "did the change take
+// effect?" was a question only an SSH setting could be asked. apt has an answer too,
+// and it is the setting's style that knows which.
+func TestEachStyleNamesTheCommandThatAnswersForIt(t *testing.T) {
+	for _, change := range confedit.Changes() {
+		id := EffectiveConfig(change.Setting)
+		if !Declared(id) {
+			t.Errorf("%s answers with %q, which is not declared", change.Setting.Key, id)
+		}
+		if change.Setting.Style == confedit.StyleSSH && id != SSHEffectiveConfig {
+			t.Errorf("%s is an SSH setting and answers with %q", change.Setting.Key, id)
+		}
+		if change.Setting.Style == confedit.StyleAPTConf && id != APTEffectiveConfig {
+			t.Errorf("%s is an apt setting and answers with %q", change.Setting.Key, id)
+		}
+	}
+}

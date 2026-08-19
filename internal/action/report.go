@@ -2,6 +2,8 @@
 
 package action
 
+import "github.com/ghostpsy/agent-linux/internal/privexec"
+
 // The report is the only thing the service ever learns about what happened on the
 // machine, and through it the only thing the customer ever sees. So it carries the
 // real output, the real exit codes and the honest ledger — not a summary we chose.
@@ -35,6 +37,15 @@ type CommandRun struct {
 	// the way to make it by hand. The runner lifts it onto the action so the app
 	// does not have to hunt for it among the commands.
 	Advice *DoItYourself `json:"-"`
+
+	// id is the command that produced this run, for a later check that reads what an
+	// earlier step printed — see outputOf.
+	//
+	// Unexported, so it never reaches the wire: the app has no use for our internal
+	// ids. It exists because the alternative was matching on Display, and Display is
+	// a sentence written for a person, with the arguments filled in. Rewriting it to
+	// compare would only work for a command that takes no arguments.
+	id privexec.ID
 }
 
 // DoItYourself is a change ghostpsy refused to make, with the way to make it.

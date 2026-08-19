@@ -7,35 +7,6 @@ import (
 	"strings"
 )
 
-// Set returns the file with one setting changed, and whether anything changed.
-//
-// It is a pure function on purpose. Everything that could go wrong with editing
-// somebody's sshd_config — replacing the wrong line, leaving two answers to one
-// question, editing a comment that has no effect — is decided here, where it can
-// be tested against real files without touching one.
-func Set(s Setting, content, value string) (string, bool) {
-	lines := strings.Split(content, "\n")
-
-	for i, line := range lines {
-		if !isLiveDirective(s, line) {
-			continue
-		}
-		replacement := directiveLine(s, value)
-		if line == replacement {
-			// Already right. Rewriting it would take a backup and claim a change
-			// that did not happen.
-			return content, false
-		}
-		lines[i] = replacement
-		// The first occurrence only. sshd uses the first value for a keyword and
-		// ignores every later one, so editing a later line would look correct in
-		// the file and change nothing on the server.
-		return strings.Join(lines, "\n"), true
-	}
-
-	return appendDirective(content, directiveLine(s, value)), true
-}
-
 // Value reads what the setting is currently set to, ignoring comments.
 func Value(s Setting, content string) (string, bool) {
 	for _, line := range strings.Split(content, "\n") {
@@ -86,15 +57,4 @@ func directiveLine(s Setting, value string) string {
 		return fmt.Sprintf("%s %q;", s.Directive, value)
 	}
 	return s.Directive + " " + value
-}
-
-// appendDirective adds the line at the end, with a note saying who wrote it.
-//
-// The note matters more than it looks: the person who finds this line in six
-// months needs to know a tool put it there, and which one.
-func appendDirective(content, line string) string {
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-	return content + "\n# set by ghostpsy\n" + line + "\n"
 }

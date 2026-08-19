@@ -154,10 +154,11 @@ func wouldNotFit(needs, free int64, target string) string {
 
 // takeCopies reports which files will be copied aside before being edited.
 //
-// It runs nothing itself. The copy is taken inside the same privileged step that
-// edits the file — see internal/confedit — so that a file this agent changes can
-// never have been changed without one. A separate copy step would be a step that
-// could be skipped.
+// It runs nothing itself, and today it reports nothing: no action in the catalogue
+// copies a file aside any more. A config action installs a file of its own beside the
+// distribution's, so an undo is `rm` of that file and there is nothing of this
+// server's to keep. BackupArchiveFreed is what remains, and an archive is the disk
+// action's own work rather than this function's.
 func takeCopies(plans []plan) (bool, string) {
 	var copied []string
 

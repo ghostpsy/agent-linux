@@ -26,6 +26,24 @@ import (
 // undo. That is 9 and 6 today. The list comes from confedit, so a new setting cannot
 // be reachable without also appearing in the grant file.
 
+// placeholderChange fills the builders below with the placeholders a catalogue step
+// uses, so the template and the real ID come out of the same function and cannot
+// disagree about the shape of an ID. It is the idiom service.go already uses for a
+// unit name: ServiceRestart("{unit}") builds the template, ServiceRestart("sshd") the
+// real thing.
+var placeholderChange = confedit.Change{
+	Setting: confedit.Setting{Key: "{setting}"},
+	Value:   "{value}",
+}
+
+// The three templates a catalogue step can name, for the case where the setting and
+// the value arrive with the request rather than being fixed by the action.
+var (
+	InstallDropInStep = InstallDropIn(placeholderChange)
+	ShowDropInStep    = ShowDropIn(placeholderChange)
+	RemoveDropInStep  = RemoveDropIn(placeholderChange.Setting)
+)
+
 // InstallDropIn names the command that makes one change.
 func InstallDropIn(c confedit.Change) ID {
 	return ID(fmt.Sprintf("config.install.%s=%s", c.Setting.Key, c.Value))
@@ -52,20 +70,56 @@ func init() {
 				"Its content is fixed and root-owned, so this command can write nothing else",
 				change.Setting.Directive, change.Value),
 		})
+
+		// Showing what would be written needs no privilege: the shipped files are
+		// 0444. Granting root to read a world-readable file would be nine lines
+		// that buy nothing.
+		declare(ShowDropIn(change), Command{
+			Binary:       "cat",
+			Args:         []string{drop.Source},
+			Why:          fmt.Sprintf("show the exact file that would set %s", change.Setting.Directive),
+			Unprivileged: true,
+		})
 	}
 
 	for _, setting := range confedit.All() {
 		if len(setting.Allow) == 0 {
 			continue
 		}
+		dest := Change(setting).DropIn().Dest
 		declare(RemoveDropIn(setting), Command{
 			Binary:    "rm",
-			Args:      []string{Change(setting).DropIn().Dest},
-			NeedsPath: filepath.Dir(Change(setting).DropIn().Dest),
+			Args:      []string{dest},
+			NeedsPath: filepath.Dir(dest),
 			Why: fmt.Sprintf("undo a change to %s by removing the file that made it, "+
 				"which puts this server back to what it decided for itself", setting.Directive),
 		})
 	}
+
+	declare(ReadSSHConfig, Command{
+		Binary: "cat",
+		Args:   []string{confedit.SSHConfigPath()},
+		Why: "read the SSH configuration, to find the Include line and any line that already " +
+			"sets what is about to change. One named file, never a pattern",
+		Env:       localeC,
+		NeedsPath: confedit.SSHConfigPath(),
+	})
+
+	declare(SSHEffectiveConfig, Command{
+		Binary: "sshd",
+		Args:   []string{"-T"},
+		Why: "ask the SSH server what settings it is actually running with, which is what " +
+			"decides whether a change took effect",
+		Env: localeC,
+	})
+
+	declare(APTEffectiveConfig, Command{
+		Binary: "apt-config",
+		Args:   []string{"dump"},
+		Why: "ask apt what settings it is actually using, which is what decides whether a " +
+			"change took effect",
+		Env: localeC,
+	})
 }
 
 // Change is the setting at its first allowed value.
@@ -100,45 +154,18 @@ func ShowDropIn(c confedit.Change) ID {
 	return ID(fmt.Sprintf("config.show.%s=%s", c.Setting.Key, c.Value))
 }
 
-func init() {
-	declare(ReadSSHConfig, Command{
-		Binary: "cat",
-		Args:   []string{confedit.SSHConfigPath()},
-		Why: "read the SSH configuration, to find the Include line and any line that already " +
-			"sets what is about to change. One named file, never a pattern",
-		Env:       localeC,
-		NeedsPath: confedit.SSHConfigPath(),
-	})
-
-	declare(SSHEffectiveConfig, Command{
-		Binary: "sshd",
-		Args:   []string{"-T"},
-		Why: "ask the SSH server what settings it is actually running with, which is what " +
-			"decides whether a change took effect",
-		Env: localeC,
-	})
-
-	// Showing what would be written needs no privilege: the shipped files are 0444.
-	// Granting root to read a world-readable file would be nine lines that buy nothing.
-	for _, change := range confedit.Changes() {
-		declare(ShowDropIn(change), Command{
-			Binary:       "cat",
-			Args:         []string{change.DropIn().Source},
-			Why:          fmt.Sprintf("show the exact file that would set %s", change.Setting.Directive),
-			Unprivileged: true,
-		})
-	}
-}
-
 // APTEffectiveConfig asks apt what configuration it is really using.
 const APTEffectiveConfig ID = "config.effective.apt"
 
-func init() {
-	declare(APTEffectiveConfig, Command{
-		Binary: "apt-config",
-		Args:   []string{"dump"},
-		Why: "ask apt what settings it is actually using, which is what decides whether a " +
-			"change took effect",
-		Env: localeC,
-	})
+// EffectiveConfig is the command that asks the service behind this setting what it is
+// really running with.
+//
+// The style decides it, not the caller. A check that named SSHEffectiveConfig itself
+// could only ever judge an SSH setting, which is how "did the change take effect?"
+// became a question only half the settings could be asked.
+func EffectiveConfig(s confedit.Setting) ID {
+	if s.Style == confedit.StyleSSH {
+		return SSHEffectiveConfig
+	}
+	return APTEffectiveConfig
 }

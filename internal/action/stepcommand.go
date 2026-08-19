@@ -107,10 +107,9 @@ func checkStepCommand(a Action, step Step) error {
 // with three dots in it. This is a startup sanity check that a template could ever
 // match something — the real limit is privexec.Declared at the moment of running.
 func commandPattern(id string) *regexp.Regexp {
-	quoted := regexp.QuoteMeta(id)
-	// QuoteMeta escapes the braces, so match the escaped form too.
-	quoted = strings.ReplaceAll(quoted, `\{`, `{`)
-	quoted = strings.ReplaceAll(quoted, `\}`, `}`)
-	quoted = commandPlaceholder.ReplaceAllString(quoted, `.+`)
-	return regexp.MustCompile("^" + quoted + "$")
+	literals := commandPlaceholder.Split(id, -1)
+	for i, literal := range literals {
+		literals[i] = regexp.QuoteMeta(literal)
+	}
+	return regexp.MustCompile("^" + strings.Join(literals, ".+") + "$")
 }

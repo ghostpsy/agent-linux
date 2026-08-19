@@ -40,8 +40,12 @@ func matchesEffective(s Setting, value, effective string) bool {
 	return false
 }
 
-// Effective reports what the service says it is running with, and whether that is the
-// value that was asked for.
+// Effective reports what the service says it is running with, and whether that counts
+// as the value that was asked for.
+//
+// The string is always what the service reported, whether it matched or not — on a
+// match it can be the synonym, because OpenSSH prints `without-password` for
+// `prohibit-password`. Callers use it to say what a failed check found.
 //
 // It takes the text rather than running the command. Verify used to shell out to
 // `sshd -T` from here, which meant a privileged command that appeared in no registry
@@ -49,18 +53,26 @@ func matchesEffective(s Setting, value, effective string) bool {
 // the command is declared, the caller runs it through privexec, and the judgement
 // happens on the output.
 func Effective(s Setting, value, reported string) (string, bool) {
-	if matchesEffective(s, value, reported) {
-		return value, true
-	}
-	return reportedValue(s, reported), false
+	return reportedValue(s, reported), matchesEffective(s, value, reported)
 }
 
-// reportedValue is the value the service printed for this directive.
+// ServiceName is what to call the thing being checked, in words a person reads.
+//
+// It exists so a message about a setting does not have to know which service is behind
+// it. A check that wrote "the SSH server" itself could only ever be used for an SSH
+// setting, which is how one half of the safety net became SSH-only.
+func ServiceName(s Setting) string {
+	if s.Style == StyleSSH {
+		return "the SSH server"
+	}
+	return "apt"
+}
+
+// reportedValue is the value the service printed for this directive, in words when
+// it printed none.
 func reportedValue(s Setting, reported string) string {
-	for _, line := range strings.Split(reported, "\n") {
-		if isLiveDirective(s, line) {
-			return directiveValue(s, line)
-		}
+	if value, found := Value(s, reported); found {
+		return value
 	}
 	return "nothing at all"
 }

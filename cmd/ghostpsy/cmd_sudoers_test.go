@@ -135,3 +135,32 @@ func TestSudoersDiffShowsWhatAnUpgradeWouldChange(t *testing.T) {
 		t.Fatalf("expected the removed line to be shown, got:\n%s", got)
 	}
 }
+
+// --check reads the installed grant through the privileged reader, because the agent
+// user cannot open a 0440 root:root file. --diff opened it directly, so the very advice
+// --check prints — "See what changed with: ghostpsy sudoers --diff" — answered
+// "permission denied" for the only user that ever runs the check.
+//
+// Measured on debian-13, as the ghostpsy user, with the real grant installed.
+func TestSudoersDiffReadsTheInstalledGrantTheSameWayTheCheckDoes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ghostpsy")
+	if err := os.WriteFile(path, []byte("# what only root can read\n"), 0o440); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	var out bytes.Buffer
+	err := runSudoersDiffWith(&out, path, func(string) ([]byte, error) {
+		return []byte("# what the privileged reader returned\n"), nil
+	})
+
+	if err != nil {
+		t.Fatalf("diff failed: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "- # what the privileged reader returned") {
+		t.Fatalf("the diff has to compare against what the reader returned, got:\n%s", got)
+	}
+	if strings.Contains(got, "what only root can read") {
+		t.Fatalf("the diff opened the file itself, which the agent user cannot do:\n%s", got)
+	}
+}

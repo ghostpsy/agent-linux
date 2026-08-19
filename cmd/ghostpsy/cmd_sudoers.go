@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -78,14 +79,24 @@ func runSudoersCheck(cmd *cobra.Command, path string) error {
 }
 
 func runSudoersDiff(cmd *cobra.Command, path string) error {
-	installed, err := os.ReadFile(path)
+	return runSudoersDiffWith(cmd.OutOrStdout(), path, readInstalledGrant)
+}
+
+// runSudoersDiffWith takes the reader, for the same reason the drift check does: the
+// agent user cannot open a 0440 root:root file, so the read has to go through the
+// privileged path.
+//
+// This used to call os.ReadFile. The drift check prints "See what changed with:
+// ghostpsy sudoers --diff", and that command then answered "permission denied" for the
+// only user that ever runs the check.
+func runSudoersDiffWith(out io.Writer, path string, read func(string) ([]byte, error)) error {
+	installed, err := read(path)
 	if errors.Is(err, os.ErrNotExist) {
 		installed = nil
 	} else if err != nil {
 		return err
 	}
 
-	out := cmd.OutOrStdout()
 	for _, line := range grantDiff(string(installed), sudoersFile()) {
 		if _, err := fmt.Fprintln(out, line); err != nil {
 			return err

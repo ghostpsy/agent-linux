@@ -139,6 +139,14 @@ func sudoersHasDrifted(path string) (bool, error) {
 // Until a host's grant includes that entry the read fails, and the drift stays
 // unreported rather than guessed. Reinstalling the rule fixes it.
 func readInstalledGrant(path string) ([]byte, error) {
+	// Whether a grant exists at all is a different question from what is in it, and
+	// it needs no privilege. Asking the privileged reader first turned "no grant is
+	// installed" into "the agent binary is not on this host", which is a true
+	// sentence about something nobody asked about.
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
 	if os.Geteuid() == 0 {
 		return os.ReadFile(path)
 	}

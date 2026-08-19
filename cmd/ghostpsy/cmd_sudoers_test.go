@@ -62,7 +62,7 @@ func TestSudoersCheckReportsDriftAgainstTheInstalledFile(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	drifted, err := sudoersHasDrifted(stale)
+	drifted, err := sudoersHasDriftedWith(stale, os.ReadFile)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -78,7 +78,7 @@ func TestSudoersCheckIsQuietWhenTheInstalledFileMatches(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	drifted, err := sudoersHasDrifted(current)
+	drifted, err := sudoersHasDriftedWith(current, os.ReadFile)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

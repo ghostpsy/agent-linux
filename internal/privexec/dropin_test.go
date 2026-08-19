@@ -86,14 +86,13 @@ func TestEveryInstallSourceIsAFileTheInstallerWrites(t *testing.T) {
 // /usr/local/bin/ghostpsy does not exist in a test container. It was measuring the
 // container, not the design.
 func TestNoDeclaredConfigCommandContainsAWildcard(t *testing.T) {
-	// Scoped to the commands that write and undo a setting, which is what this
-	// change delivers. The four older `config.apply|preview|restore|verify` grants
-	// still take parameters and are still wildcards in the file; removing them
-	// changes the shape of the dry run, so it is its own step. Widen this prefix to
-	// "config." when they go, and it must still pass.
+	// Every configuration command, with nothing left out. It was once scoped to
+	// install and remove, because four older grants — config.apply, config.preview,
+	// config.restore, config.verify — took the setting and the value as parameters
+	// and so said only "any setting, any value" in the file. They are gone, and this
+	// test is what stops them coming back.
 	for id, declared := range registry {
-		if !strings.HasPrefix(string(id), "config.install.") &&
-			!strings.HasPrefix(string(id), "config.remove.") {
+		if !strings.HasPrefix(string(id), "config.") {
 			continue
 		}
 		for _, arg := range declared.Args {

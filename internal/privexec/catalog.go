@@ -55,13 +55,11 @@ const (
 	// commands on this machine that change anything, and every one of them is
 	// reachable only from a declared action in internal/action.
 	//
-	// Config files. A sudo rule cannot say "may set this one line", so these
-	// name our own signed binary and the list of what may be touched lives in
-	// internal/confedit.
-	ConfigPreview ID = "config.preview"
-	ConfigApply   ID = "config.apply"
-	ConfigRestore ID = "config.restore"
-	ConfigVerify  ID = "config.verify"
+	// Config files are written by installing a shipped file — see dropin.go. There
+	// used to be four commands here that named our own binary and took the setting
+	// and the value as parameters, so the grant said only "any setting, any value"
+	// and the real list lived inside the binary. That is the thing this design
+	// removed.
 
 	// Services. Restarting, stopping and switching on are declared one command per
 	// service in service.go, from the list of services ghostpsy actually configures —
@@ -105,16 +103,6 @@ var (
 
 	// A TCP port. 1 to 65535, and nothing that is not a number.
 	portShape = regexp.MustCompile(`^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$`)
-
-	// A setting key from internal/confedit. It can never be a path: no slash and
-	// no dot-dot can appear in it. Digits are allowed, because a real key has one
-	// — ssh.x11_forwarding — and leaving them out silently made that fix
-	// unreachable.
-	settingKeyShape = regexp.MustCompile(`^[a-z]+\.[a-z0-9_]+$`)
-
-	// A setting value. Deliberately narrow, and narrowed again per setting by
-	// internal/confedit before anything is written.
-	settingValueShape = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,32}$`)
 )
 
 // localeC keeps output in a language the parsers understand. sudo deletes the
@@ -234,41 +222,6 @@ func declareFixCommands() {
 }
 
 func declareConfigCommands() {
-	configParams := []Param{
-		{Name: "key", Why: "the name of one setting from ghostpsy's own list, never a file path", Allow: settingKeyShape},
-		{Name: "value", Why: "the value for that setting, which each setting narrows further", Allow: settingValueShape},
-	}
-
-	declare(ConfigPreview, Command{
-		Binary: agentBinaryPath,
-		Args:   []string{"write-config", "--mode=preview", "--key={key}", "--value={value}"},
-		Why: "show what a configuration change would do. It writes nothing. " +
-			"The list of settings that can be named is in the agent itself",
-		Params: configParams,
-		Env:    localeC,
-	})
-	declare(ConfigApply, Command{
-		Binary: agentBinaryPath,
-		Args:   []string{"write-config", "--mode=apply", "--key={key}", "--value={value}"},
-		Why: "make one configuration change from ghostpsy's own list, after copying the file aside. " +
-			"Only the settings in that list can be reached, and only with the values it allows",
-		Params: configParams,
-		Env:    localeC,
-	})
-	declare(ConfigVerify, Command{
-		Binary: agentBinaryPath,
-		Args:   []string{"write-config", "--mode=verify", "--key={key}", "--value={value}"},
-		Why:    "ask the running service whether a configuration change actually took effect",
-		Params: configParams,
-		Env:    localeC,
-	})
-	declare(ConfigRestore, Command{
-		Binary: agentBinaryPath,
-		Args:   []string{"write-config", "--mode=restore", "--key={key}"},
-		Why:    "put back the copy of a configuration file that was taken before it was changed",
-		Params: []Param{configParams[0]},
-		Env:    localeC,
-	})
 }
 
 func declareServiceCommands() {

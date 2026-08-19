@@ -107,117 +107,25 @@ func TestTheAptRecipeUsesTheAptForm(t *testing.T) {
 	}
 }
 
-// The preview a person approves has to contain both, or they are approving a
-// sentence rather than a change.
-func TestThePreviewCarriesTheDiffAndTheRecipe(t *testing.T) {
-	s := withEtc(t, "Port 22\nPermitRootLogin yes\n")
-
-	out, err := Preview(s, "prohibit-password")
-	if err != nil {
-		t.Fatal(err)
+// The recipe is now advice for a change ghostpsy refuses, so it has to be runnable as
+// it stands — which means every line carries sudo. A pasted recipe that fails on the
+// first line is worse than no recipe.
+func TestByHandCommandsCanBePastedAsTheyAre(t *testing.T) {
+	s, _ := Lookup("ssh.max_auth_tries")
+	commands := ByHandCommands(s, "5", "MaxAuthTries 10\n")
+	if len(commands) == 0 {
+		t.Fatal("no commands to give")
 	}
-
-	for _, want := range []string{
-		"-PermitRootLogin yes",
-		"+PermitRootLogin prohibit-password",
-		"same change by hand",
-		"sed",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("the preview is missing %q:\n%s", want, out)
+	for _, c := range commands {
+		if !strings.HasPrefix(c, "sudo ") {
+			t.Errorf("this line would fail as a normal user: %q", c)
 		}
 	}
-	// And it must not pretend we ran shell.
-	if !strings.Contains(out, "ghostpsy makes this change itself") {
-		t.Errorf("the preview has to say we did not shell out:\n%s", out)
+	joined := strings.Join(commands, "\n")
+	// The copy aside, the edit, and the check that makes it safe.
+	for _, want := range []string{".ghostpsy-backup", "MaxAuthTries 5", "sshd -t"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the recipe is missing %q:\n%s", want, joined)
+		}
 	}
-}
-
-func TestApplyReportsWhatItActuallyChanged(t *testing.T) {
-	s := withEtc(t, "Port 22\nPermitRootLogin yes\n")
-
-	out, err := Apply(s, "prohibit-password")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(out, "-PermitRootLogin yes") || !strings.Contains(out, "+PermitRootLogin prohibit-password") {
-		t.Errorf("the result has to show the change that was made:\n%s", out)
-	}
-}
-
-// Everything ghostpsy does has to be on screen as something ghostpsy does.
-//
-// The copy-aside was only in the by-hand recipe, under a heading saying we do not run
-// those commands — so the one step that makes the change reversible looked
-// hypothetical. It is not: we take that copy, every time, before touching anything. A
-// person reading the report has to be able to see every operation we perform, or "you
-// can see exactly what we do" is not true.
-func TestThePreviewListsEveryOperationGhostpsyPerforms(t *testing.T) {
-	s := withEtc(t, "Port 22\nPermitRootLogin yes\n")
-
-	out, err := Preview(s, "prohibit-password")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	steps := stepsSection(out)
-	if !strings.Contains(steps, "copy") || !strings.Contains(steps, BackupSuffix) {
-		t.Errorf("the copy we take is an operation we perform, so it has to be listed:\n%s", out)
-	}
-	if !strings.Contains(steps, "replace") {
-		t.Errorf("writing the file is an operation we perform, so it has to be listed:\n%s", out)
-	}
-	// Numbered, because the order is the safety: the copy exists before the write.
-	if !strings.Contains(steps, "1.") || !strings.Contains(steps, "2.") {
-		t.Errorf("the order matters and has to be visible:\n%s", out)
-	}
-}
-
-func TestApplyAlsoListsEveryOperationItPerformed(t *testing.T) {
-	s := withEtc(t, "Port 22\nPermitRootLogin yes\n")
-
-	out, err := Apply(s, "prohibit-password")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	steps := stepsSection(out)
-	if !strings.Contains(steps, BackupSuffix) {
-		t.Errorf("the copy it took has to be reported:\n%s", out)
-	}
-	if !strings.Contains(steps, "replace") {
-		t.Errorf("the write it did has to be reported:\n%s", out)
-	}
-}
-
-// The undo performs operations too, and they were reported as one sentence.
-func TestRestoreListsWhatItPutBack(t *testing.T) {
-	s := withEtc(t, "Port 22\nPermitRootLogin yes\n")
-	if _, err := Apply(s, "prohibit-password"); err != nil {
-		t.Fatal(err)
-	}
-
-	out, err := Restore(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(out, BackupSuffix) {
-		t.Errorf("the undo has to name the copy it put back:\n%s", out)
-	}
-	if !strings.Contains(strings.ToLower(out), "removed") {
-		t.Errorf("it also deletes the copy, so it has to say so:\n%s", out)
-	}
-}
-
-// stepsSection is the part of the output listing what ghostpsy itself does, as
-// opposed to the by-hand recipe below it.
-func stepsSection(out string) string {
-	_, rest, found := strings.Cut(out, "ghostpsy does this itself")
-	if !found {
-		return ""
-	}
-	steps, _, _ := strings.Cut(rest, "The same")
-	return steps
 }

@@ -162,8 +162,22 @@ func quote(text string) string {
 	return "'" + strings.ReplaceAll(text, "'", `'\''`) + "'"
 }
 
-// explainWhatWeDid is the sentence that keeps this honest: the recipe is equivalent,
-// not a transcript.
-const explainWhatWeDid = "ghostpsy makes this change itself rather than running these commands, so " +
-	"that only the settings on its own list can be reached and a half-written file is " +
-	"impossible. This is the same change by hand:"
+// ByHandCommands is the change written out for somebody to run themselves.
+//
+// It was built to sit beside a change ghostpsy had just made, labelled "the same
+// thing by hand". That reading is gone: ghostpsy now writes a file of its own rather
+// than editing one somebody else owns, so there is nothing to be the equivalent of.
+//
+// What is left is the case we refuse — a main configuration file that already sets
+// this directive above its Include line, where a drop-in would be read and ignored.
+// ghostpsy will not edit a line it did not write, so these commands are the answer to
+// "then how do I do it", and they are the same shape as the advice a dangerous change
+// carries: the risk, the check, and something to paste.
+func ByHandCommands(s Setting, value, content string) []string {
+	commands := equivalentCommands(s, value, content)
+	out := make([]string, 0, len(commands))
+	for _, c := range commands {
+		out = append(out, "sudo "+c)
+	}
+	return out
+}

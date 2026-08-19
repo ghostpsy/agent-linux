@@ -45,7 +45,6 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newReadSudoersCommand())
 	root.AddCommand(newReadGrantCommand())
 	root.AddCommand(newReadSSHAccessCommand())
-	root.AddCommand(newWriteConfigCommand())
 	root.AddCommand(newActionsCommand())
 	root.AddCommand(newDropInsCommand())
 	root.AddCommand(newServeCommand())

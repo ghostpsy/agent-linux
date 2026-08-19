@@ -131,11 +131,14 @@ func TestHardenSSHChecksTheConfigBeforeAskingSshdToUseIt(t *testing.T) {
 	// The only reload allowed here is the one that follows the rollback. A reload
 	// before the file was put back would be sshd reading a configuration it had
 	// already said no to.
-	if ranAfter(f, privexec.ServiceReload("sshd"), privexec.ConfigRestore) {
+	undo := privexec.RemoveDropIn(mustSetting("ssh.permit_root_login"))
+	if ranAfter(f, privexec.ServiceReload("sshd"), undo) {
 		t.Fatal("sshd was asked to read a configuration it had already refused")
 	}
-	if !ranCommand(f, privexec.ConfigRestore) {
-		t.Fatal("expected sshd_config to be put back after the failure")
+	// The undo is removing the file ghostpsy added, not restoring a copy of the
+	// server's own configuration — that file was never touched.
+	if !ranCommand(f, undo) {
+		t.Fatalf("the change was left in place after the failure; %v ran", f.ran)
 	}
 }
 
@@ -155,8 +158,8 @@ func TestHardenSSHPutsTheFileBackIfTheMachineStopsAnswering(t *testing.T) {
 	if report.OK {
 		t.Fatal("expected an unreachable machine to fail the job")
 	}
-	if !ranCommand(f, privexec.ConfigRestore) {
-		t.Fatal("expected sshd_config to be put back")
+	if !ranCommand(f, privexec.RemoveDropIn(mustSetting("ssh.permit_root_login"))) {
+		t.Fatalf("the change was left in place; %v ran", f.ran)
 	}
 }
 
@@ -376,7 +379,7 @@ func TestHardenSSHRefusesToTurnOffTheLastWayIn(t *testing.T) {
 	}
 	// The dry run must have stopped before it even described the change: this is a
 	// failure that cannot be repaired afterwards.
-	if ranCommand(f, privexec.ConfigPreview) {
+	if ranConfigCommand(f) {
 		t.Fatal("the check has to come first, before anything else is done")
 	}
 }
@@ -483,7 +486,7 @@ func TestAValueTheSettingDoesNotAllowIsRefusedByTheFirstStep(t *testing.T) {
 	if report.OK {
 		t.Fatal("expected the value to be refused")
 	}
-	if ranCommand(f, privexec.ConfigPreview) {
+	if ranConfigCommand(f) {
 		t.Fatal("nothing should describe a change that cannot be made")
 	}
 }
@@ -589,5 +592,93 @@ func TestRestartingAServiceWeConfigureStillWorks(t *testing.T) {
 	}
 	if !ranCommand(f, privexec.ServiceRestart("sshd")) {
 		t.Error("sshd was not restarted")
+	}
+}
+
+// A drop-in that would be read and ignored is the worst outcome available: we write a
+// file, report success, and change nothing. So the preview asks the question, and the
+// answer comes from the server's own file rather than from an assumption about it.
+func TestHardenSSHRefusesWhenADropInWouldBeIgnored(t *testing.T) {
+	// A hand-edited server: the setting is above the Include, so sshd reads it first.
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		privexec.ReadSSHConfig: {Stdout: []byte(
+			"MaxAuthTries 10\nInclude /etc/ssh/sshd_config.d/*.conf\n")},
+	}}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.max_auth_tries", "value": "5",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("expected a change that would be silently ignored to be refused")
+	}
+	if !mentionsInOutput(report, "line 1") {
+		t.Fatalf("the reason does not say which line is in the way:\n%s", allOutput(report))
+	}
+	if len(report.Actions) == 0 || report.Actions[0].DoItYourself == nil {
+		t.Fatalf("the refusal carried no way to do it by hand:\n%s", allOutput(report))
+	}
+	if !strings.Contains(report.Actions[0].DoItYourself.Script, "sshd -t") {
+		t.Errorf("the commands skip the check that makes the edit safe:\n%s",
+			report.Actions[0].DoItYourself.Script)
+	}
+	// Nothing was installed.
+	if ranCommand(f, privexec.InstallDropIn(confedit.Change{
+		Setting: mustSetting("ssh.max_auth_tries"), Value: "5",
+	})) {
+		t.Error("the file was installed even though it would have been ignored")
+	}
+}
+
+// And the normal case: a stock server, where the Include is near the top.
+func TestHardenSSHInstallsADropInOnAStockServer(t *testing.T) {
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		privexec.ReadSSHConfig: {Stdout: []byte(
+			"Include /etc/ssh/sshd_config.d/*.conf\n#MaxAuthTries 6\nX11Forwarding yes\n")},
+		privexec.SSHEffectiveConfig: {Stdout: []byte("maxauthtries 5\n")},
+	}}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode: ModeRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.max_auth_tries", "value": "5",
+		}}},
+	})
+
+	if !report.OK {
+		t.Fatalf("expected a stock server to accept the change, got:\n%s", allOutput(report))
+	}
+	want := privexec.InstallDropIn(confedit.Change{
+		Setting: mustSetting("ssh.max_auth_tries"), Value: "5",
+	})
+	if !ranCommand(f, want) {
+		t.Errorf("the file was not installed; %v ran instead", f.ran)
+	}
+}
+
+// An action that takes no copy must not say it puts one back.
+//
+// Both configuration actions still promised "put back byte for byte from the copy taken
+// before it was edited" after they stopped taking a copy at all. ghostpsy now installs a
+// file of its own beside the distribution's, so the undo is `rm` and there is nothing of
+// this server's to keep — a better undo, described by a sentence that had become false.
+// It reached the person approving the change, in the report, as a reason to say yes.
+func TestNoActionPromisesACopyItDoesNotTake(t *testing.T) {
+	copyWords := []string{"copy", "backup", "put back byte for byte"}
+
+	for _, a := range All() {
+		for _, v := range a.Variants {
+			if v.Backup.Kind != BackupNone {
+				continue
+			}
+			for _, word := range copyWords {
+				if strings.Contains(strings.ToLower(a.UndoWhy), word) {
+					t.Errorf("%s takes no copy, and its undo says %q:\n\t%s", a.Type, word, a.UndoWhy)
+				}
+			}
+		}
 	}
 }

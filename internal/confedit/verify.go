@@ -3,29 +3,8 @@
 package confedit
 
 import (
-	"context"
-	"fmt"
-	"os/exec"
 	"strings"
-	"time"
 )
-
-// Verify checks the setting the *running service* actually has, not the file.
-//
-// Reading the file back would prove nothing. sshd_config can pull in other files
-// with Include, a later line can override an earlier one, and a distribution can
-// ship a drop-in nobody remembers. So the service is asked what it believes, and
-// that answer is what decides whether the fix worked.
-func Verify(s Setting, value string) (string, error) {
-	effective, err := effectiveSettings(s)
-	if err != nil {
-		return "", err
-	}
-	if matchesEffective(s, value, effective) {
-		return fmt.Sprintf("%s is running with %s.", serviceName(s), directiveLine(s, value)), nil
-	}
-	return "", fmt.Errorf("%s", explainMismatch(s, value, effective))
-}
 
 // sameMeaning lists values a service may report back under a different name.
 //
@@ -61,58 +40,27 @@ func matchesEffective(s Setting, value, effective string) bool {
 	return false
 }
 
-// explainMismatch says what the service is actually running.
+// Effective reports what the service says it is running with, and whether that is the
+// value that was asked for.
 //
-// Without it a failed check is only "it did not work", which tells the person
-// nothing they can act on.
-func explainMismatch(s Setting, value, effective string) string {
-	current := "something else"
-	for _, line := range strings.Split(effective, "\n") {
+// It takes the text rather than running the command. Verify used to shell out to
+// `sshd -T` from here, which meant a privileged command that appeared in no registry
+// and in no grant file — nobody reading /etc/sudoers.d/ghostpsy would know it ran. Now
+// the command is declared, the caller runs it through privexec, and the judgement
+// happens on the output.
+func Effective(s Setting, value, reported string) (string, bool) {
+	if matchesEffective(s, value, reported) {
+		return value, true
+	}
+	return reportedValue(s, reported), false
+}
+
+// reportedValue is the value the service printed for this directive.
+func reportedValue(s Setting, reported string) string {
+	for _, line := range strings.Split(reported, "\n") {
 		if isLiveDirective(s, line) {
-			current = directiveLine(s, directiveValue(s, line))
-			break
+			return directiveValue(s, line)
 		}
 	}
-	return fmt.Sprintf("%s did not take the change: it is running with %s, not %s",
-		serviceName(s), current, directiveLine(s, value))
-}
-
-// effectiveConfigTimeout bounds the question. Asking a service what it thinks
-// must never be the reason a fix hangs.
-const effectiveConfigTimeout = 30 * time.Second
-
-// effectiveSettings asks the service what it is really using.
-func effectiveSettings(s Setting) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), effectiveConfigTimeout)
-	defer cancel()
-
-	var cmd *exec.Cmd
-	switch s.Style {
-	case StyleSSH:
-		// sshd -T prints the whole effective configuration, includes and all.
-		cmd = exec.CommandContext(ctx, "sshd", "-T")
-	case StyleAPTConf:
-		cmd = exec.CommandContext(ctx, "apt-config", "dump")
-	default:
-		return "", fmt.Errorf("ghostpsy cannot check a %s setting", s.Style)
-	}
-	cmd.Env = []string{"LC_ALL=C", "LANG=C", "PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("could not ask %s what settings it is using: %w: %s",
-			serviceName(s), err, strings.TrimSpace(string(out)))
-	}
-	return string(out), nil
-}
-
-// serviceName is what to call the thing being checked, in words.
-func serviceName(s Setting) string {
-	switch s.Style {
-	case StyleSSH:
-		return "the SSH server"
-	case StyleAPTConf:
-		return "apt"
-	}
-	return s.File
+	return "nothing at all"
 }

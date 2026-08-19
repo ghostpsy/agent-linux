@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
@@ -186,25 +187,29 @@ func enableAutomaticSecurityUpdates() Action {
 		Summary: "Switch on automatic security updates, so this machine installs them " +
 			"itself instead of waiting to be noticed.",
 		Reversibility: ReverseFull,
-		UndoWhy: "The settings file is put back byte for byte from the copy taken before " +
-			"it was edited.",
+		UndoWhy: "ghostpsy's own file in apt.conf.d is deleted, and the service is stopped " +
+			"again. Nothing this machine came with was edited, so there is nothing to put back.",
 		Variants: []Variant{
 			{
 				// Debian and Ubuntu. unattended-upgrades has a genuine dry run
 				// that lists what it would install, which is exactly what the
 				// person approving needs to see.
-				Needs:  "unattended-upgrade",
-				Backup: BackupPlan{Kind: BackupCopyFiles, Target: "/etc/apt/apt.conf.d/20auto-upgrades"},
+				Needs: "unattended-upgrade",
+				// No backup. ghostpsy writes its own file in apt.conf.d rather than
+				// editing the distribution's 20auto-upgrades, so there is nothing of
+				// this server's to copy aside and the undo is `rm`.
+				Backup: BackupPlan{Kind: BackupNone},
 				DryRun: []Step{
 					{
-						Why:     "show the change that makes the machine check daily",
-						Command: privexec.ConfigPreview,
-						Args:    map[string]string{"key": "apt.update_package_lists", "value": "1"},
+						// The exact bytes, printed from the file that would be
+						// installed. It already exists on disk, so there is no
+						// diff of ours to take on trust.
+						Why:     "show the file that makes the machine check daily",
+						Command: privexec.ShowDropIn(aptChange("apt.update_package_lists")),
 					},
 					{
-						Why:     "show the change that makes it install security updates",
-						Command: privexec.ConfigPreview,
-						Args:    map[string]string{"key": "apt.unattended_upgrade", "value": "1"},
+						Why:     "show the file that makes it install security updates",
+						Command: privexec.ShowDropIn(aptChange("apt.unattended_upgrade")),
 					},
 					{
 						Why:     "show which updates it would install in future. Nothing is installed now",
@@ -214,13 +219,11 @@ func enableAutomaticSecurityUpdates() Action {
 				Run: []Step{
 					{
 						Why:     "make the machine check daily for new packages",
-						Command: privexec.ConfigApply,
-						Args:    map[string]string{"key": "apt.update_package_lists", "value": "1"},
+						Command: privexec.InstallDropIn(aptChange("apt.update_package_lists")),
 					},
 					{
 						Why:     "make the machine install security updates on its own",
-						Command: privexec.ConfigApply,
-						Args:    map[string]string{"key": "apt.unattended_upgrade", "value": "1"},
+						Command: privexec.InstallDropIn(aptChange("apt.unattended_upgrade")),
 					},
 					{
 						Why:     "start the service that does the work",
@@ -229,9 +232,8 @@ func enableAutomaticSecurityUpdates() Action {
 				},
 				Verify: []Step{
 					{
-						Why:     "ask apt whether it really has the setting now",
-						Command: privexec.ConfigVerify,
-						Args:    map[string]string{"key": "apt.unattended_upgrade", "value": "1"},
+						Why:     "ask apt what it really has now",
+						Command: privexec.APTEffectiveConfig,
 					},
 					{
 						Why:     "check a full update cycle would now succeed",
@@ -240,9 +242,12 @@ func enableAutomaticSecurityUpdates() Action {
 				},
 				Undo: []Step{
 					{
-						Why:     "put the settings file back",
-						Command: privexec.ConfigRestore,
-						Args:    map[string]string{"key": "apt.unattended_upgrade"},
+						Why:     "remove the file that turned daily checks on",
+						Command: privexec.RemoveDropIn(mustSetting("apt.update_package_lists")),
+					},
+					{
+						Why:     "remove the file that turned automatic installs on",
+						Command: privexec.RemoveDropIn(mustSetting("apt.unattended_upgrade")),
 					},
 				},
 			},
@@ -313,8 +318,9 @@ func hardenSSHConfig() Action {
 			},
 		},
 		Reversibility: ReverseFull,
-		UndoWhy: "sshd_config is put back byte for byte from the copy taken before it was " +
-			"edited, and the SSH server is asked to read it again.",
+		UndoWhy: "ghostpsy's own file in sshd_config.d is deleted, and the SSH server is " +
+			"asked to read its configuration again. sshd_config itself is never touched, so " +
+			"there is nothing to put back.",
 		Variants: []Variant{
 			sshVariant("sshd"),
 			sshVariant("ssh"),
@@ -331,8 +337,11 @@ func hardenSSHConfig() Action {
 // there.
 func sshVariant(unit string) Variant {
 	return Variant{
-		Needs:  privexec.UnitPath(unit),
-		Backup: BackupPlan{Kind: BackupCopyFiles, Target: "/etc/ssh/sshd_config"},
+		Needs: privexec.UnitPath(unit),
+		// No backup. ghostpsy does not change this server's own configuration file,
+		// so there is nothing of theirs to copy aside — the undo is removing the file
+		// we added, which is a stronger guarantee than restoring a copy of ours.
+		Backup: BackupPlan{Kind: BackupNone},
 		DryRun: []Step{
 			{
 				// First, and in the dry run, because this failure cannot be
@@ -342,16 +351,42 @@ func sshVariant(unit string) Variant {
 				Check: CheckSomebodyCanStillLogIn,
 			},
 			{
-				Why:     "show the exact line that would change",
-				Command: privexec.ConfigPreview,
-				Args:    map[string]string{"key": "{setting}", "value": "{value}"},
+				// Three real commands instead of one of ours: what this server has
+				// now, what would be written, and what sshd currently believes. The
+				// middle one prints the file that would be installed, byte for byte,
+				// because it already exists on disk — so there is no diff of ours to
+				// take on trust.
+				Why:     "read the SSH configuration this server has now",
+				Command: privexec.ReadSSHConfig,
+			},
+			{
+				Why:   "check a file in sshd_config.d would actually be read here",
+				Check: CheckDropInWillTakeEffect,
+			},
+			{
+				Why:     "show the exact file that would be installed",
+				Command: privexec.ID("config.show.{setting}={value}"),
+			},
+			{
+				Why:     "ask the SSH server what it believes today, to compare afterwards",
+				Command: privexec.SSHEffectiveConfig,
 			},
 		},
 		Run: []Step{
 			{
-				Why:     "change the setting, after copying the file aside",
-				Command: privexec.ConfigApply,
-				Args:    map[string]string{"key": "{setting}", "value": "{value}"},
+				Why:     "read the SSH configuration this server has now",
+				Command: privexec.ReadSSHConfig,
+			},
+			{
+				// And again in the run: the file can change between the preview and
+				// the approval, and the server's answer at the moment of acting is
+				// the one that counts.
+				Why:   "check a file in sshd_config.d would actually be read here",
+				Check: CheckDropInWillTakeEffect,
+			},
+			{
+				Why:     "install the file that makes the change",
+				Command: privexec.ID("config.install.{setting}={value}"),
 			},
 			{
 				// Before the reload, never after. A configuration sshd refuses is
@@ -366,9 +401,15 @@ func sshVariant(unit string) Variant {
 		},
 		Verify: []Step{
 			{
+				// The service, not the file. sshd_config pulls in other files, the
+				// first value of a keyword wins, and a distribution can ship a
+				// drop-in nobody remembers — so reading the file back proves nothing.
 				Why:     "ask the running SSH server whether the setting really took",
-				Command: privexec.ConfigVerify,
-				Args:    map[string]string{"key": "{setting}", "value": "{value}"},
+				Command: privexec.SSHEffectiveConfig,
+			},
+			{
+				Why:   "check the value sshd reported is the one that was asked for",
+				Check: CheckSettingTookEffect,
 			},
 			{
 				Why:     "check the SSH server is still running",
@@ -382,9 +423,11 @@ func sshVariant(unit string) Variant {
 		},
 		Undo: []Step{
 			{
-				Why:     "put sshd_config back",
-				Command: privexec.ConfigRestore,
-				Args:    map[string]string{"key": "{setting}"},
+				// Removing the file we added, not restoring a copy. There is no copy
+				// to restore: we never touched the server's own configuration, so
+				// putting it back means taking our file away again.
+				Why:     "remove the file ghostpsy added",
+				Command: privexec.ID("config.remove.{setting}"),
 			},
 			{
 				Why:     "ask the SSH server to read the old file again",
@@ -466,4 +509,25 @@ func restartFailedService() Action {
 			},
 		}},
 	}
+}
+
+// aptChange is one apt setting at the only value it accepts.
+//
+// The value is written out here rather than passed in because there is only one: apt's
+// periodic settings are on or off, and off is not something ghostpsy asks for.
+func aptChange(key string) confedit.Change {
+	s := mustSetting(key)
+	return confedit.Change{Setting: s, Value: s.Allow[0]}
+}
+
+// mustSetting panics on an unknown key, at startup rather than on somebody's server.
+//
+// The catalogue is written by us and read at init, so a wrong key here is a typo we
+// should never ship — the same reason declare() panics.
+func mustSetting(key string) confedit.Setting {
+	s, ok := confedit.Lookup(key)
+	if !ok {
+		panic("action: no such setting " + key)
+	}
+	return s
 }

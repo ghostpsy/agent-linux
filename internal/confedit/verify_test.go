@@ -65,12 +65,29 @@ APT::Periodic::Unattended-Upgrade "1";
 
 // Whatever the server does think has to reach the person, or a failed check is
 // just "it did not work".
-func TestAFailedCheckSaysWhatTheServerIsActuallyRunning(t *testing.T) {
+func TestAFailedCheckReportsWhatTheServerIsActuallyRunning(t *testing.T) {
 	setting := sshSetting(t)
 
-	message := explainMismatch(setting, "no", "permitrootlogin yes\n")
+	got, ok := Effective(setting, "no", "permitrootlogin yes\n")
 
-	if !strings.Contains(message, "PermitRootLogin yes") {
-		t.Fatalf("expected the message to name what the server is running, got %q", message)
+	if ok {
+		t.Fatal("a server running 'yes' has not taken 'no'")
+	}
+	if got != "yes" {
+		t.Fatalf("expected the value the server reported, got %q", got)
+	}
+}
+
+// And when the directive is absent altogether, the caller still gets something to
+// print. "" would read as though the server had answered nothing at all, which is a
+// different problem with a different fix.
+func TestAMissingDirectiveIsReportedInWords(t *testing.T) {
+	got, ok := Effective(sshSetting(t), "no", "port 22\n")
+
+	if ok {
+		t.Fatal("a server that never mentions the directive has not taken the value")
+	}
+	if !strings.Contains(got, "nothing") {
+		t.Fatalf("expected words a person can read, got %q", got)
 	}
 }

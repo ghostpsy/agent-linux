@@ -160,3 +160,14 @@ const dropInDirMode os.FileMode = 0o755
 // DropInSourceDir is where the shipped files live, for a message that tells
 // somebody where to look.
 func DropInSourceDir() string { return dropInSourceDir }
+
+// SSHConfigPath is the main SSH configuration file, for a command that reads it.
+func SSHConfigPath() string { return sshdConfigPath }
+
+// DropInDirFor is where this setting's drop-in goes, for a message that names it.
+func DropInDirFor(s Setting) string {
+	if s.Style == StyleSSH {
+		return sshDropInDir
+	}
+	return aptDropInDir
+}

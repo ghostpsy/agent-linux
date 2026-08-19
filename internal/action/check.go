@@ -37,6 +37,10 @@ func runCheck(ctx context.Context, deps Deps, p plan, step Step, before []Comman
 		return unitNotProtected(deps, p, step.Why)
 	case CheckServiceIsOneWeConfigure:
 		return serviceIsOneWeConfigure(p, step.Why)
+	case CheckDropInWillTakeEffect:
+		return dropInWillTakeEffect(p, step.Why, before)
+	case CheckSettingTookEffect:
+		return settingTookEffect(p, step.Why, before)
 	}
 	return CommandRun{
 		Why:      step.Why,
@@ -293,4 +297,86 @@ func serviceIsOneWeConfigure(p plan, why string) (CommandRun, bool) {
 		}, "\n"),
 	}
 	return run, false
+}
+
+// dropInWillTakeEffect refuses a change sshd would read and ignore.
+//
+// It reads the configuration the previous step printed, rather than reading the file
+// itself: that keeps one privileged read in the transcript where the person can see
+// the same text this judgement was made from.
+func dropInWillTakeEffect(p plan, why string, before []CommandRun) (CommandRun, bool) {
+	run := CommandRun{Why: why, Display: "ghostpsy check " + string(CheckDropInWillTakeEffect)}
+
+	setting, err := confedit.Check(p.values["setting"], p.values["value"])
+	if err != nil {
+		// The first step already refused this with the real reason. Repeating the
+		// judgement here would report the same problem twice in different words.
+		run.Stderr = err.Error()
+		run.ExitCode = 1
+		return run, false
+	}
+
+	mainConfig := outputOf(before, privexec.ReadSSHConfig)
+	wins, blocking := confedit.DropInWins(setting, mainConfig)
+	if wins {
+		run.Stdout = fmt.Sprintf("a file in %s will be read before anything that contradicts it",
+			confedit.DropInDirFor(setting))
+		return run, true
+	}
+
+	run.Stderr = blocking + ". ghostpsy only writes files it created, so it will not change that line"
+	run.ExitCode = 1
+	run.Advice = &DoItYourself{
+		Risk: "editing the main configuration file by hand means a mistake in it stops sshd from " +
+			"starting, and a server nobody can log in to cannot be repaired by logging in to it",
+		CheckFirst: "run `sudo sshd -t` after the edit and before the reload. If it says anything at " +
+			"all, put the copy back rather than reloading",
+		Script: strings.Join(
+			confedit.ByHandCommands(setting, p.values["value"], mainConfig), "\n"),
+	}
+	return run, false
+}
+
+// outputOf returns what a named command printed earlier in this phase.
+func outputOf(runs []CommandRun, id privexec.ID) string {
+	display := privexec.Display(id, nil)
+	for _, r := range runs {
+		if r.Display == display {
+			return r.Stdout
+		}
+	}
+	return ""
+}
+
+// settingTookEffect reads what the service reported and decides whether the fix worked.
+//
+// It reads the previous step's output rather than asking again, so the person sees the
+// same text this judgement was made from.
+func settingTookEffect(p plan, why string, before []CommandRun) (CommandRun, bool) {
+	run := CommandRun{Why: why, Display: "ghostpsy check " + string(CheckSettingTookEffect)}
+
+	setting, err := confedit.Check(p.values["setting"], p.values["value"])
+	if err != nil {
+		run.Stderr = err.Error()
+		run.ExitCode = 1
+		return run, false
+	}
+
+	effective := outputOf(before, privexec.SSHEffectiveConfig)
+	if effective == "" {
+		run.Stderr = "the SSH server did not say what it is running with, so there is no way to " +
+			"tell whether the change took. Treating that as success would be a guess"
+		run.ExitCode = 1
+		return run, false
+	}
+
+	if got, ok := confedit.Effective(setting, p.values["value"], effective); !ok {
+		run.Stderr = fmt.Sprintf("%s asked for %s and the SSH server reports %q",
+			setting.Directive, p.values["value"], got)
+		run.ExitCode = 1
+		return run, false
+	}
+	run.Stdout = fmt.Sprintf("the SSH server is running with %s %s",
+		setting.Directive, p.values["value"])
+	return run, true
 }

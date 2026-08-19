@@ -100,14 +100,17 @@ func checkStepCommand(a Action, step Step) error {
 }
 
 // commandPattern turns a templated ID into an expression matching the IDs it could
-// resolve to. A placeholder stands for one value, which never contains a dot.
+// resolve to.
+//
+// A placeholder matches anything, because the values are not all one word: a setting
+// key is `ssh.max_auth_tries`, so config.install.{setting}={value} resolves to an ID
+// with three dots in it. This is a startup sanity check that a template could ever
+// match something — the real limit is privexec.Declared at the moment of running.
 func commandPattern(id string) *regexp.Regexp {
-	quoted := commandPlaceholder.ReplaceAllStringFunc(regexp.QuoteMeta(id), func(match string) string {
-		return "[^.]+"
-	})
+	quoted := regexp.QuoteMeta(id)
 	// QuoteMeta escapes the braces, so match the escaped form too.
 	quoted = strings.ReplaceAll(quoted, `\{`, `{`)
 	quoted = strings.ReplaceAll(quoted, `\}`, `}`)
-	quoted = commandPlaceholder.ReplaceAllString(quoted, `[^.]+`)
+	quoted = commandPlaceholder.ReplaceAllString(quoted, `.+`)
 	return regexp.MustCompile("^" + quoted + "$")
 }

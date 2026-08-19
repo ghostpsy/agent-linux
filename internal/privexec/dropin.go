@@ -76,3 +76,69 @@ func init() {
 func Change(s confedit.Setting) confedit.Change {
 	return confedit.Change{Setting: s, Value: s.Allow[0]}
 }
+
+// The preview is three real commands: what the server has, what we would write, and
+// what the service believes right now. No diff computed by us, nothing to take on
+// trust — the second command prints the exact bytes the third one would change.
+
+// ReadSSHConfig reads the main SSH configuration.
+//
+// Privileged, measured rather than assumed: as a normal user on rocky-9 this fails,
+// because it ships sshd_config as 0600. debian-13 ships it 0644 but its
+// 50-cloud-init.conf drop-in as 0600, so a complete read needs root there too.
+const ReadSSHConfig ID = "config.read.sshd_config"
+
+// SSHEffectiveConfig asks sshd what it actually believes.
+//
+// This is what decides whether a fix worked. Reading the file back would prove
+// nothing: sshd_config pulls in other files with Include, the first value of a keyword
+// wins, and a distribution can ship a drop-in nobody remembers.
+const SSHEffectiveConfig ID = "config.effective.sshd"
+
+// ShowDropIn names the command that prints what would be written.
+func ShowDropIn(c confedit.Change) ID {
+	return ID(fmt.Sprintf("config.show.%s=%s", c.Setting.Key, c.Value))
+}
+
+func init() {
+	declare(ReadSSHConfig, Command{
+		Binary: "cat",
+		Args:   []string{confedit.SSHConfigPath()},
+		Why: "read the SSH configuration, to find the Include line and any line that already " +
+			"sets what is about to change. One named file, never a pattern",
+		Env:       localeC,
+		NeedsPath: confedit.SSHConfigPath(),
+	})
+
+	declare(SSHEffectiveConfig, Command{
+		Binary: "sshd",
+		Args:   []string{"-T"},
+		Why: "ask the SSH server what settings it is actually running with, which is what " +
+			"decides whether a change took effect",
+		Env: localeC,
+	})
+
+	// Showing what would be written needs no privilege: the shipped files are 0444.
+	// Granting root to read a world-readable file would be nine lines that buy nothing.
+	for _, change := range confedit.Changes() {
+		declare(ShowDropIn(change), Command{
+			Binary:       "cat",
+			Args:         []string{change.DropIn().Source},
+			Why:          fmt.Sprintf("show the exact file that would set %s", change.Setting.Directive),
+			Unprivileged: true,
+		})
+	}
+}
+
+// APTEffectiveConfig asks apt what configuration it is really using.
+const APTEffectiveConfig ID = "config.effective.apt"
+
+func init() {
+	declare(APTEffectiveConfig, Command{
+		Binary: "apt-config",
+		Args:   []string{"dump"},
+		Why: "ask apt what settings it is actually using, which is what decides whether a " +
+			"change took effect",
+		Env: localeC,
+	})
+}

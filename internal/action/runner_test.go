@@ -39,9 +39,27 @@ func (f *fakeExec) run(_ context.Context, id privexec.ID, _ privexec.Values) (pr
 	}
 	res, known := f.answers[id]
 	if !known {
+		if fallback, has := stockServer[id]; has {
+			return fallback, nil
+		}
 		return privexec.Result{ExitCode: 0}, nil
 	}
 	return res, nil
+}
+
+// stockServer is what a machine nobody has hand-edited answers.
+//
+// A test that says nothing about the SSH configuration means "an ordinary server", not
+// "a server with an empty sshd_config" — and the difference matters now that a fix is
+// refused when a drop-in would be ignored. Both real test machines look like this:
+// debian-13 has Include on line 12, rocky-9 on line 15.
+var stockServer = map[privexec.ID]privexec.Result{
+	privexec.ReadSSHConfig: {Stdout: []byte(
+		"# managed by the distribution\n" +
+			"Include /etc/ssh/sshd_config.d/*.conf\n" +
+			"#MaxAuthTries 6\n" +
+			"#PermitRootLogin prohibit-password\n" +
+			"X11Forwarding yes\n")},
 }
 
 func testDeps(f *fakeExec) Deps {
@@ -469,6 +487,20 @@ func TestEveryShippedActionIsWellFormed(t *testing.T) {
 			t.Errorf("action %q: %v", a.Type, err)
 		}
 	}
+}
+
+// ranConfigCommand asks whether anything at all was done to a configuration file.
+//
+// A test that names one command has to be edited every time the step list changes.
+// What these tests mean is "nothing touched the configuration", so that is what they
+// ask.
+func ranConfigCommand(f *fakeExec) bool {
+	for _, ran := range f.ran {
+		if strings.HasPrefix(string(ran), "config.") {
+			return true
+		}
+	}
+	return false
 }
 
 func ranCommand(f *fakeExec, id privexec.ID) bool {

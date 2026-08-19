@@ -139,6 +139,23 @@ const (
 	// we know what changed and why; where we did not, the honest answer is the
 	// command and a look at the status first.
 	CheckServiceIsOneWeConfigure CheckID = "service_is_one_we_configure"
+
+	// CheckDropInWillTakeEffect refuses a change that would be written and then
+	// ignored, and hands over the commands to make it by hand instead.
+	//
+	// sshd keeps the first value it reads for a keyword. A server whose main
+	// configuration sets this directive above its Include line would read our file
+	// and take no notice of it — so we would write it, report success, and change
+	// nothing. That is the worst outcome available to a tool whose whole claim is
+	// that you can see what it did.
+	CheckDropInWillTakeEffect CheckID = "drop_in_will_take_effect"
+
+	// CheckSettingTookEffect reads what the service reported and refuses to call the
+	// fix done unless the value is really there.
+	//
+	// `sshd -T` exiting zero only means sshd answered. Treating that as success is how
+	// a fix reports done and changed nothing.
+	CheckSettingTookEffect CheckID = "setting_took_effect"
 )
 
 // checks is every judgement the runner knows how to make. A step naming anything
@@ -149,6 +166,8 @@ var checks = map[CheckID]bool{
 	CheckUnitNotProtected:        true,
 	CheckSomebodyCanStillLogIn:   true,
 	CheckServiceIsOneWeConfigure: true,
+	CheckDropInWillTakeEffect:    true,
+	CheckSettingTookEffect:       true,
 }
 
 // Step is one thing a phase does.

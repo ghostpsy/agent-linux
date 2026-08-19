@@ -5,7 +5,7 @@ package privexec
 import (
 	"fmt"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -69,6 +69,14 @@ func Sudoers(user string) string {
 
 // resolve returns the absolute path of a declared binary on this host, or an
 // error if it is not installed.
+//
+// The directories searched are securePath's, in that order, and never the caller's
+// PATH. Two things depend on that. The grant file has to read the same whoever
+// generates it: on rocky-9 /bin is a symlink to usr/bin, root's PATH starts with
+// /usr/sbin:/usr/bin and the agent user's starts with /sbin:/bin, so exec.LookPath gave
+// /usr/bin/systemctl to one and /bin/systemctl to the other — 20 grant lines that never
+// matched, and a drift warning no reinstall could clear. And the path handed to sudo is
+// the path the rule pins, so it must not depend on an environment a caller sets.
 func resolve(binary string) (string, error) {
 	if strings.HasPrefix(binary, "/") {
 		if _, err := os.Stat(binary); err != nil {
@@ -76,7 +84,21 @@ func resolve(binary string) (string, error) {
 		}
 		return binary, nil
 	}
-	return exec.LookPath(binary)
+
+	for _, dir := range searchDirs() {
+		candidate := filepath.Join(dir, binary)
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() || info.Mode().Perm()&0o111 == 0 {
+			continue
+		}
+		return candidate, nil
+	}
+	return "", fmt.Errorf("%s is in none of %s", binary, strings.Join(searchDirs(), ", "))
+}
+
+// searchDirs are the directories a bare binary name may be found in.
+func searchDirs() []string {
+	return strings.Split(strings.TrimPrefix(securePath, "PATH="), ":")
 }
 
 func sortedIDs() []ID {

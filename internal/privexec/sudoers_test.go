@@ -3,6 +3,8 @@
 package privexec
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -95,5 +97,39 @@ func TestSudoersEmitsOneEnvKeepLinePerBinary(t *testing.T) {
 
 	if n := strings.Count(got, "Defaults!/bin/echo env_keep"); n != 1 {
 		t.Fatalf("expected exactly 1 env_keep line for the shared binary, got %d:\n%s", n, got)
+	}
+}
+
+// The grant file has to be the same text whoever generates it, or `sudoers --check`
+// reports drift that no reinstall can clear.
+//
+// Measured on rocky-9, where /bin is a symlink to usr/bin: root's PATH begins with
+// /usr/sbin:/usr/bin, and the agent user's begins with /sbin:/bin. exec.LookPath
+// therefore answered /usr/bin/systemctl for root and /bin/systemctl for the agent —
+// the same program, two spellings, and 20 grant lines that never matched.
+func TestABinaryResolvesToTheSamePathWhateverTheCallersPATHIs(t *testing.T) {
+	odd := t.TempDir()
+	if err := os.WriteFile(filepath.Join(odd, "cat"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", odd)
+	fromOddPath, err := resolve("cat")
+	if err != nil {
+		t.Fatalf("a binary that exists has to resolve: %v", err)
+	}
+
+	t.Setenv("PATH", "")
+	fromNoPath, err := resolve("cat")
+	if err != nil {
+		t.Fatalf("an empty PATH must not hide a binary that is installed: %v", err)
+	}
+
+	if fromOddPath != fromNoPath {
+		t.Errorf("the caller's PATH changed where a granted command lives: %q then %q",
+			fromOddPath, fromNoPath)
+	}
+	if strings.HasPrefix(fromOddPath, odd) {
+		t.Errorf("a directory on the caller's PATH ended up in the grant: %q", fromOddPath)
 	}
 }

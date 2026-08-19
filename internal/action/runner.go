@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/ghostpsy/agent-linux/internal/confedit"
 	"github.com/ghostpsy/agent-linux/internal/privexec"
+	"github.com/ghostpsy/agent-linux/internal/redact"
 )
 
 // Deps is everything the runner touches outside itself.
@@ -50,6 +52,10 @@ type Deps struct {
 	// SSHAccess counts how many accounts could still log in over SSH. It is what
 	// stops a hardening change closing the last door.
 	SSHAccess func(context.Context) (confedit.Access, error)
+
+	// Accounts names the people with an account on this machine, so their names can
+	// be covered in everything a command printed before any of it is sent.
+	Accounts func() ([]string, error)
 
 	Sleep func(context.Context, time.Duration) error
 }
@@ -118,14 +124,30 @@ type plan struct {
 	action  Action
 	variant Variant
 	values  map[string]string
+
+	// people are the account names to cover in whatever the commands print. Read
+	// once for the whole job rather than once per command: /etc/passwd does not
+	// change while a fix runs, and the report is masked at one point so a new step
+	// cannot be added that forgets to.
+	people []string
 }
 
 func planAll(deps Deps, job Job) ([]plan, []ActionReport) {
 	plans := make([]plan, len(job.Actions))
 	reports := make([]ActionReport, len(job.Actions))
 
+	// Before anything is planned, because a report that cannot be masked must not be
+	// produced at all. Guessing "there are no accounts" would send every name.
+	people, err := accountsOf(deps)
+
 	for i, req := range job.Actions {
 		reports[i] = ActionReport{Type: req.Type}
+		if err != nil {
+			reports[i].Refused = "ghostpsy could not read who has an account on this machine, " +
+				"so it cannot cover their names in what it reports. It will not send a command's " +
+				"output it has not been able to check: " + err.Error()
+			continue
+		}
 
 		a, known := Lookup(req.Type)
 		if !known {
@@ -148,9 +170,22 @@ func planAll(deps Deps, job Job) ([]plan, []ActionReport) {
 				"this machine does not have %s, which is what this fix needs", neededTools(a))
 			continue
 		}
-		plans[i] = plan{action: a, variant: variant, values: req.Params}
+		plans[i] = plan{action: a, variant: variant, values: req.Params, people: people}
 	}
 	return plans, reports
+}
+
+// accountsOf reads who lives on this machine, and treats a missing reader as a
+// failure rather than as an empty list.
+//
+// A Deps built without one is a wiring mistake, and the consequence of that mistake is
+// every account name on the machine being sent. So it is an error with a sentence
+// somebody can act on, not a crash and not a silent pass.
+func accountsOf(deps Deps) ([]string, error) {
+	if deps.Accounts == nil {
+		return nil, errors.New("this agent was built without a way to read the account list")
+	}
+	return deps.Accounts()
 }
 
 // pickVariant chooses how to carry the action out on this machine.
@@ -336,12 +371,27 @@ func runPhase(ctx context.Context, deps Deps, p plan, steps []Step) ([]CommandRu
 		// them: the only way to know a firewall would not cut you off is to read
 		// the rules its own dry run just printed.
 		run, ok := runStep(ctx, deps, p, step, runs)
-		runs = append(runs, run)
+		runs = append(runs, hidePersonalData(p.people, run))
 		if !ok {
 			return runs, false
 		}
 	}
 	return runs, true
+}
+
+// hidePersonalData covers account names, keys and addresses in what a command printed.
+//
+// It runs here, on every run of every step, because this is the single point every
+// command's output passes through. Masking at the moment the report is sent instead
+// would leave a new report path free to forget.
+//
+// The checks that read an earlier step's output see the masked text, which is safe
+// because no setting ghostpsy writes has a name or an address for a value — there is a
+// test in internal/confedit that keeps that true.
+func hidePersonalData(people []string, run CommandRun) CommandRun {
+	run.Stdout = redact.Text(people, run.Stdout)
+	run.Stderr = redact.Text(people, run.Stderr)
+	return run
 }
 
 func runStep(ctx context.Context, deps Deps, p plan, step Step, before []CommandRun) (CommandRun, bool) {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/ghostpsy/agent-linux/internal/confedit"
 	"github.com/ghostpsy/agent-linux/internal/privexec"
+	"github.com/ghostpsy/agent-linux/internal/redact"
 )
 
 // HostDeps is the runner wired to this machine.
@@ -32,6 +33,7 @@ func HostDeps() Deps {
 		Listening:    listening,
 		Protected:    Protected,
 		SSHAccess:    sshAccess,
+		Accounts:     redact.Accounts,
 		Sleep:        sleep,
 	}
 }

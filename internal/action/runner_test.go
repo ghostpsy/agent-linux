@@ -74,7 +74,10 @@ func testDeps(f *fakeExec) Deps {
 		SSHAccess: func(context.Context) (confedit.Access, error) {
 			return confedit.Access{AccountsWithKeys: 1}, nil
 		},
-		Sleep: func(context.Context, time.Duration) error { return nil },
+		// An ordinary machine with one person on it. A test that says nothing about
+		// accounts still gets its output masked, which is what production does.
+		Accounts: func() ([]string, error) { return []string{"edyan"}, nil },
+		Sleep:    func(context.Context, time.Duration) error { return nil },
 	}
 }
 
@@ -587,5 +590,62 @@ func TestAReportAlwaysCarriesAListOfActionsEvenWhenThereAreNone(t *testing.T) {
 	}
 	if report.Refused == "" {
 		t.Fatal("and it has to say why")
+	}
+}
+
+// Nothing personal leaves this machine inside a report.
+//
+// The report carries the real output of the real commands, which is the whole point of
+// it — and `cat /etc/ssh/sshd_config` prints account names, public keys and addresses.
+// There was no masking on this path at all: every byte went to the cloud as printed.
+func TestAReportCarriesNoAccountNameKeyOrAddress(t *testing.T) {
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		privexec.ReadSSHConfig: {Stdout: []byte(
+			"Include /etc/ssh/sshd_config.d/*.conf\n" +
+				"AllowUsers edyan deploy\n" +
+				"ListenAddress 10.0.0.12\n" +
+				"# key added by edyan\n" +
+				"ssh-rsa AAAAB3NzaC1yc2EAAAA edyan@laptop\n")},
+	}}
+	deps := testDeps(f)
+	deps.Accounts = func() ([]string, error) { return []string{"edyan", "deploy"}, nil }
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.max_auth_tries", "value": "4",
+		}}},
+	})
+
+	sent := allOutput(report)
+	for _, secret := range []string{"edyan", "deploy", "10.0.0.12", "AAAAB3NzaC1yc2E"} {
+		if strings.Contains(sent, secret) {
+			t.Errorf("%q reached the report:\n%s", secret, sent)
+		}
+	}
+	// And the report is still worth reading afterwards.
+	if !strings.Contains(sent, "ed***") || !strings.Contains(sent, "10.*.*.*") {
+		t.Errorf("the masked report says nothing useful:\n%s", sent)
+	}
+}
+
+// A machine whose accounts cannot be read cannot be masked, and sending it unmasked is
+// the harm this exists to prevent. So the job stops and says so.
+func TestAJobIsRefusedWhenTheAccountsCannotBeRead(t *testing.T) {
+	deps := testDeps(&fakeExec{})
+	deps.Accounts = func() ([]string, error) { return nil, errors.New("passwd is not readable") }
+
+	report := Run(context.Background(), deps, Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.max_auth_tries", "value": "4",
+		}}},
+	})
+
+	if report.OK {
+		t.Fatal("a job that cannot mask its output must not run")
+	}
+	if !mentionsInOutput(report, "who has an account") {
+		t.Errorf("the reason has to say what could not be read:\n%s", allOutput(report))
 	}
 }

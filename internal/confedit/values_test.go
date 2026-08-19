@@ -5,6 +5,8 @@ package confedit
 import (
 	"slices"
 	"testing"
+
+	"github.com/ghostpsy/agent-linux/internal/redact"
 )
 
 // The grant file, the shipped drop-in files and the API catalogue all need the
@@ -76,5 +78,28 @@ func TestAnAPTSettingNamesNoUnit(t *testing.T) {
 	s, _ := Lookup("apt.unattended_upgrade")
 	if len(s.Units) != 0 {
 		t.Errorf("apt.unattended_upgrade asks to reload %v, but apt re-reads its files itself", s.Units)
+	}
+}
+
+// A setting's value must survive masking untouched.
+//
+// The report is masked at the moment each command's output is recorded, which means the
+// checks that read an earlier step read the masked text. That is safe only while no
+// value ghostpsy writes could be mistaken for a name, a key or an address — otherwise
+// `settingTookEffect` would compare "4" against a masked "4" and roll back a change
+// that worked.
+//
+// If a future setting takes an address or a user for a value, this test fails and the
+// masking has to move to the moment the report is sent instead.
+func TestNoValueWeWriteWouldBeChangedByMasking(t *testing.T) {
+	people := []string{"edyan", "deploy", "root", "admin"}
+
+	for _, change := range Changes() {
+		for _, text := range []string{change.Value, change.Setting.Directive, change.DropIn().Content} {
+			if masked := redact.Text(people, text); masked != text {
+				t.Errorf("%s: masking turns %q into %q, so a check could not read it back",
+					change.Setting.Key, text, masked)
+			}
+		}
 	}
 }

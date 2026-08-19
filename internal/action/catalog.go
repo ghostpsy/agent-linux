@@ -236,6 +236,20 @@ func enableAutomaticSecurityUpdates() Action {
 						Why:     "ask apt what it really has now",
 						Command: privexec.APTEffectiveConfig,
 					},
+					// Reading that output back is the whole check. apt-config exits 0
+					// on any machine, and `unattended-upgrade --dry-run` succeeds
+					// whatever the periodic settings say — so without these two the
+					// action reported success without ever proving anything.
+					{
+						Why:   "check apt really does check for new packages daily now",
+						Check: CheckSettingTookEffect,
+						Args:  map[string]string{"setting": "apt.update_package_lists", "value": "1"},
+					},
+					{
+						Why:   "check apt really does install security updates on its own now",
+						Check: CheckSettingTookEffect,
+						Args:  map[string]string{"setting": "apt.unattended_upgrade", "value": "1"},
+					},
 					{
 						Why:     "check a full update cycle would now succeed",
 						Command: privexec.UnattendedUpgradeDryRun,

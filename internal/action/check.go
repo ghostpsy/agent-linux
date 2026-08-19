@@ -25,10 +25,49 @@ import (
 // The third belongs to the machine's owner: a service on their protected list is
 // never touched, whatever the cloud says.
 
+// settingOf resolves which setting and value a check is about.
+//
+// A check step may name its own subject with Args, for an action whose settings are
+// fixed rather than asked for: enable_automatic_security_updates sets two named
+// settings and takes no parameters at all. Without this a check could only be used by
+// an action that happened to have parameters called "setting" and "value" — which is
+// how "did the change take effect?" became a question only SSH settings could be asked,
+// while apt reported success without checking anything.
+//
+// Check, not Lookup: the value is judged here too, so a value this setting does not
+// allow is refused with the real reason rather than surfacing later as a failed step.
+func settingOf(p plan, step Step) (confedit.Setting, string, error) {
+	key, value := p.values["setting"], p.values["value"]
+
+	named, err := stepValues(step, p.values)
+	if err != nil {
+		return confedit.Setting{}, "", err
+	}
+	if given, ok := named["setting"]; ok {
+		key = given
+	}
+	if given, ok := named["value"]; ok {
+		value = given
+	}
+
+	setting, err := confedit.Check(key, value)
+	return setting, value, err
+}
+
+// refuse turns a resolution failure into the step's answer.
+//
+// The wording lives in one place because three checks share it, and they had already
+// begun to drift apart.
+func refuse(run CommandRun, err error) (CommandRun, bool) {
+	run.Stderr = err.Error()
+	run.ExitCode = 1
+	return run, false
+}
+
 func runCheck(ctx context.Context, deps Deps, p plan, step Step, before []CommandRun) (CommandRun, bool) {
 	switch step.Check {
 	case CheckSomebodyCanStillLogIn:
-		return somebodyCanStillLogIn(ctx, deps, p, step.Why)
+		return somebodyCanStillLogIn(ctx, deps, p, step)
 	case CheckPlanKeepsMeReachable:
 		return planKeepsMeReachable(deps, step.Why, before)
 	case CheckKeepsMeReachable:
@@ -38,9 +77,9 @@ func runCheck(ctx context.Context, deps Deps, p plan, step Step, before []Comman
 	case CheckServiceIsOneWeConfigure:
 		return serviceIsOneWeConfigure(p, step.Why)
 	case CheckDropInWillTakeEffect:
-		return dropInWillTakeEffect(p, step.Why, before)
+		return dropInWillTakeEffect(p, step, before)
 	case CheckSettingTookEffect:
-		return settingTookEffect(p, step.Why, before)
+		return settingTookEffect(p, step, before)
 	}
 	return CommandRun{
 		Why:      step.Why,
@@ -217,18 +256,14 @@ func portList(ports []int) string {
 // that cannot be repaired afterwards: a machine nobody can log in to cannot be
 // fixed by logging in to it. The other reachability checks ask whether the port
 // answers, and that question passed on the machine it locked me out of.
-func somebodyCanStillLogIn(ctx context.Context, deps Deps, p plan, why string) (CommandRun, bool) {
-	run := CommandRun{Why: why, Display: "ghostpsy check somebody-can-still-log-in"}
+func somebodyCanStillLogIn(ctx context.Context, deps Deps, p plan, step Step) (CommandRun, bool) {
+	run := CommandRun{Why: step.Why, Display: "ghostpsy check somebody-can-still-log-in"}
 
-	// Check, not Lookup: the value is judged here too. A value this setting does
-	// not allow has to be refused by the first step, with the real reason, rather
-	// than reaching a later step and being reported as "the preview did not work".
-	setting, err := confedit.Check(p.values["setting"], p.values["value"])
+	setting, _, err := settingOf(p, step)
 	if err != nil {
-		run.Stderr = err.Error()
-		run.ExitCode = 1
 		// A change that is dangerous rather than wrong is handed over instead of
-		// simply refused — see internal/confedit/danger.go.
+		// simply refused — see internal/confedit/danger.go. This is the only check
+		// that does so, because it is the first one to run.
 		var danger *confedit.DangerousChange
 		if errors.As(err, &danger) {
 			run.Advice = &DoItYourself{
@@ -237,7 +272,7 @@ func somebodyCanStillLogIn(ctx context.Context, deps Deps, p plan, why string) (
 				Script:     danger.Script(),
 			}
 		}
-		return run, false
+		return refuse(run, err)
 	}
 	if setting.NeedsAWayIn == confedit.WayInNothing {
 		run.Stdout = "this change cannot affect anybody's ability to log in"
@@ -304,16 +339,14 @@ func serviceIsOneWeConfigure(p plan, why string) (CommandRun, bool) {
 // It reads the configuration the previous step printed, rather than reading the file
 // itself: that keeps one privileged read in the transcript where the person can see
 // the same text this judgement was made from.
-func dropInWillTakeEffect(p plan, why string, before []CommandRun) (CommandRun, bool) {
-	run := CommandRun{Why: why, Display: "ghostpsy check " + string(CheckDropInWillTakeEffect)}
+func dropInWillTakeEffect(p plan, step Step, before []CommandRun) (CommandRun, bool) {
+	run := CommandRun{Why: step.Why, Display: "ghostpsy check " + string(CheckDropInWillTakeEffect)}
 
-	setting, err := confedit.Check(p.values["setting"], p.values["value"])
+	setting, value, err := settingOf(p, step)
 	if err != nil {
 		// The first step already refused this with the real reason. Repeating the
 		// judgement here would report the same problem twice in different words.
-		run.Stderr = err.Error()
-		run.ExitCode = 1
-		return run, false
+		return refuse(run, err)
 	}
 
 	mainConfig := outputOf(before, privexec.ReadSSHConfig)
@@ -331,8 +364,7 @@ func dropInWillTakeEffect(p plan, why string, before []CommandRun) (CommandRun, 
 			"starting, and a server nobody can log in to cannot be repaired by logging in to it",
 		CheckFirst: "run `sudo sshd -t` after the edit and before the reload. If it says anything at " +
 			"all, put the copy back rather than reloading",
-		Script: strings.Join(
-			confedit.ByHandCommands(setting, p.values["value"], mainConfig), "\n"),
+		Script: strings.Join(confedit.ByHandCommands(setting, value, mainConfig), "\n"),
 	}
 	return run, false
 }
@@ -351,14 +383,12 @@ func outputOf(runs []CommandRun, id privexec.ID) string {
 //
 // It reads the previous step's output rather than asking again, so the person sees the
 // same text this judgement was made from.
-func settingTookEffect(p plan, why string, before []CommandRun) (CommandRun, bool) {
-	run := CommandRun{Why: why, Display: "ghostpsy check " + string(CheckSettingTookEffect)}
+func settingTookEffect(p plan, step Step, before []CommandRun) (CommandRun, bool) {
+	run := CommandRun{Why: step.Why, Display: "ghostpsy check " + string(CheckSettingTookEffect)}
 
-	setting, err := confedit.Check(p.values["setting"], p.values["value"])
+	setting, value, err := settingOf(p, step)
 	if err != nil {
-		run.Stderr = err.Error()
-		run.ExitCode = 1
-		return run, false
+		return refuse(run, err)
 	}
 
 	// Which command answers "what are you really running with" is the setting's own
@@ -372,13 +402,12 @@ func settingTookEffect(p plan, why string, before []CommandRun) (CommandRun, boo
 		return run, false
 	}
 
-	if got, ok := confedit.Effective(setting, p.values["value"], effective); !ok {
+	if got, ok := confedit.Effective(setting, value, effective); !ok {
 		run.Stderr = fmt.Sprintf("%s asked for %s and %s reports %q",
-			setting.Directive, p.values["value"], service, got)
+			setting.Directive, value, service, got)
 		run.ExitCode = 1
 		return run, false
 	}
-	run.Stdout = fmt.Sprintf("%s is running with %s %s",
-		service, setting.Directive, p.values["value"])
+	run.Stdout = fmt.Sprintf("%s is running with %s %s", service, setting.Directive, value)
 	return run, true
 }

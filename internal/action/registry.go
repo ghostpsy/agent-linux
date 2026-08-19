@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/ghostpsy/agent-linux/internal/confedit"
 )
 
 // catalog is every action the agent will carry out. Nothing outside it can run.
@@ -131,21 +133,49 @@ func checkStep(a Action, step Step) error {
 		return fmt.Errorf("action %q step %q must name exactly one command or one check",
 			a.Type, step.Why)
 	}
+	if err := checkStepArgs(a, step); err != nil {
+		return err
+	}
 	if step.Check != "" {
 		if !checks[step.Check] {
 			return fmt.Errorf("action %q step %q names an unknown check %q",
 				a.Type, step.Why, step.Check)
 		}
-		return nil
+		return checkStepSubject(a, step)
 	}
-	if err := checkStepCommand(a, step); err != nil {
-		return err
-	}
+	return checkStepCommand(a, step)
+}
+
+// checkStepArgs rejects an argument naming a parameter the action does not have.
+//
+// It covers check steps as well as command steps now. It used to run only for commands,
+// because only commands took arguments — a check read the action's parameters by name
+// and could not be told what to look at.
+func checkStepArgs(a Action, step Step) error {
 	for name := range step.Args {
 		if value := step.Args[name]; isParamRef(value) && !declaresParam(a, refName(value)) {
 			return fmt.Errorf("action %q step %q refers to parameter %q, which the action does not declare",
 				a.Type, step.Why, refName(value))
 		}
+	}
+	return nil
+}
+
+// checkStepSubject rejects a check whose setting or value is written out in the
+// catalogue and is wrong.
+//
+// Those two are literal text, so a typo compiles. It would then reach a customer's
+// server and refuse the fix there, reporting a mistake of ours as a problem with their
+// machine. A parameter reference is not checked here: its value arrives with the
+// request and is judged when the check runs.
+func checkStepSubject(a Action, step Step) error {
+	key, value := step.Args["setting"], step.Args["value"]
+	if key == "" || isParamRef(key) || isParamRef(value) {
+		return nil
+	}
+	if _, err := confedit.Check(key, value); err != nil {
+		return fmt.Errorf("action %q step %q names setting %q with value %q: %w",
+			a.Type, step.Why, key, value, err)
 	}
 	return nil
 }

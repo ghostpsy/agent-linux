@@ -682,3 +682,49 @@ func TestNoActionPromisesACopyItDoesNotTake(t *testing.T) {
 		}
 	}
 }
+
+// Switching on automatic security updates has to be proved, not assumed.
+//
+// The verify step ran `apt-config dump` and printed it, and nobody read the output.
+// apt-config exits 0 on any machine, and `unattended-upgrade --dry-run` succeeds
+// whatever the periodic settings say — so this action reported success without ever
+// checking that either setting had taken. The SSH action got a real judgement in the
+// same change; this one, which the catalogue calls the highest-value action, did not.
+func TestAutomaticUpdatesFailsWhenAptDidNotTakeTheSetting(t *testing.T) {
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		// apt kept the machine's own answer for one of the two.
+		privexec.APTEffectiveConfig: {Stdout: []byte(
+			"APT::Periodic::Update-Package-Lists \"1\";\n" +
+				"APT::Periodic::Unattended-Upgrade \"0\";\n")},
+	}}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "enable_automatic_security_updates"}},
+	})
+
+	if report.OK {
+		t.Fatal("apt reports 0 for a setting we set to 1, so this did not work")
+	}
+	if !mentionsInOutput(report, "Unattended-Upgrade") {
+		t.Errorf("the reason has to name the setting that did not take:\n%s", allOutput(report))
+	}
+}
+
+// And it must still pass on a machine where both really did take.
+func TestAutomaticUpdatesPassesWhenAptTookBothSettings(t *testing.T) {
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		privexec.APTEffectiveConfig: {Stdout: []byte(
+			"APT::Periodic::Update-Package-Lists \"1\";\n" +
+				"APT::Periodic::Unattended-Upgrade \"1\";\n")},
+	}}
+
+	report := Run(context.Background(), testDeps(f), Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "enable_automatic_security_updates"}},
+	})
+
+	if !report.OK {
+		t.Fatalf("both settings took, so this worked:\n%s", allOutput(report))
+	}
+}

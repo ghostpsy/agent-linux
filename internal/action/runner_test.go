@@ -649,3 +649,78 @@ func TestAJobIsRefusedWhenTheAccountsCannotBeRead(t *testing.T) {
 		t.Errorf("the reason has to say what could not be read:\n%s", allOutput(report))
 	}
 }
+
+// A check that names its own setting has to name a real one.
+//
+// The setting and the value are literal text in the catalogue, so a typo compiles. It
+// would then reach a customer's server and refuse a fix there with "not a setting
+// ghostpsy is allowed to change" — a startup problem reported as a runtime one, on
+// somebody else's machine.
+func TestACheckThatNamesAnUnknownSettingIsRefusedAtStartup(t *testing.T) {
+	err := checkAction(Action{
+		Type:          "test_bad_check_setting",
+		Summary:       "x",
+		Reversibility: ReverseNone,
+		UndoWhy:       "nothing to put back",
+		Variants: []Variant{{
+			DryRun: []Step{{Why: "p", Command: privexec.SystemdDefaultTarget}},
+			Run: []Step{{
+				Why:   "r",
+				Check: CheckSettingTookEffect,
+				Args:  map[string]string{"setting": "apt.unattended_upgradeX", "value": "1"},
+			}},
+		}},
+	})
+
+	if err == nil {
+		t.Fatal("a check naming a setting that does not exist has to be refused here")
+	}
+	if !strings.Contains(err.Error(), "apt.unattended_upgradeX") {
+		t.Errorf("the error has to name the typo, got %v", err)
+	}
+}
+
+// And a value the setting does not allow is the same kind of mistake.
+func TestACheckThatNamesAValueWeNeverWriteIsRefusedAtStartup(t *testing.T) {
+	err := checkAction(Action{
+		Type:          "test_bad_check_value",
+		Summary:       "x",
+		Reversibility: ReverseNone,
+		UndoWhy:       "nothing to put back",
+		Variants: []Variant{{
+			DryRun: []Step{{Why: "p", Command: privexec.SystemdDefaultTarget}},
+			Run: []Step{{
+				Why:   "r",
+				Check: CheckSettingTookEffect,
+				Args:  map[string]string{"setting": "apt.unattended_upgrade", "value": "9"},
+			}},
+		}},
+	})
+
+	if err == nil {
+		t.Fatal("a value this setting never takes has to be refused here")
+	}
+}
+
+// A check may still take its subject from the action's parameters, which is what the
+// SSH action does. Naming a parameter the action does not have is the third mistake.
+func TestACheckThatRefersToAParameterTheActionDoesNotHaveIsRefused(t *testing.T) {
+	err := checkAction(Action{
+		Type:          "test_bad_check_ref",
+		Summary:       "x",
+		Reversibility: ReverseNone,
+		UndoWhy:       "nothing to put back",
+		Variants: []Variant{{
+			DryRun: []Step{{Why: "p", Command: privexec.SystemdDefaultTarget}},
+			Run: []Step{{
+				Why:   "r",
+				Check: CheckSettingTookEffect,
+				Args:  map[string]string{"setting": "{nosuchparam}", "value": "1"},
+			}},
+		}},
+	})
+
+	if err == nil {
+		t.Fatal("a check referring to a parameter that does not exist has to be refused here")
+	}
+}

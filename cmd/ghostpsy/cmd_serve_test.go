@@ -167,7 +167,7 @@ func TestEveryPassAsksTheServiceForWork(t *testing.T) {
 		scan:      func(context.Context) error { return nil },
 		heartbeat: func(context.Context) error { return nil },
 		sleep:     func(context.Context, time.Duration) error { return nil },
-		pollSolve: func(context.Context) error { asked++; return nil },
+		pollSolve: func(context.Context) (bool, error) { asked++; return false, nil },
 	}
 
 	if err := servePass(context.Background(), d); err != nil {
@@ -194,7 +194,7 @@ func TestABrokenSolveChannelDoesNotStopTheAgent(t *testing.T) {
 		scan:      func(context.Context) error { scans++; return nil },
 		heartbeat: func(context.Context) error { beats++; return nil },
 		sleep:     func(context.Context, time.Duration) error { return nil },
-		pollSolve: func(context.Context) error { return errors.New("connection refused") },
+		pollSolve: func(context.Context) (bool, error) { return false, errors.New("connection refused") },
 	}
 
 	if err := servePass(context.Background(), d); err != nil {
@@ -220,7 +220,7 @@ func TestAFailedScanDoesNotDelayTheNextQuestionToTheService(t *testing.T) {
 		now:       func() time.Time { return now.Add(2 * time.Minute) },
 		scan:      func(context.Context) error { return errors.New("429 Too Many Requests") },
 		heartbeat: func(context.Context) error { return nil },
-		pollSolve: func(context.Context) error { return nil },
+		pollSolve: func(context.Context) (bool, error) { return false, nil },
 		sleep:     func(_ context.Context, d time.Duration) error { slept = d; return nil },
 	}
 
@@ -246,7 +246,7 @@ func TestAFailedScanIsNotRetriedImmediately(t *testing.T) {
 		now:       func() time.Time { return now.Add(2 * time.Minute) },
 		scan:      func(context.Context) error { attempts++; return errors.New("no network") },
 		heartbeat: func(context.Context) error { return nil },
-		pollSolve: func(context.Context) error { return nil },
+		pollSolve: func(context.Context) (bool, error) { return false, nil },
 		sleep:     func(context.Context, time.Duration) error { return nil },
 	}
 
@@ -272,7 +272,7 @@ func TestAFailedScanIsRetriedOnceTheDelayHasPassed(t *testing.T) {
 		now:       func() time.Time { return clock },
 		scan:      func(context.Context) error { attempts++; return errors.New("no network") },
 		heartbeat: func(context.Context) error { return nil },
-		pollSolve: func(context.Context) error { return nil },
+		pollSolve: func(context.Context) (bool, error) { return false, nil },
 		sleep:     func(context.Context, time.Duration) error { return nil },
 	}
 
@@ -282,5 +282,100 @@ func TestAFailedScanIsRetriedOnceTheDelayHasPassed(t *testing.T) {
 
 	if attempts != 2 {
 		t.Errorf("expected a second attempt after %v, got %d", retryDelay, attempts)
+	}
+}
+
+// A person who has clicked something is waiting, and a minute between questions is
+// a minute of them looking at a spinner.
+//
+// One approval is two round trips — the machine has to collect the job, preview it,
+// then collect the approval and run it — so at a question a minute the person waits
+// up to two minutes for a change that takes one second. Once the machine has had work,
+// it asks again quickly for a while, because more is almost certainly coming.
+func TestTheLoopAsksAgainQuicklyOnceTheMachineHasHadWork(t *testing.T) {
+	var slept time.Duration
+	now := time.Now().UTC()
+	d := &serveDeps{
+		machineID: "m-1",
+		startedAt: now,
+		lastScan:  now,
+		now:       func() time.Time { return now },
+		scan:      func(context.Context) error { return nil },
+		heartbeat: func(context.Context) error { return nil },
+		sleep:     func(_ context.Context, d time.Duration) error { slept = d; return nil },
+		pollSolve: func(context.Context) (bool, error) { return true, nil },
+	}
+
+	if err := servePass(context.Background(), d); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if slept != schedule.SolvePollBusyInterval {
+		t.Errorf("after work the machine should ask again in %v, slept %v",
+			schedule.SolvePollBusyInterval, slept)
+	}
+}
+
+// And it keeps asking quickly while the person is deciding, not only for the one pass
+// right after the work arrived. Reading a preview and clicking approve takes longer
+// than ten seconds.
+func TestTheLoopKeepsAskingQuicklyWhileSomebodyIsDeciding(t *testing.T) {
+	var slept time.Duration
+	start := time.Now().UTC()
+	clock := start
+	d := &serveDeps{
+		machineID: "m-1",
+		startedAt: start,
+		lastScan:  start,
+		now:       func() time.Time { return clock },
+		scan:      func(context.Context) error { return nil },
+		heartbeat: func(context.Context) error { return nil },
+		sleep:     func(_ context.Context, d time.Duration) error { slept = d; return nil },
+		// Work once, then nothing: the person is reading the preview.
+		pollSolve: func(context.Context) (bool, error) { return clock.Equal(start), nil },
+	}
+
+	if err := servePass(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	// Two minutes later, still nothing collected, and still asking quickly.
+	clock = start.Add(2 * time.Minute)
+	if err := servePass(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	if slept != schedule.SolvePollBusyInterval {
+		t.Errorf("somebody is still deciding, so it must keep asking every %v, slept %v",
+			schedule.SolvePollBusyInterval, slept)
+	}
+}
+
+// A machine nobody is using goes back to one question a minute. A fleet of idle
+// machines asking every ten seconds is six times the traffic for nothing.
+func TestAnIdleMachineGoesBackToAskingOnceAMinute(t *testing.T) {
+	var slept time.Duration
+	start := time.Now().UTC()
+	clock := start
+	d := &serveDeps{
+		machineID: "m-1",
+		startedAt: start,
+		lastScan:  start,
+		now:       func() time.Time { return clock },
+		scan:      func(context.Context) error { return nil },
+		heartbeat: func(context.Context) error { return nil },
+		sleep:     func(_ context.Context, d time.Duration) error { slept = d; return nil },
+		pollSolve: func(context.Context) (bool, error) { return clock.Equal(start), nil },
+	}
+
+	if err := servePass(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	clock = start.Add(schedule.SolveBusyWindow + time.Minute)
+	if err := servePass(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	if slept != schedule.SolvePollInterval {
+		t.Errorf("an idle machine asks every %v, slept %v", schedule.SolvePollInterval, slept)
 	}
 }

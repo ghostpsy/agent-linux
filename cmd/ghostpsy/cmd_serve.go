@@ -49,8 +49,16 @@ type serveDeps struct {
 	sleep     func(context.Context, time.Duration) error
 
 	// pollSolve asks the service whether a person has approved any work for this
-	// machine. It runs on every pass, which is why the loop sleeps in minutes.
-	pollSolve func(context.Context) error
+	// machine, and reports whether there was any. It runs on every pass, which is
+	// why the loop sleeps in minutes.
+	//
+	// The answer is what tells the loop somebody is at the other end: work arriving
+	// means more is almost certainly coming, so the next questions come quickly.
+	pollSolve func(context.Context) (bool, error)
+
+	// Until when to keep asking quickly. Zero, or in the past, means nobody is
+	// working with this machine.
+	solveBusyUntil time.Time
 
 	// When a failed scan or heartbeat may be tried again. Zero means now.
 	scanRetryAfter      time.Time
@@ -70,8 +78,12 @@ func servePass(ctx context.Context, d *serveDeps) error {
 	// least essential: a machine whose channel is broken must go on scanning and
 	// go on saying it is alive, or a new feature could take out an old one.
 	if d.pollSolve != nil {
-		if err := d.pollSolve(ctx); err != nil {
+		hadWork, err := d.pollSolve(ctx)
+		if err != nil {
 			slog.Warn("could not ask the service for work", "error", err)
+		}
+		if hadWork {
+			d.solveBusyUntil = now.Add(schedule.SolveBusyWindow)
 		}
 	}
 
@@ -110,6 +122,10 @@ func servePass(ctx context.Context, d *serveDeps) error {
 	wait := act.Wait
 	if wait <= 0 {
 		wait = schedule.SolvePollInterval
+	}
+	// Somebody is waiting on this machine, so ask again soon.
+	if now.Before(d.solveBusyUntil) {
+		wait = min(wait, schedule.SolvePollBusyInterval)
 	}
 	return d.sleep(ctx, wait)
 }
@@ -234,26 +250,29 @@ func heartbeatSender(machineUUID string) func(context.Context) error {
 
 // solvePoller asks the service for work, carries it out, and reports back.
 //
+// It returns whether there was any work, so the loop knows somebody is at the
+// other end and can ask again in seconds instead of minutes.
+//
 // Nothing here decides anything. The service says dry run or run; the runtime in
 // internal/action decides what is allowed and what is possible on this machine,
 // and the whole of what it found goes back untouched. Choosing what the customer
 // gets to see is not this function's job.
-func solvePoller(machineUUID string) func(context.Context) error {
-	return func(ctx context.Context) error {
+func solvePoller(machineUUID string) func(context.Context) (bool, error) {
+	return func(ctx context.Context) (bool, error) {
 		token, err := agentconfig.Load()
 		if err != nil {
-			return fmt.Errorf("no agent token yet: %w", err)
+			return false, fmt.Errorf("no agent token yet: %w", err)
 		}
 		baseURL := envOr("GHOSTPSY_API_URL", defaultAPIBaseURL)
 
 		work, err := solve.NextWork(ctx, baseURL, token, machineUUID)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if !work.HasWork() {
 			// The usual answer, and not worth a line in anyone's log every minute.
 			slog.Debug("no solve work for this machine")
-			return nil
+			return false, nil
 		}
 
 		slog.Info("the service has work for this machine",
@@ -269,7 +288,7 @@ func solvePoller(machineUUID string) func(context.Context) error {
 		}
 
 		if work.Mode == solve.ModeDryRun {
-			return solve.ReportDryRun(ctx, baseURL, token, solve.DryRunReport{
+			return true, solve.ReportDryRun(ctx, baseURL, token, solve.DryRunReport{
 				MachineUUID: machineUUID,
 				JobID:       work.JobID,
 				PreviewID:   report.PreviewID,
@@ -277,7 +296,7 @@ func solvePoller(machineUUID string) func(context.Context) error {
 				Detail:      report,
 			})
 		}
-		return solve.ReportResult(ctx, baseURL, token, solve.ResultReport{
+		return true, solve.ReportResult(ctx, baseURL, token, solve.ResultReport{
 			MachineUUID: machineUUID,
 			JobID:       work.JobID,
 			OK:          report.OK,

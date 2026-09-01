@@ -106,6 +106,22 @@ const HeartbeatInterval = 15 * time.Minute
 // Nothing listens on the customer's server for this. The agent asks us, always.
 const SolvePollInterval = time.Minute
 
+// SolvePollBusyInterval is how often the agent asks while somebody is working with
+// it, and SolveBusyWindow is how long that lasts after the last piece of work.
+//
+// One approved change is two round trips: the machine collects the job and sends
+// back a preview, then collects the approval and runs it. At one question a minute
+// that is a two minute wait for a change that takes a second, and the person spends
+// it watching a spinner. Reported from a real session.
+//
+// The window is what keeps it quick while the person reads the preview and decides,
+// which takes longer than one pass. It ends on its own, so a fleet of machines
+// nobody is using goes back to one question a minute instead of six.
+const (
+	SolvePollBusyInterval = 10 * time.Second
+	SolveBusyWindow       = 5 * time.Minute
+)
+
 // Action is what the service loop should do on this pass.
 //
 // Keeping the decision in a pure function is deliberate: the loop around it is

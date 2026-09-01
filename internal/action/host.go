@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +25,7 @@ import (
 func HostDeps() Deps {
 	return Deps{
 		Exec:         privexec.RunWith,
-		Installed:    installed,
+		Installed:    privexec.Installed,
 		FreeBytes:    FreeBytes,
 		SwitchedOff:  SwitchedOff,
 		InboundPorts: inboundPorts,
@@ -52,15 +51,6 @@ func sshAccess(ctx context.Context) (confedit.Access, error) {
 		return confedit.Access{}, fmt.Errorf("could not read the answer about who can log in: %w", err)
 	}
 	return access, nil
-}
-
-func installed(binary string) bool {
-	if strings.HasPrefix(binary, "/") {
-		_, err := os.Stat(binary)
-		return err == nil
-	}
-	_, err := exec.LookPath(binary)
-	return err == nil
 }
 
 func sleep(ctx context.Context, d time.Duration) error {

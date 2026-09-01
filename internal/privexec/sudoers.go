@@ -119,3 +119,13 @@ func envKeys(env []string) string {
 	}
 	return strings.Join(keys, " ")
 }
+
+// Installed reports whether a binary is on this machine, where sudo will look for it.
+//
+// This is how the runtime picks the variant of an action that fits the distro, so it has
+// to search the same directories the grant pins and the command runs with — never the
+// caller's PATH. See resolve for what that mistake cost the first time.
+func Installed(binary string) bool {
+	_, err := resolve(binary)
+	return err == nil
+}

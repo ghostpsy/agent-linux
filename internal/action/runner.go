@@ -226,6 +226,7 @@ func dryRun(ctx context.Context, deps Deps, plans []plan, report Report) Report 
 			report.Actions[i].DoItYourself = adviceFrom(runs)
 		}
 		report.Actions[i].FreedBytes = freedFrom(plans[i], runs)
+		report.Actions[i].WouldRun = wouldRun(plans[i])
 	}
 
 	report.OK = allOK(report.Actions)
@@ -233,6 +234,38 @@ func dryRun(ctx context.Context, deps Deps, plans []plan, report Report) Report 
 	report.Backup = previewBackup(deps, plans, report.Actions, report.Backup.Asked)
 	report.Undo = &UndoReport{Ledger: ledgerOf(plans)}
 	return report
+}
+
+// wouldRun writes out every command the run phase would carry out.
+//
+// The same rendering the runner uses for a command it really ran, so the line in the
+// preview is the line that appears afterwards. A step that resolves to no command on
+// this machine says so rather than being left out: a missing line reads as "nothing
+// would happen there", which is the opposite of the truth.
+//
+// Checks are left out. They run inside the agent and change nothing, and listing
+// "ghostpsy check …" among the commands would pad the one list that has to be short
+// enough to read.
+func wouldRun(p plan) []string {
+	var lines []string
+
+	for _, step := range p.variant.Run {
+		if step.Check != "" {
+			continue
+		}
+		command, err := stepCommand(step, p.values)
+		if err != nil {
+			lines = append(lines, "(this machine would refuse: "+err.Error()+")")
+			continue
+		}
+		values, err := stepValues(step, p.values)
+		if err != nil {
+			lines = append(lines, "(this machine would refuse: "+err.Error()+")")
+			continue
+		}
+		lines = append(lines, privexec.Display(command, values))
+	}
+	return lines
 }
 
 // realRun does the work, checks it, and undoes it if the check fails.

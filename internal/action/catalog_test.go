@@ -728,3 +728,68 @@ func TestAutomaticUpdatesPassesWhenAptTookBothSettings(t *testing.T) {
 		t.Fatalf("both settings took, so this worked:\n%s", allOutput(report))
 	}
 }
+
+// A preview has to name the commands that would change the machine.
+//
+// It did not. The dry run runs its own steps — `cat` the file that would be installed,
+// ask the service what it believes — and reported only those. The `install` that does
+// the work never appeared anywhere, so somebody approving read `cat` and reasonably
+// concluded that was the change.
+//
+// Reported from the UI: the screen showed
+//
+//	cat /usr/local/lib/ghostpsy/dropin/apt.update_package_lists=1.conf
+//
+// while what ran was
+//
+//	install -m 0644 -o root -g root <that file> /etc/apt/apt.conf.d/99-ghostpsy-...
+func TestADryRunNamesTheCommandsThatWouldChangeTheMachine(t *testing.T) {
+	report := Run(context.Background(), testDeps(&fakeExec{}), Job{
+		Mode:    ModeDryRun,
+		Actions: []Request{{Type: "enable_automatic_security_updates"}},
+	})
+
+	would := strings.Join(report.Actions[0].WouldRun, "\n")
+
+	for _, want := range []string{
+		"install",
+		"/etc/apt/apt.conf.d/99-ghostpsy-update-package-lists.conf",
+		"/etc/apt/apt.conf.d/99-ghostpsy-unattended-upgrade.conf",
+		"systemctl enable --now unattended-upgrades",
+	} {
+		if !strings.Contains(would, want) {
+			t.Errorf("the preview does not say it would run %q:\n%s", want, would)
+		}
+	}
+}
+
+// The SSH action too, where the value comes from the request rather than the catalogue.
+func TestADryRunNamesTheInstallItWouldRunForASetting(t *testing.T) {
+	report := Run(context.Background(), testDeps(&fakeExec{}), Job{
+		Mode: ModeDryRun,
+		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
+			"setting": "ssh.max_auth_tries", "value": "4",
+		}}},
+	})
+
+	would := strings.Join(report.Actions[0].WouldRun, "\n")
+
+	if !strings.Contains(would, "ssh.max_auth_tries=4.conf") {
+		t.Errorf("the preview has to name the file it would install:\n%s", would)
+	}
+	if !strings.Contains(would, "10-ghostpsy-max-auth-tries.conf") {
+		t.Errorf("the preview has to name where it would go:\n%s", would)
+	}
+}
+
+// A real run says what it did, so repeating what it would do would be noise.
+func TestARunDoesNotRepeatWhatItWouldHaveDone(t *testing.T) {
+	report := Run(context.Background(), testDeps(&fakeExec{}), Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "enable_automatic_security_updates"}},
+	})
+
+	if len(report.Actions[0].WouldRun) != 0 {
+		t.Errorf("a run reports what ran, not what would: %v", report.Actions[0].WouldRun)
+	}
+}

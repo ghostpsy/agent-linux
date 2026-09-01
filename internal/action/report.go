@@ -75,6 +75,16 @@ type ActionReport struct {
 
 	Commands []CommandRun `json:"commands"`
 
+	// WouldRun is every command that would change this machine, written out as it
+	// would be typed. Set by a dry run only; a real run reports what it did.
+	//
+	// It exists because a dry run runs its own steps — `cat` the file that would be
+	// installed, ask the service what it believes — and those were the only commands
+	// the report carried. The `install` that does the work appeared nowhere, so the
+	// screen showed `cat …apt.update_package_lists=1.conf` and somebody approving
+	// reasonably read that as the change. Reported from the UI.
+	WouldRun []string `json:"would_run,omitempty"`
+
 	// FreedBytes is what the dry run said would be freed, where the action frees
 	// space. Zero for everything else.
 	FreedBytes int64 `json:"freed_bytes,omitempty"`

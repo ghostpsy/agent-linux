@@ -46,12 +46,19 @@ var (
 	reApacheProxyReqOff   = regexp.MustCompile(`(?i)^\s*ProxyRequests\s+Off\s*(?:#.*)?$`)
 	reApacheRewriteHTTPS  = regexp.MustCompile(`(?i)https://`)
 	reApacheRedirectHTTPS = regexp.MustCompile(`(?i)^\s*Redirect(?:Match|Permanent|Temp)?\s+.*https://`)
-	reApacheLocationOpen  = regexp.MustCompile(`(?is)<Location\s+/server-status[^>]*>.*?(?:Require\s+all\s+granted|Allow\s+from\s+all)`)
-	reApacheLocationInfo  = regexp.MustCompile(`(?is)<Location\s+/server-info[^>]*>.*?(?:Require\s+all\s+granted|Allow\s+from\s+all)`)
-	reApacheLocationBal   = regexp.MustCompile(`(?is)<Location\s+/balancer-manager[^>]*>.*?(?:Require\s+all\s+granted|Allow\s+from\s+all)`)
-	reApacheRequireIP     = regexp.MustCompile(`(?i)Require\s+(?:ip|host|forward-dns|expr|local)`)
-	reApacheRequireDenied = regexp.MustCompile(`(?i)Require\s+all\s+denied`)
-	reApacheEnvRunUser    = regexp.MustCompile(`(?i)^\s*(?:export\s+)?APACHE_RUN_USER\s*=\s*(\S+)\s*$`)
+	// One line, inside one block. The three regexes this replaces were written as
+	// `<Location /server-status...>.*?Require all granted` with (?s) set, so the
+	// dot crossed newlines, </Location>, and the end of the file. Every config
+	// this walker merges is concatenated, so the match ran on into whatever came
+	// next: on a stock Ubuntu apache it paired the <Location /server-status> in
+	// mods-enabled/status.conf with the "Require all granted" in
+	// conf-enabled/serve-cgi-bin.conf, two files later, and reported a path
+	// restricted by "Require local" as open to the world. A P1 finding on a
+	// machine that was correctly configured.
+	reApacheGrantsEveryone = regexp.MustCompile(`(?i)^(?:Require\s+all\s+granted|Allow\s+from\s+all)\b`)
+	reApacheRequireIP      = regexp.MustCompile(`(?i)Require\s+(?:ip|host|forward-dns|expr|local)`)
+	reApacheRequireDenied  = regexp.MustCompile(`(?i)Require\s+all\s+denied`)
+	reApacheEnvRunUser     = regexp.MustCompile(`(?i)^\s*(?:export\s+)?APACHE_RUN_USER\s*=\s*(\S+)\s*$`)
 )
 
 var apacheRequiredSecurityHeaders = []string{
@@ -421,18 +428,44 @@ func applyApacheLeakageAndTrace(merged string, out *payload.ApacheHttpdPosture) 
 	}
 }
 
+// apacheSensitivePaths are the admin pages worth reporting when anyone can read
+// them. /server-status alone lists every request the server is handling.
+var apacheSensitivePaths = []string{"/server-status", "/server-info", "/balancer-manager"}
+
+// apacheSensitivePathsUnrestricted reports which of those pages this config
+// opens to everyone.
+//
+// A path is only reported when the grant is inside that path's own <Location>
+// block. Anything else reads one block's settings and blames them on another.
 func apacheSensitivePathsUnrestricted(merged string) []string {
 	paths := []string{}
-	if reApacheLocationOpen.MatchString(merged) {
-		paths = append(paths, "/server-status")
-	}
-	if reApacheLocationInfo.MatchString(merged) {
-		paths = append(paths, "/server-info")
-	}
-	if reApacheLocationBal.MatchString(merged) {
-		paths = append(paths, "/balancer-manager")
+	blocks := extractApacheBlocks(merged, "Location")
+	for _, want := range apacheSensitivePaths {
+		for _, b := range blocks {
+			if !strings.EqualFold(strings.Trim(strings.TrimSpace(b.path), `"'`), want) {
+				continue
+			}
+			if apacheBlockGrantsEveryone(b.body) {
+				paths = append(paths, want)
+				break
+			}
+		}
 	}
 	return paths
+}
+
+// apacheBlockGrantsEveryone reports whether a block's own body opens it up.
+//
+// Comments are stripped first: "#Require all granted" is how these lines are
+// usually left switched off, and reading one as live would send somebody to fix
+// a machine that is already right.
+func apacheBlockGrantsEveryone(body string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		if reApacheGrantsEveryone.MatchString(strings.TrimSpace(apacheStripConfigComment(line))) {
+			return true
+		}
+	}
+	return false
 }
 
 type apacheDirBlock struct {
@@ -441,18 +474,28 @@ type apacheDirBlock struct {
 }
 
 func extractApacheDirectoryBlocks(content string) []apacheDirBlock {
+	return extractApacheBlocks(content, "Directory")
+}
+
+// extractApacheBlocks pulls out the body of every <tag ...> ... </tag> block.
+//
+// A stack, because these blocks nest. Reading a block's settings out of the
+// merged file any other way lets one block's rules be blamed on another.
+func extractApacheBlocks(content, tag string) []apacheDirBlock {
+	open := "<" + strings.ToLower(tag)
+	closed := "</" + strings.ToLower(tag) + ">"
 	var blocks []apacheDirBlock
 	lines := strings.Split(content, "\n")
 	var stack [][]string
 	for _, line := range lines {
 		trim := strings.TrimSpace(line)
 		low := strings.ToLower(trim)
-		if strings.HasPrefix(low, "<directory") && !strings.HasPrefix(low, "</directory") {
-			path := apacheExtractXMLStylePath(trim, "Directory")
+		if strings.HasPrefix(low, open) && !strings.HasPrefix(low, closed) {
+			path := apacheExtractXMLStylePath(trim, tag)
 			stack = append(stack, []string{path, ""})
 			continue
 		}
-		if strings.EqualFold(low, "</directory>") && len(stack) > 0 {
+		if strings.EqualFold(low, closed) && len(stack) > 0 {
 			top := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			if len(blocks) < apacheMaxDirBlocks {

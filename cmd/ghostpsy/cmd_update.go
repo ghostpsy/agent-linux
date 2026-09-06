@@ -146,6 +146,16 @@ func fetchUpdateCheck(ctx context.Context, apiBase, arch string) (*updateCheckRe
 
 // installUpdate downloads, verifies, and atomically swaps the binary.
 func installUpdate(ctx context.Context, info *updateCheckResponse) error {
+	return installUpdateWithGrant(ctx, info, installedGrantPath, runCommand)
+}
+
+// installUpdateWithGrant is installUpdate with the sudo grant path and the
+// command runner taken as parameters, test-only: it lets a test point the
+// refresh at a throwaway file and a fake runner instead of the real,
+// root-owned /etc/sudoers.d/ghostpsy and a real invocation of visudo.
+// installUpdate is the only production caller, and it always pins both to the
+// real thing.
+func installUpdateWithGrant(ctx context.Context, info *updateCheckResponse, grantPath string, run runner) error {
 	sumsContent, err := downloadBytes(ctx, info.Sha256SumsURL)
 	if err != nil {
 		return fmt.Errorf("download SHA256SUMS: %w", err)
@@ -176,7 +186,7 @@ func installUpdate(ctx context.Context, info *updateCheckResponse) error {
 	// deliberately loudly: an agent whose grant is a version behind fails one
 	// action at a time, on a customer's server, with "a password is required" —
 	// which reads like a broken machine rather than a half-finished update.
-	if err := refreshSudoRule(installedGrantPath, runCommand); err != nil {
+	if err := refreshSudoRule(grantPath, run); err != nil {
 		return fmt.Errorf("the agent was updated but its sudo rule was not: %w", err)
 	}
 	return nil

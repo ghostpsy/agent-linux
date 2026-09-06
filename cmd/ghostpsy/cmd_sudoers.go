@@ -139,7 +139,7 @@ func sudoersHasDrifted(path string) (bool, error) {
 	return sudoersHasDriftedWith(path, readInstalledGrant)
 }
 
-// readInstalledGrant returns the installed grant's text.
+// readInstalledGrant returns the grant text at path.
 //
 // Root reads the file. The agent user cannot, and no permission change fixes it:
 // the grant is 0440 root:root, and on an SELinux host making it group-readable is
@@ -149,6 +149,13 @@ func sudoersHasDrifted(path string) (bool, error) {
 //
 // Until a host's grant includes that entry the read fails, and the drift stays
 // unreported rather than guessed. Reinstalling the rule fixes it.
+//
+// That privileged path is declared once, in privexec, with GrantPath baked into
+// its argument list — it can only ever read the real installed grant, never an
+// arbitrary path, which is the whole safety property of a declared command. So
+// it is only used when path actually names that file. Anything else (an
+// operator pointing --check/--diff at a backup copy, or a test fixture) is a
+// plain file with no such restriction and is read directly.
 func readInstalledGrant(path string) ([]byte, error) {
 	// Whether a grant exists at all is a different question from what is in it, and
 	// it needs no privilege. Asking the privileged reader first turned "no grant is
@@ -158,7 +165,7 @@ func readInstalledGrant(path string) ([]byte, error) {
 		return nil, err
 	}
 
-	if os.Geteuid() == 0 {
+	if os.Geteuid() == 0 || path != installedGrantPath {
 		return os.ReadFile(path)
 	}
 	res, err := privexec.Run(context.Background(), privexec.GrantFile)

@@ -74,6 +74,10 @@ func TestFetchUpdateCheck_RejectsMissingFields(t *testing.T) {
 	}
 }
 
+// This must never touch the real /etc/sudoers.d/ghostpsy, or run a real
+// visudo: that file is root-owned, and a machine running this test may not
+// even have sudo installed. installUpdateWithGrant exists so this test can
+// point the refresh at a throwaway file and a fake runner instead.
 func TestInstallUpdate_VerifiesSignatureAndSwapsBinary(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -87,6 +91,14 @@ func TestInstallUpdate_VerifiesSignatureAndSwapsBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GHOSTPSY_BIN_PATH", binPath)
+
+	// A grant already has to be installed: refreshSudoRule leaves a machine
+	// with none alone, so an update installing one for the first time would
+	// be a different behaviour and a different test.
+	grantPath := filepath.Join(t.TempDir(), "ghostpsy")
+	if err := os.WriteFile(grantPath, []byte("# an old grant, from an older agent\n"), 0o440); err != nil {
+		t.Fatal(err)
+	}
 
 	newBinary := []byte("new-binary-content")
 	filename := "ghostpsy_0.36.0_linux_amd64"
@@ -114,7 +126,12 @@ func TestInstallUpdate_VerifiesSignatureAndSwapsBinary(t *testing.T) {
 		SignatureURL:   srv.URL + "/sig",
 		BinaryFilename: filename,
 	}
-	if err := installUpdate(context.Background(), info); err != nil {
+	var checked []string
+	fakeRun := func(name string, args ...string) error {
+		checked = append(checked, name)
+		return nil
+	}
+	if err := installUpdateWithGrant(context.Background(), info, grantPath, fakeRun); err != nil {
 		t.Fatalf("installUpdate: %v", err)
 	}
 
@@ -131,6 +148,22 @@ func TestInstallUpdate_VerifiesSignatureAndSwapsBinary(t *testing.T) {
 	}
 	if string(prev) != "old" {
 		t.Fatalf("previous binary not preserved")
+	}
+
+	grant, err := os.ReadFile(grantPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(grant), "an old grant") {
+		t.Error("the sudo rule was not refreshed: the old grant is still installed")
+	}
+	if !strings.Contains(string(grant), "ghostpsy ALL=(root) NOPASSWD:") {
+		t.Errorf("the sudo rule was not refreshed, got:\n%s", grant)
+	}
+	// Never installed without the system's own check. A broken file in
+	// /etc/sudoers.d locks every administrator out of sudo on the host.
+	if len(checked) != 1 || checked[0] != "visudo" {
+		t.Errorf("the rule was installed without visudo checking it: %v", checked)
 	}
 }
 

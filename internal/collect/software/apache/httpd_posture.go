@@ -168,25 +168,20 @@ func trimApacheErr(prefix string, err error, combined []byte) string {
 	return prefix + msg
 }
 
+var apacheUnits = []string{"apache2.service", "httpd.service", "apache.service"}
+
+// apacheProcesses is what apache calls itself once it is up: apache2 on Debian
+// and Ubuntu, httpd on the RHEL family.
+var apacheProcesses = []string{"apache2", "httpd"}
+
 func apacheServiceState(ctx context.Context, services []payload.ServiceEntry) string {
-	want := map[string]struct{}{
-		"apache2.service": {},
-		"httpd.service":   {},
-		"apache.service":  {},
+	if st := shared.ServiceStateFromList(services, apacheUnits); st != "" {
+		return st
 	}
-	for _, e := range services {
-		if _, ok := want[e.Name]; !ok {
-			continue
-		}
-		st := systemdutil.MapActiveStateForPosture(e.ActiveState)
-		if st == "running" || st == "stopped" {
-			return st
-		}
-	}
-	for _, unit := range []string{"apache2.service", "httpd.service", "apache.service"} {
+	for _, unit := range apacheUnits {
 		if st := systemdutil.SystemctlIsActiveState(ctx, unit); st == "running" || st == "stopped" {
 			return st
 		}
 	}
-	return ""
+	return shared.ProcessRunningState(ctx, apacheProcesses)
 }

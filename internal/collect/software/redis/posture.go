@@ -82,23 +82,16 @@ func extractVersion(ctx context.Context, bin string) *string {
 }
 
 func serviceState(ctx context.Context, services []payload.ServiceEntry) *string {
-	want := make(map[string]struct{}, len(serviceNames))
-	for _, n := range serviceNames {
-		want[n] = struct{}{}
-	}
-	for _, e := range services {
-		if _, ok := want[e.Name]; !ok {
-			continue
-		}
-		st := systemdutil.MapActiveStateForPosture(e.ActiveState)
-		if st == "running" || st == "stopped" {
-			return shared.StringPtr(st)
-		}
+	if st := shared.ServiceStateFromList(services, serviceNames); st != "" {
+		return shared.StringPtr(st)
 	}
 	for _, n := range serviceNames {
 		if st := systemdutil.SystemctlIsActiveState(ctx, n); st == "running" || st == "stopped" {
 			return shared.StringPtr(st)
 		}
+	}
+	if st := shared.ProcessRunningState(ctx, binNames); st != "" {
+		return shared.StringPtr(st)
 	}
 	return nil
 }

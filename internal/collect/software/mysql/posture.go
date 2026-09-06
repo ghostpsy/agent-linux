@@ -311,26 +311,20 @@ func trimMysqlPostureErr(prefix string, err error, combined []byte) string {
 	return prefix + msg
 }
 
+var mysqlUnits = []string{"mysqld.service", "mariadb.service", "mysql.service", "mariadb-server.service"}
+
+// mysqlProcesses is the server itself, never mysqld_safe: the wrapper can be up
+// while the server it babysits is down, and pgrep -x keeps the two apart.
+var mysqlProcesses = []string{"mysqld", "mariadbd"}
+
 func mysqlServiceState(ctx context.Context, services []payload.ServiceEntry) string {
-	want := map[string]struct{}{
-		"mysqld.service":         {},
-		"mariadb.service":        {},
-		"mysql.service":          {},
-		"mariadb-server.service": {},
+	if st := shared.ServiceStateFromList(services, mysqlUnits); st != "" {
+		return st
 	}
-	for _, e := range services {
-		if _, ok := want[e.Name]; !ok {
-			continue
-		}
-		st := systemdutil.MapActiveStateForPosture(e.ActiveState)
-		if st == "running" || st == "stopped" {
-			return st
-		}
-	}
-	for _, unit := range []string{"mysqld.service", "mariadb.service", "mysql.service", "mariadb-server.service"} {
+	for _, unit := range mysqlUnits {
 		if st := systemdutil.SystemctlIsActiveState(ctx, unit); st == "running" || st == "stopped" {
 			return st
 		}
 	}
-	return ""
+	return shared.ProcessRunningState(ctx, mysqlProcesses)
 }

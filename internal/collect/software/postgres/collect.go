@@ -284,6 +284,9 @@ func postgresServiceState(ctx context.Context, services []payload.ServiceEntry) 
 	if st := systemdutil.SystemctlIsActiveState(ctx, "postgresql.service"); st == "running" || st == "stopped" {
 		return st
 	}
+	if st := shared.ProcessRunningState(ctx, []string{"postgres", "postmaster"}); st != "" {
+		return st
+	}
 	return "unknown"
 }
 

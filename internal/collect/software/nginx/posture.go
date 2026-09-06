@@ -340,27 +340,22 @@ func nginxServiceStatePtr(ctx context.Context, services []payload.ServiceEntry) 
 	}
 }
 
+var nginxUnits = []string{"nginx.service", "openresty.service"}
+
+// openresty is nginx with lua built in, and its processes are called nginx too.
+var nginxProcesses = []string{"nginx"}
+
 func nginxServiceStateFromInventory(ctx context.Context, services []payload.ServiceEntry) string {
-	want := map[string]struct{}{
-		"nginx.service":     {},
-		"openresty.service": {},
+	if st := shared.ServiceStateFromList(services, nginxUnits); st != "" {
+		return st
 	}
-	for _, e := range services {
-		if _, ok := want[e.Name]; !ok {
-			continue
-		}
-		st := systemdutil.MapActiveStateForPosture(e.ActiveState)
-		if st == "running" || st == "stopped" {
-			return st
-		}
-	}
-	for _, unit := range []string{"nginx.service", "openresty.service"} {
+	for _, unit := range nginxUnits {
 		if st := systemdutil.SystemctlIsActiveState(ctx, unit); st == "running" || st == "stopped" {
 			return st
 		}
 	}
-	if _, err := exec.LookPath("systemctl"); err != nil {
-		return "unknown"
+	if st := shared.ProcessRunningState(ctx, nginxProcesses); st != "" {
+		return st
 	}
 	return "unknown"
 }

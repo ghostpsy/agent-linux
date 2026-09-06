@@ -11,7 +11,15 @@ import (
 
 const systemctlIsActiveTimeout = 4 * time.Second
 
-// MapActiveStateForPosture maps systemd ActiveState to running|stopped|unknown.
+// MapActiveStateForPosture maps a service's reported state to
+// running|stopped|unknown.
+//
+// It has to understand two vocabularies, because two collectors write to the
+// same field. systemd says "active" and "inactive"; the sysvinit and Upstart
+// collector says "running" outright. Understanding only systemd's words meant a
+// sysvinit entry mapped to "unknown", so a service the machine had plainly
+// reported as running was dropped as unreadable.
+//
 // The services collector may join substate as "active/running".
 func MapActiveStateForPosture(active string) string {
 	low := strings.ToLower(strings.TrimSpace(active))
@@ -23,9 +31,9 @@ func MapActiveStateForPosture(active string) string {
 		primary = low[:i]
 	}
 	switch primary {
-	case "active", "reloading":
+	case "active", "reloading", "running":
 		return "running"
-	case "inactive", "failed":
+	case "inactive", "failed", "stopped", "dead":
 		return "stopped"
 	default:
 		return "unknown"

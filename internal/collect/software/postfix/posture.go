@@ -123,19 +123,19 @@ func postfixServiceStatePtr(ctx context.Context, services []payload.ServiceEntry
 	return nil, []string{"postfix service_state could not be determined as running or stopped from systemd inventory or systemctl is-active."}
 }
 
+var postfixUnits = []string{"postfix.service"}
+
+// postfix runs its daemons under one supervisor called "master". The name is a
+// plain word, so it is asked for last, only once the service list and systemd
+// have both declined to answer.
+var postfixProcesses = []string{"master"}
+
 func postfixServiceState(ctx context.Context, services []payload.ServiceEntry) string {
-	want := map[string]struct{}{"postfix.service": {}}
-	for _, e := range services {
-		if _, ok := want[e.Name]; !ok {
-			continue
-		}
-		st := systemdutil.MapActiveStateForPosture(e.ActiveState)
-		if st == "running" || st == "stopped" {
-			return st
-		}
+	if st := shared.ServiceStateFromList(services, postfixUnits); st != "" {
+		return st
 	}
 	if st := systemdutil.SystemctlIsActiveState(ctx, "postfix.service"); st == "running" || st == "stopped" {
 		return st
 	}
-	return ""
+	return shared.ProcessRunningState(ctx, postfixProcesses)
 }

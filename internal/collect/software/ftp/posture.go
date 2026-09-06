@@ -66,7 +66,7 @@ func CollectFtpPosture(ctx context.Context, services []payload.ServiceEntry) *pa
 		}
 		out.Version = extractVersion(ctx, bin, d.name)
 		out.DistroVersion = shared.StringPtr(shared.QueryDistroPackageVersion(d.binNames))
-		out.ServiceState = serviceState(ctx, services, d.serviceNames)
+		out.ServiceState = serviceState(ctx, services, d.serviceNames, d.binNames)
 		parseConfig(d, out)
 		if out.CollectorWarnings == nil {
 			out.CollectorWarnings = []string{}
@@ -114,24 +114,19 @@ func extractVersion(ctx context.Context, bin, daemon string) *string {
 	return nil
 }
 
-func serviceState(ctx context.Context, services []payload.ServiceEntry, names []string) *string {
-	want := make(map[string]struct{}, len(names))
-	for _, n := range names {
-		want[n] = struct{}{}
-	}
-	for _, e := range services {
-		if _, ok := want[e.Name]; !ok {
-			continue
-		}
-		st := systemdutil.MapActiveStateForPosture(e.ActiveState)
-		if st == "running" || st == "stopped" {
-			return shared.StringPtr(st)
-		}
+func serviceState(ctx context.Context, services []payload.ServiceEntry, names, processes []string) *string {
+	if st := shared.ServiceStateFromList(services, names); st != "" {
+		return shared.StringPtr(st)
 	}
 	for _, n := range names {
 		if st := systemdutil.SystemctlIsActiveState(ctx, n); st == "running" || st == "stopped" {
 			return shared.StringPtr(st)
 		}
+	}
+	// binNames are what the daemon is called on disk, which is also what it is
+	// called in the process table.
+	if st := shared.ProcessRunningState(ctx, processes); st != "" {
+		return shared.StringPtr(st)
 	}
 	return nil
 }

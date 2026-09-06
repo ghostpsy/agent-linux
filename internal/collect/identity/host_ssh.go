@@ -4,6 +4,7 @@ package identity
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ghostpsy/agent-linux/internal/collect/shared"
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"github.com/ghostpsy/agent-linux/internal/privexec"
 )
 
 const sshdPath = "sshd"
@@ -44,12 +46,30 @@ type sshdConfig struct {
 	x11Forwarding       string
 }
 
+// runSSHDT asks sshd for its effective configuration.
+//
+// Through privexec, not exec: only root can read every drop-in, and cloud images
+// ship /etc/ssh/sshd_config.d/50-cloud-init.conf at mode 0600 root. Run as the
+// ghostpsy user this failed on every machine, and the whole SSH section of the
+// report was an error string instead of the settings.
+//
+// Root still runs it directly. A scan started by hand as root has no sudo to
+// use, and does not need one.
 func runSSHDT(ctx context.Context) ([]byte, error) {
 	subCtx, cancel := context.WithTimeout(ctx, sshdDumpTimeout)
 	defer cancel()
-	command := exec.CommandContext(subCtx, sshdPath, "-T")
-	command.Env = shared.EnvLocaleC()
-	return command.CombinedOutput()
+
+	if os.Geteuid() == 0 {
+		command := exec.CommandContext(subCtx, sshdPath, "-T")
+		command.Env = shared.EnvLocaleC()
+		return command.CombinedOutput()
+	}
+
+	res, err := privexec.Run(subCtx, privexec.SSHDumpConfig)
+	if err != nil {
+		return nil, err
+	}
+	return res.Stdout, nil
 }
 
 func parseSSHDTOutput(output []byte) sshdConfig {

@@ -266,10 +266,11 @@ func TestEveryCommandAShippedActionUsesIsDeclaredToPrivexec(t *testing.T) {
 // The best-practice fixes ship first, and this is what stops that decision being
 // quietly reversed later. A disk or package action appearing here means somebody
 // added it without reading why the order matters.
-func TestTheShippedCatalogIsTheFirstFourBestPracticeFixes(t *testing.T) {
+func TestTheShippedCatalogIsTheAgreedListOfFixes(t *testing.T) {
 	want := []string{
 		"enable_automatic_security_updates",
 		"enable_firewall",
+		"ensure_time_sync",
 		"harden_ssh_config",
 		"restart_failed_service",
 	}
@@ -281,9 +282,12 @@ func TestTheShippedCatalogIsTheFirstFourBestPracticeFixes(t *testing.T) {
 
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("the shipped catalog changed.\nwant %v\ngot  %v\n\n"+
-			"Disk cleanup and package updates are deliberately not here yet: a config change "+
-			"can be put back byte for byte and deleting logs cannot, so the reversible fixes "+
-			"go first. If that is being changed on purpose, change this test with it.", want, got)
+			"Disk cleanup is deliberately not here yet: a config change can be put back "+
+			"byte for byte and deleting logs cannot, so the reversible fixes go first.\n\n"+
+			"ensure_time_sync is the first action that installs software, added on "+
+			"2026-09-03. It is why Reversibility on that one is partial: the service is "+
+			"stopped again, and the package stays.\n\n"+
+			"If that is being changed on purpose, change this test with it.", want, got)
 	}
 }
 
@@ -791,5 +795,138 @@ func TestARunDoesNotRepeatWhatItWouldHaveDone(t *testing.T) {
 
 	if len(report.Actions[0].WouldRun) != 0 {
 		t.Errorf("a run reports what ran, not what would: %v", report.Actions[0].WouldRun)
+	}
+}
+
+// A machine with no systemd still gets its apt fix.
+//
+// The bug this was written for, measured on gp-ubuntu-14. The action wrote both
+// drop-in files, then tried to enable a systemd unit, failed, and rolled the whole
+// thing back — undoing a change that had already worked.
+//
+// There is nothing to enable on 14.04. /etc/cron.daily/apt reads APT::Periodic
+// twenty-five times and does the work; the two files are the entire fix. The
+// action is right for that machine, and only the third step is not.
+func TestAutomaticUpdatesWorkOnAMachineWithNoSystemd(t *testing.T) {
+	// What apt says once the two files are in place. The verify step reads this
+	// back rather than trusting that writing a file changed anything.
+	f := &fakeExec{answers: map[privexec.ID]privexec.Result{
+		privexec.APTEffectiveConfig: {Stdout: []byte(
+			"APT::Periodic::Update-Package-Lists \"1\";\n" +
+				"APT::Periodic::Unattended-Upgrade \"1\";\n")},
+	}}
+	deps := testDeps(f)
+	// The one fact that differs: this host has no systemd unit to enable.
+	deps.Applies = func(id privexec.ID) (bool, string) {
+		if id == privexec.ServiceEnableNow("unattended-upgrades") {
+			return false, "this machine has no systemd"
+		}
+		return true, ""
+	}
+
+	report := Run(context.Background(), deps, Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "enable_automatic_security_updates"}},
+	})
+
+	if !report.OK {
+		t.Fatalf("the two drop-ins are the whole fix here, so this must succeed:\n%s", allOutput(report))
+	}
+	// The files that do the work were written.
+	for _, key := range []string{"apt.update_package_lists", "apt.unattended_upgrade"} {
+		if !ranCommand(f, privexec.InstallDropIn(aptChange(key))) {
+			t.Errorf("%s was not installed", key)
+		}
+	}
+	// The step that cannot apply was not attempted.
+	if ranCommand(f, privexec.ServiceEnableNow("unattended-upgrades")) {
+		t.Error("a systemd unit was enabled on a machine with no systemd")
+	}
+	// And it is on the report, not silently dropped. Somebody read that step and
+	// approved it, so they are owed the reason it was not part of the work.
+	var skipped []string
+	for _, action := range report.Actions {
+		for _, command := range action.Commands {
+			if command.Skipped != "" {
+				skipped = append(skipped, command.Skipped)
+			}
+		}
+	}
+	if len(skipped) != 1 {
+		t.Fatalf("expected exactly one skipped step, got %d: %v", len(skipped), skipped)
+	}
+	if !strings.Contains(skipped[0], "no systemd") {
+		t.Errorf("the skipped step must say why: %q", skipped[0])
+	}
+}
+
+// Installing software is the biggest privilege in the catalogue, so the package
+// name is written into the grant and can never be passed to it.
+//
+// A rule reading `apt-get install -y *` would let this agent install anything at
+// all on a customer's machine. That is precisely the shape the explicit-grant
+// design exists to remove, and it would be an easy one to reintroduce by adding
+// a "package" parameter the day a second package is wanted.
+func TestInstallingSoftwareNamesThePackageInTheGrantNotInAParameter(t *testing.T) {
+	action, ok := Lookup("ensure_time_sync")
+	if !ok {
+		t.Fatal("ensure_time_sync is not in the catalogue")
+	}
+	if len(action.Params) != 0 {
+		t.Fatalf("an install action takes no parameters, got %v", action.Params)
+	}
+
+	for _, id := range []privexec.ID{privexec.AptInstallNTP, privexec.DnfInstallChrony} {
+		rendered := privexec.Display(id, nil)
+		if strings.Contains(rendered, "{") {
+			t.Errorf("%s has a placeholder in it, so the package is not fixed: %s", id, rendered)
+		}
+	}
+}
+
+// Undo says the package stays. The steps have to agree with the sentence.
+func TestUndoingATimeServiceStopsItRatherThanRemovingIt(t *testing.T) {
+	action, _ := Lookup("ensure_time_sync")
+
+	if action.Reversibility != ReversePartial {
+		t.Errorf("leaving a package behind is a partial undo, got %q", action.Reversibility)
+	}
+	for _, variant := range action.Variants {
+		for _, step := range variant.Undo {
+			rendered := privexec.Display(step.Command, nil)
+			if strings.Contains(rendered, "remove") || strings.Contains(rendered, "purge") {
+				t.Errorf("undo removes software, which is more than was approved: %s", rendered)
+			}
+		}
+	}
+}
+
+// The one that started this: a machine with no time daemon must be offered the fix.
+func TestTheTimeFixWorksOnAMachineWithNoSystemd(t *testing.T) {
+	f := &fakeExec{}
+	deps := testDeps(f)
+	deps.Installed = func(binary string) bool { return binary == "apt-get" }
+	// No systemd unit for ntp, as on Ubuntu 14.04. Installing the package starts
+	// it there, so the enable step has nothing left to do.
+	deps.Applies = func(id privexec.ID) (bool, string) {
+		if id == privexec.ServiceEnableNow("ntp") {
+			return false, "this machine has no systemd"
+		}
+		return true, ""
+	}
+	f.answers = map[privexec.ID]privexec.Result{
+		privexec.ServiceIsActive: {Stdout: []byte("active\n")},
+	}
+
+	report := Run(context.Background(), deps, Job{
+		Mode:    ModeRun,
+		Actions: []Request{{Type: "ensure_time_sync"}},
+	})
+
+	if !report.OK {
+		t.Fatalf("installing the package is the whole fix here:\n%s", allOutput(report))
+	}
+	if !ranCommand(f, privexec.AptInstallNTP) {
+		t.Error("the time service was never installed")
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/neilotoole/jsoncolor"
 
+	"github.com/ghostpsy/agent-linux/internal/action"
 	"github.com/ghostpsy/agent-linux/internal/actionlog"
 	"github.com/ghostpsy/agent-linux/internal/collect"
 	"github.com/ghostpsy/agent-linux/internal/payload"
@@ -44,6 +45,9 @@ func buildScanPayload(ctx context.Context, logger *actionlog.Logger) (*state.Age
 	if err != nil {
 		return nil, 0, payload.V1{}, nil, err
 	}
+	// What this machine could take, decided here rather than guessed at in the
+	// cloud. The rules live in one language, next to the code that enforces them.
+	p.ActionsPossible = action.PossibleOn(action.HostDeps())
 	logger.Step("local-compute", "payload.v1", "Preparing JSON payload preview before any network send", nil)
 	body, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {

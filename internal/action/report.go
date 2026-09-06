@@ -33,6 +33,14 @@ type CommandRun struct {
 	ExitCode int    `json:"exit_code"`
 	Millis   int64  `json:"duration_ms"`
 
+	// Skipped is set when this step had nothing to do on this machine, and says
+	// why. It is not a failure and not a success: the command never ran, because
+	// the software it drives is not here.
+	//
+	// It is reported rather than quietly dropped. A person approving a plan has to
+	// be able to see that a step they read was not part of the work.
+	Skipped string `json:"skipped,omitempty"`
+
 	// Advice is set by a step that refused a change as too dangerous, and carries
 	// the way to make it by hand. The runner lifts it onto the action so the app
 	// does not have to hunt for it among the commands.
@@ -73,6 +81,15 @@ type ActionReport struct {
 	// it did.
 	Refused string `json:"refused,omitempty"`
 
+	// Commands is never nil on the wire.
+	//
+	// A nil slice marshals to JSON null, and the screen flattens every action's
+	// commands into one list to draw the terminal. flatMap over a null keeps the
+	// null, so the list held one and the page crashed reading its `why`. Somebody
+	// who clicked Solve got a blank screen and a stack trace.
+	//
+	// A refused action is a normal outcome. It must not be able to break the page
+	// that exists to explain it. See emptyCommands.
 	Commands []CommandRun `json:"commands"`
 
 	// WouldRun is every command that would change this machine, written out as it

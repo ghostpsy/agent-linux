@@ -30,6 +30,15 @@ type Deps struct {
 	// variant is chosen.
 	Installed func(binary string) bool
 
+	// Applies reports whether a declared command has anything to do on this host,
+	// and why not when it does not. Injected like Exec, so a test can decide the
+	// answer instead of depending on what happens to be installed where the test
+	// runs.
+	//
+	// Nil means everything applies. That keeps every existing caller and test
+	// working, and the one place that matters — the real agent — sets it.
+	Applies func(privexec.ID) (bool, string)
+
 	// FreeBytes reports the space left on the filesystem holding path.
 	FreeBytes func(path string) (int64, error)
 
@@ -162,12 +171,14 @@ func planAll(deps Deps, job Job) ([]plan, []ActionReport) {
 
 		if err := checkRequestParams(a, req.Params); err != nil {
 			reports[i].Refused = err.Error()
+			reports[i].Commands = emptyCommands()
 			continue
 		}
 		variant, found := pickVariant(deps, a)
 		if !found {
 			reports[i].Refused = fmt.Sprintf(
 				"this machine does not have %s, which is what this fix needs", neededTools(a))
+			reports[i].Commands = emptyCommands()
 			continue
 		}
 		plans[i] = plan{action: a, variant: variant, values: req.Params, people: people}
@@ -318,6 +329,18 @@ func verify(ctx context.Context, deps Deps, plans []plan) *PhaseReport {
 		if !ok {
 			phase.OK = false
 		}
+		// A check that could not run is not a check that passed.
+		//
+		// Skipping a step whose software is absent is right for the work itself:
+		// on a machine with no systemd, installing the package is the whole fix.
+		// It is wrong for the proof afterwards. "We could not look" and "we looked
+		// and it worked" are different answers, and reporting the second for the
+		// first is the guess this agent refuses everywhere else.
+		for _, run := range runs {
+			if run.Skipped != "" {
+				phase.OK = false
+			}
+		}
 	}
 	return phase
 }
@@ -448,6 +471,22 @@ func runStep(ctx context.Context, deps Deps, p plan, step Step, before []Command
 		return CommandRun{Why: step.Why, Stderr: err.Error(), ExitCode: -1}, false
 	}
 
+	// Asked before running, not after failing. A step whose software is not on
+	// this machine is not part of the work here — the two apt drop-ins are the
+	// entire fix on a host with no systemd, and failing on the unit that follows
+	// them rolled back a change that had already worked.
+	if applies, why := stepApplies(deps, command); !applies {
+		return CommandRun{
+			Why:     step.Why,
+			id:      command,
+			Display: privexec.Display(command, values),
+			Skipped: why,
+			// -1, never 0. Nothing ran, so there is no exit status, and 0 is the
+			// number that means it worked.
+			ExitCode: -1,
+		}, true
+	}
+
 	stepCtx, cancel := context.WithTimeout(ctx, stepTimeout)
 	defer cancel()
 
@@ -564,3 +603,24 @@ func previewID(reports []ActionReport) string {
 	}
 	return hex.EncodeToString(h.Sum(nil))[:32]
 }
+
+
+// stepApplies asks whether this command has anything to do on this machine.
+//
+// A nil Applies means yes. The check is about the real filesystem, so a test that
+// does not care about it must not be made to care: without this, every action test
+// would depend on whether the machine running the suite happens to have systemd.
+func stepApplies(deps Deps, command privexec.ID) (bool, string) {
+	if deps.Applies == nil {
+		return true, ""
+	}
+	return deps.Applies(command)
+}
+
+
+// emptyCommands is a command list with nothing in it, and not a nil one.
+//
+// The difference only shows up on the wire: nil marshals to null, and the screen
+// that draws the terminal flattens every action's commands together. A null in
+// that list crashed the page. "Nothing ran" is an answer; null is a gap.
+func emptyCommands() []CommandRun { return []CommandRun{} }

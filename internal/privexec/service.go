@@ -35,7 +35,11 @@ import (
 // Each one is here because an action manages it, and for no other reason. ufw and
 // firewalld are the two firewalls enable_firewall knows; the last two are what
 // enable_automatic_security_updates switches on, one name per distribution family.
-var unitsWeManage = []string{"ufw", "firewalld", "unattended-upgrades", "dnf-automatic.timer"}
+// ntp and chronyd are what ensure_time_sync switches on, one name per
+// distribution family, the same way the update services are.
+var unitsWeManage = []string{
+	"ufw", "firewalld", "unattended-upgrades", "dnf-automatic.timer", "ntp", "chronyd",
+}
 
 // ServiceReload names the command that makes a service re-read its configuration.
 //

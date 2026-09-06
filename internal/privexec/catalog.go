@@ -34,22 +34,48 @@ const (
 	// Services — measured: nginx loses its whole TLS posture without this.
 	NginxDumpConfig ID = "nginx.dump_config"
 
+	// SSHDumpConfig is the effective sshd configuration, which only sshd itself
+	// can work out: it is the main file, plus every drop-in, plus the built-in
+	// defaults, resolved in the order sshd applies them. Reading sshd_config
+	// would answer a different question and answer it wrongly — a drop-in shipped
+	// by cloud-init routinely overrides what that file says.
+	SSHDumpConfig ID = "ssh.dump_config"
+
 	// Scheduling — found by tracing, not by scanning: this one hides inside a
 	// [][]string literal and no search for exec.Command would show it.
 	CrontabListRoot ID = "cron.crontab_list_root"
 	CrontabListSelf ID = "cron.crontab_list_self"
 
-	// Delegated reads. A file path cannot be written as an exact sudo command,
-	// so for these the agent asks its own signed binary, which enforces the
-	// path allowlist internally. Keep this list very short: every entry asks
-	// the reader to trust our code instead of a command they can read.
-	ReadShadow  ID = "read.shadow"
-	ReadSudoers ID = "read.sudoers"
-	ReadGrant   ID = "read.grant"
+	// Privileged reads, every one a command a reviewer already knows.
+	//
+	// These used to be `ghostpsy read-shadow` and friends: our own binary,
+	// printing a summary. It was safe, and it was unreadable. A security team
+	// auditing /etc/sudoers.d/ghostpsy could not tell what ran as root without
+	// reading our source, and a team that has to read your source to approve you
+	// does not approve you.
+	//
+	// So each one is now a standard command whose output is already safe to hand
+	// over, and the counting happens afterwards, unprivileged. `passwd -S -a`
+	// prints an account status per line and never a hash; that is the whole
+	// argument, and it applies to all four.
+	GrantFile ID = "read.grant_file"
 
-	// ReadSSHAccess counts how many accounts could still log in over SSH. It is
-	// what stops a hardening change locking the operator out of their own server.
-	ReadSSHAccess ID = "read.ssh_access"
+	// ShadowAccountStatus and LastlogAll together answer what read-shadow did:
+	// how many accounts are locked, how many have no password, how many have
+	// never logged in. Neither prints password material of any kind.
+	ShadowAccountStatus ID = "read.shadow_account_status"
+	LastlogAll          ID = "read.lastlog_all"
+
+	// SudoersText is every sudo rule on the host, with the file each came from.
+	// `.` matches any non-empty line, so this is "print these files, numbered".
+	SudoersText ID = "read.sudoers_text"
+
+	// AuthorizedKeysFiles finds which accounts still have an SSH key, which is
+	// what stops a hardening change locking the operator out of their own
+	// server. /etc/passwd is world-readable, so the agent already knows the home
+	// directories; the only thing it needs root for is whether the key file is
+	// there and not empty.
+	AuthorizedKeysFiles ID = "read.authorized_keys_files"
 
 	// Everything below this line is for a fix, not a scan. They are the only
 	// commands on this machine that change anything, and every one of them is
@@ -92,6 +118,28 @@ const (
 
 	// Automatic security updates.
 	UnattendedUpgradeDryRun ID = "updates.unattended_upgrade_dry_run"
+
+	// Time. The package is named in the command, not passed to it — see the
+	// declarations for why that matters.
+	// Whether the clock daemon is running, asked of the process table rather than
+	// of systemd. `systemctl is-active` cannot answer it on a machine that has no
+	// systemd, and Ubuntu 14.04 is exactly the machine this action is for.
+	NTPDaemonRunning    ID = "time.ntp_daemon_running"
+	ChronyDaemonRunning ID = "time.chrony_daemon_running"
+
+	AptInstallNTP            ID = "time.apt_install_ntp"
+	AptSimulateInstallNTP    ID = "time.apt_simulate_install_ntp"
+	DnfInstallChrony         ID = "time.dnf_install_chrony"
+	DnfSimulateInstallChrony ID = "time.dnf_simulate_install_chrony"
+
+	// Setting the clock, as opposed to installing something that will get round
+	// to it. A freshly installed ntpd needs several poll cycles before it will
+	// step a badly wrong clock, so a machine can be "fixed" and still be hours
+	// out — which is a fix that reports success and leaves the finding standing.
+	NTPServiceStop  ID = "time.ntp_service_stop"
+	NTPServiceStart ID = "time.ntp_service_start"
+	NTPStepClock    ID = "time.ntp_step_clock"
+	ChronyStepClock ID = "time.chrony_step_clock"
 )
 
 // Shapes a value may take. Declared once and shared, so two commands cannot
@@ -153,6 +201,14 @@ func init() {
 		Env:    localeC,
 	})
 
+	declare(SSHDumpConfig, Command{
+		Binary: "sshd",
+		Args:   []string{"-T"},
+		Why: "read the SSH server's effective settings, to report whether root may log in " +
+			"and whether passwords are accepted. sshd prints them; it changes nothing",
+		Env: localeC,
+	})
+
 	declare(CrontabListSelf, Command{
 		Binary: "crontab",
 		Args:   []string{"-l"},
@@ -165,30 +221,45 @@ func init() {
 		Why:    "read root's scheduled jobs, to find backup jobs",
 		Env:    localeC,
 	})
-	declare(ReadShadow, Command{
-		Binary: agentBinaryPath,
-		Args:   []string{"read-shadow"},
-		Why:    "count locked and passwordless accounts. Returns only the counts — a password hash never leaves this command",
-		Env:    localeC,
-	})
-	declare(ReadSudoers, Command{
-		Binary: agentBinaryPath,
-		Args:   []string{"read-sudoers"},
-		Why:    "count risky sudo rules. Returns only the counts — no rule text leaves this command",
-		Env:    localeC,
-	})
-	declare(ReadGrant, Command{
-		Binary: agentBinaryPath,
-		Args:   []string{"read-grant"},
+	declare(GrantFile, Command{
+		Binary: "cat",
+		Args:   []string{GrantPath},
 		Why:    "read this very file, to report whether it is still the one this agent version needs",
 		Env:    localeC,
 	})
 
-	declare(ReadSSHAccess, Command{
-		Binary: agentBinaryPath,
-		Args:   []string{"read-ssh-access"},
-		Why: "count how many accounts could still log in over SSH, before turning one of " +
-			"those ways off. Returns only the counts — no key and no file name leaves this command",
+	declare(ShadowAccountStatus, Command{
+		Binary: "passwd",
+		Args:   []string{"-S", "-a"},
+		Why: "print one status line per account — locked, no password, or usable — to count " +
+			"the accounts nobody can log in to. It prints no password material of any kind",
+		Env: localeC,
+	})
+	declare(LastlogAll, Command{
+		Binary: "lastlog",
+		Args:   nil,
+		Why:    "print the last login time of every account, to count the ones never used",
+		Env:    localeC,
+	})
+
+	declare(SudoersText, Command{
+		Binary: "grep",
+		Args:   []string{"-rn", ".", "/etc/sudoers", "/etc/sudoers.d/"},
+		Why: "print every sudo rule on this host with the file it came from, to count the " +
+			"risky ones. `.` matches any line that is not blank",
+		Env: localeC,
+	})
+
+	declare(AuthorizedKeysFiles, Command{
+		Binary: "find",
+		Args: []string{
+			"/root", "/home",
+			"-maxdepth", "4",
+			"-name", "authorized_keys",
+			"-size", "+0",
+		},
+		Why: "list which accounts have an SSH key that is not empty, before turning off " +
+			"another way of logging in. It prints file names, never a key",
 		Env: localeC,
 	})
 
@@ -211,6 +282,103 @@ func declareFixCommands() {
 			"This is what stops a bad edit leaving a server nobody can log in to",
 		Env: localeC,
 	})
+	// Installing a time daemon. One literal command per distribution family, with
+	// the package named in the grant — never a parameter. A rule that read
+	// `apt-get install -y *` would let the agent install anything at all, which is
+	// the whole thing the explicit grant exists to prevent.
+	// Unprivileged, so these two never reach the sudo grant at all. Reading the
+	// process table needs no privilege, and a grant that buys nothing is a line a
+	// reviewer has to read for no reason.
+	declare(NTPDaemonRunning, Command{
+		Binary:       "pgrep",
+		Args:         []string{"-x", "ntpd"},
+		Why:          "check the time service is running",
+		Env:          localeC,
+		Unprivileged: true,
+	})
+	declare(ChronyDaemonRunning, Command{
+		Binary:       "pgrep",
+		Args:         []string{"-x", "chronyd"},
+		Why:          "check the time service is running",
+		Env:          localeC,
+		Unprivileged: true,
+	})
+
+	declare(AptInstallNTP, Command{
+		Binary:    "apt-get",
+		Args:      []string{"install", "-y", "ntp"},
+		Why:       "install the ntp time service, so this machine's clock stays correct",
+		Env:       localeC,
+		NeedsPath: "/etc/apt",
+	})
+	declare(AptSimulateInstallNTP, Command{
+		Binary: "apt-get",
+		Args:   []string{"install", "--simulate", "ntp"},
+		Why: "show what installing the ntp time service would pull in. " +
+			"--simulate installs nothing",
+		Env:       localeC,
+		NeedsPath: "/etc/apt",
+	})
+	declare(DnfInstallChrony, Command{
+		Binary:    "dnf",
+		Args:      []string{"install", "-y", "chrony"},
+		Why:       "install the chrony time service, so this machine's clock stays correct",
+		Env:       localeC,
+		NeedsPath: "/etc/dnf",
+	})
+	declare(DnfSimulateInstallChrony, Command{
+		Binary: "dnf",
+		Args:   []string{"install", "--assumeno", "chrony"},
+		Why: "show what installing the chrony time service would pull in. " +
+			"--assumeno answers no, so nothing is installed",
+		Env:       localeC,
+		NeedsPath: "/etc/dnf",
+	})
+
+	// ntpd will not take port 123 while the daemon holds it, so the daemon is
+	// stopped for the few seconds the clock is being set and started again after.
+	//
+	// `service` rather than `systemctl`, because this is the one action written
+	// for machines that have no systemd to ask. Ubuntu 14.04 has /etc/init.d/ntp
+	// and /usr/sbin/service, and `service` is what a sysadmin on any of these
+	// systems would type.
+	declare(NTPServiceStop, Command{
+		Binary:    "service",
+		Args:      []string{"ntp", "stop"},
+		Why:       "stop the time service for a moment, so the clock can be set",
+		Env:       localeC,
+		NeedsPath: "/etc/apt",
+	})
+	declare(NTPServiceStart, Command{
+		Binary:    "service",
+		Args:      []string{"ntp", "start"},
+		Why:       "start the time service again",
+		Env:       localeC,
+		NeedsPath: "/etc/apt",
+	})
+
+	// -q sets the clock once and exits, -g allows it to do so however far out the
+	// clock is. Without -g ntpd refuses any correction beyond about 1000 seconds,
+	// which is exactly the case worth fixing: a machine resumed from a snapshot
+	// hours or days behind.
+	declare(NTPStepClock, Command{
+		Binary:    "ntpd",
+		Args:      []string{"-gq"},
+		Why:       "set the clock now, however far out it is, instead of waiting for the daemon to get round to it",
+		Env:       localeC,
+		NeedsPath: "/etc/apt",
+	})
+
+	// chrony needs no stop and start: makestep tells the daemon that is already
+	// running to correct the clock in one jump now.
+	declare(ChronyStepClock, Command{
+		Binary:    "chronyc",
+		Args:      []string{"makestep"},
+		Why:       "set the clock now, instead of waiting for the daemon to get round to it",
+		Env:       localeC,
+		NeedsPath: "/etc/dnf",
+	})
+
 	declare(UnattendedUpgradeDryRun, Command{
 		Binary: "unattended-upgrade",
 		Args:   []string{"--dry-run", "--verbose"},
@@ -302,9 +470,9 @@ func declareFirewallCommands() {
 	})
 }
 
-// agentBinaryPath is where the installer puts the agent. The grant names this
-// exact path, so a copy of the binary somewhere else is not covered by it.
-const agentBinaryPath = "/usr/local/bin/ghostpsy"
+// GrantPath is where the grant lives once a host has one. It is named here
+// because this package writes it, and read back through GrantFile.
+const GrantPath = "/etc/sudoers.d/ghostpsy"
 
 // declare adds a command to the catalogue. It panics on a duplicate ID: two
 // commands answering to one name is a programming error, and it must surface at

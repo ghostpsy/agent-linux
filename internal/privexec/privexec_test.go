@@ -168,15 +168,94 @@ func TestRunKeepsThePathWhenACommandDeclaresItsOwnEnvironment(t *testing.T) {
 // group-readable is still refused on an SELinux host — measured on CentOS 6.10,
 // where sudo accepted the relabelled file and the agent still could not open it.
 // So the grant includes permission to read the grant, through the agent itself.
-func TestTheAgentCanReadItsOwnGrant(t *testing.T) {
-	declared, ok := registry[ReadGrant]
+func TestTheAgentReadsItsOwnGrantWithCat(t *testing.T) {
+	declared, ok := registry[GrantFile]
 	if !ok {
-		t.Fatal("ReadGrant is not declared, so sudo_rule_current can never be reported")
+		t.Fatal("GrantFile is not declared, so sudo_rule_current can never be reported")
 	}
-	if declared.Binary != agentBinaryPath {
-		t.Errorf("the read must go through the agent, not an arbitrary reader: %q", declared.Binary)
+	// A standard command, not our binary. A security team auditing this file has
+	// to be able to see what runs as root without reading our source; `cat` on
+	// one fixed path answers that on sight. There is nothing secret in the file:
+	// it is the list of what the agent may do.
+	if declared.Binary != "cat" {
+		t.Errorf("the grant read must be a command a reviewer can recognise, got %q", declared.Binary)
+	}
+	if len(declared.Args) != 1 || declared.Args[0] != GrantPath {
+		t.Errorf("args: got %v, want one fixed path %q", declared.Args, GrantPath)
+	}
+	// No wildcard, ever. `cat` with a pattern would hand the agent any file the
+	// pattern reaches.
+	for _, arg := range declared.Args {
+		if strings.ContainsAny(arg, "*?[") {
+			t.Errorf("a wildcard in a cat grant reads more than one file: %q", arg)
+		}
 	}
 	if declared.Why == "" {
 		t.Error("every grant needs a reason a person can read above it")
+	}
+}
+
+// A command that never ran must not report the exit code of success.
+//
+// The bug this was written for, seen on an Ubuntu 14.04 machine that has no
+// systemd at all:
+//
+//	$ sudo systemctl enable --now unattended-upgrades
+//	privexec: command is not installed on this host: systemctl
+//	exit 0 · 2ms
+//
+// The step failed, the job was rolled back, and the line a person reads still
+// said exit 0. Result{} is returned on every path that stops before the process
+// starts, and the zero value of ExitCode is 0 — the one number that means it
+// worked.
+func TestAResultFromACommandThatNeverRanDoesNotSaySuccess(t *testing.T) {
+	declareForTest(t, ID("test:absent"), Command{Binary: "/usr/bin/definitely-not-installed"})
+
+	res, err := Run(context.Background(), ID("test:absent"))
+
+	if !errors.Is(err, ErrNotInstalled) {
+		t.Fatalf("expected ErrNotInstalled, got %v", err)
+	}
+	if res.ExitCode == 0 {
+		t.Error("a command that was never started reports exit 0, which reads as success")
+	}
+	if res.ExitCode != -1 {
+		t.Errorf("ExitCode: got %d, want -1 — the same as a process with no exit status", res.ExitCode)
+	}
+}
+
+// A command declared for software this host does not have is not an error.
+//
+// The bug this was written for, on an Ubuntu 14.04 machine with no systemd. The
+// apt action wrote its two drop-in files correctly, then tried to enable a
+// systemd unit, failed, and rolled the whole thing back — undoing a change that
+// had already worked.
+//
+// On 14.04 there is nothing to enable. /etc/cron.daily/apt reads APT::Periodic
+// twenty-five times and does the work. The two files were the entire fix.
+//
+// NeedsPath already knows this. It is the same fact that keeps the grant line out
+// of the sudoers file. It was simply never asked at run time.
+func TestACommandForSoftwareThatIsNotHereDoesNotApply(t *testing.T) {
+	declareForTest(t, ID("test:needs-absent"), Command{
+		Binary:    "/bin/echo",
+		NeedsPath: "/definitely/not/here",
+	})
+	declareForTest(t, ID("test:needs-present"), Command{
+		Binary:    "/bin/echo",
+		NeedsPath: "/etc",
+	})
+	declareForTest(t, ID("test:needs-nothing"), Command{Binary: "/bin/echo"})
+
+	if applies, why := Applies(ID("test:needs-absent")); applies {
+		t.Error("a command whose software is absent must not apply here")
+	} else if why == "" {
+		t.Error("a skipped step has to say why, or the report is a silent gap")
+	}
+	if applies, _ := Applies(ID("test:needs-present")); !applies {
+		t.Error("a command whose path is there must apply")
+	}
+	if applies, _ := Applies(ID("test:needs-nothing")); !applies {
+		t.Error("a command that declares no path applies anywhere")
 	}
 }

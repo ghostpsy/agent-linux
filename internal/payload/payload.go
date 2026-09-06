@@ -17,7 +17,20 @@ type V1 struct {
 	Hostname      string     `json:"hostname,omitempty"`
 	Fqdn          string     `json:"fqdn,omitempty"`
 	AgentVersion  string     `json:"agent_version,omitempty"`
-	Components    Components `json:"components"`
+
+	// ActionsPossible is which fixes this machine could actually carry out.
+	//
+	// The plan is built in the cloud from this report, which says what is wrong
+	// with the server but not what the server can do about it. Without this, an
+	// Ubuntu 14.04 host was offered an SSH fix needing systemd it does not have —
+	// approved, sent, and refused only on arrival.
+	//
+	// omitempty on purpose: an older agent sends nothing, and the cloud has to
+	// read that as "this agent does not say" rather than "this machine can do
+	// nothing at all".
+	ActionsPossible []string `json:"actions_possible,omitempty"`
+
+	Components Components `json:"components"`
 }
 
 // Components groups inventory by competitor-audited sections (RBAC boundary).

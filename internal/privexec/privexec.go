@@ -41,6 +41,18 @@ type ID string
 // know. It is the package's whole reason to exist.
 var ErrNotDeclared = errors.New("privexec: command is not declared")
 
+// notRun is what a command that never started reports.
+//
+// ExitCode must not be left at its zero value on these paths: 0 is the number
+// that means the command worked. An Ubuntu 14.04 machine with no systemd printed
+// "privexec: command is not installed on this host: systemctl" and, on the line
+// underneath, "exit 0" — so a step that failed and was rolled back read as a
+// success to the person who approved it.
+//
+// -1 is the same answer Go gives for a process with no exit status, which is
+// exactly what this is.
+func notRun() Result { return Result{ExitCode: -1} }
+
 // ErrNotInstalled means the declared binary is not on this host. It is a normal
 // situation — not every server runs nginx — so callers treat it as "no data"
 // rather than as a failure.
@@ -130,19 +142,19 @@ func Run(ctx context.Context, id ID) (Result, error) {
 func RunWith(ctx context.Context, id ID, values Values) (Result, error) {
 	declared, ok := registry[id]
 	if !ok {
-		return Result{}, fmt.Errorf("%w: %q", ErrNotDeclared, id)
+		return notRun(), fmt.Errorf("%w: %q", ErrNotDeclared, id)
 	}
 
 	filled, err := fill(declared, values)
 	if err != nil {
-		return Result{}, err
+		return notRun(), err
 	}
 
 	// Resolve the same way the grant file does, so the path sudo is asked for
 	// is exactly the path the rule pins.
 	path, err := resolve(declared.Binary)
 	if err != nil {
-		return Result{}, fmt.Errorf("%w: %s", ErrNotInstalled, declared.Binary)
+		return notRun(), fmt.Errorf("%w: %s", ErrNotInstalled, declared.Binary)
 	}
 
 	bin, args := invocation(path, filled, declared.Unprivileged || os.Geteuid() == 0)
@@ -215,4 +227,36 @@ func AnyDeclaredMatches(pattern *regexp.Regexp) bool {
 		}
 	}
 	return false
+}
+
+
+// Applies reports whether a declared command can do anything on this host, and
+// says why not when it cannot.
+//
+// The question is the one NeedsPath already answers for the grant file: is the
+// software this command drives actually here? It was only ever asked when writing
+// the sudo rules. Asking it again before running turns "this failed" into "this
+// was not part of the work", which on some machines is the truth.
+//
+// An Ubuntu 14.04 host is the case. The apt action writes two drop-in files and
+// then enables a systemd unit. There is no systemd, and there is nothing to
+// enable: /etc/cron.daily/apt reads APT::Periodic and does the work. The two
+// files were the whole fix, and failing on the third step undid them.
+//
+// A missing *binary* is deliberately not covered here. That is a real failure —
+// the software is declared to be here and its command is not — and it should be
+// reported as one.
+func Applies(id ID) (bool, string) {
+	declared, ok := registry[id]
+	if !ok {
+		return false, fmt.Sprintf("%s is not a command this agent knows", id)
+	}
+	if declared.NeedsPath == "" {
+		return true, ""
+	}
+	if _, err := os.Stat(declared.NeedsPath); err != nil {
+		return false, fmt.Sprintf("this machine has no %s, so there is nothing to do here",
+			declared.NeedsPath)
+	}
+	return true, ""
 }

@@ -164,3 +164,32 @@ func TestEachStyleNamesTheCommandThatAnswersForIt(t *testing.T) {
 		}
 	}
 }
+
+// Undo has to work on a machine that is only half changed.
+//
+// The bug this was written for. An action installs two drop-ins and then fails on
+// a third step, or somebody removes one file by hand. Undo then runs `rm` on a
+// file that is not there, `rm` exits 1, and the undo fails halfway — leaving the
+// machine in exactly the state the undo existed to get it out of.
+//
+// Measured on gp-ubuntu-14:
+//
+//	rm: cannot remove '…99-ghostpsy-unattended-upgrade.conf': No such file or directory
+//	exit 1
+//
+// Undo means "make sure this file is gone". A file already gone is that job done.
+func TestRemovingADropInSucceedsWhenTheFileIsAlreadyGone(t *testing.T) {
+	for _, setting := range confedit.All() {
+		if len(setting.Allow) == 0 {
+			continue
+		}
+		declared, ok := registry[RemoveDropIn(setting)]
+		if !ok {
+			t.Fatalf("no remove command declared for %s", setting.Key)
+		}
+		if declared.Args[0] != "-f" {
+			t.Errorf("%s: removing a drop-in must not fail on a file that is already gone, got rm %v",
+				setting.Key, declared.Args)
+		}
+	}
+}

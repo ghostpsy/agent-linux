@@ -88,8 +88,13 @@ func init() {
 		}
 		dest := Change(setting).DropIn().Dest
 		declare(RemoveDropIn(setting), Command{
-			Binary:    "rm",
-			Args:      []string{dest},
+			Binary: "rm",
+			// -f, because undo means "make sure this file is gone" and a file that
+			// is already gone is that job done. Without it, undoing a machine that
+			// was only half changed — one drop-in written, a later step failed —
+			// stopped on the first file it could not find, and left the rest of the
+			// change in place. Measured on an Ubuntu 14.04 host.
+			Args:      []string{"-f", dest},
 			NeedsPath: filepath.Dir(dest),
 			Why: fmt.Sprintf("undo a change to %s by removing the file that made it, "+
 				"which puts this server back to what it decided for itself", setting.Directive),

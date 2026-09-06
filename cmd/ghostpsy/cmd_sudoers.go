@@ -19,7 +19,7 @@ import (
 const agentUser = "ghostpsy"
 
 // installedGrantPath is where the grant lives once a host has one.
-const installedGrantPath = "/etc/sudoers.d/ghostpsy"
+const installedGrantPath = privexec.GrantPath
 
 // errNoGrantInstalled means there is no grant file at all. That is a different
 // situation from a stale one, and it needs different advice.
@@ -161,7 +161,7 @@ func readInstalledGrant(path string) ([]byte, error) {
 	if os.Geteuid() == 0 {
 		return os.ReadFile(path)
 	}
-	res, err := privexec.Run(context.Background(), privexec.ReadGrant)
+	res, err := privexec.Run(context.Background(), privexec.GrantFile)
 	if err != nil {
 		return nil, err
 	}

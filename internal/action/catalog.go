@@ -34,6 +34,7 @@ func init() {
 	declare(enableAutomaticSecurityUpdates())
 	declare(hardenSSHConfig())
 	declare(restartFailedService())
+	declare(ensureTimeSync())
 }
 
 // sshPortParam is the port the operator reaches this machine on.
@@ -458,6 +459,133 @@ func sshVariant(unit string) Variant {
 // restarting are the ones that come up, fail on their config or their database,
 // and go down again. Thirty seconds catches that.
 const serviceSettle = 30 * time.Second
+
+// ensureTimeSync gives a machine a clock it keeps correct by itself.
+//
+// It is the first action that installs software. That is a real step up in what
+// ghostpsy does, and the grant is what keeps it honest: the package name is
+// written into the command, not passed to it. A rule reading
+// `apt-get install -y *` would let this agent install anything on the machine,
+// which is exactly what the explicit grant exists to prevent.
+//
+// Undo stops the service and leaves the package. Removing software a machine may
+// since have come to depend on is a bigger change than the one that was approved,
+// so the reversibility says "partial" and the wording says why.
+func ensureTimeSync() Action {
+	return Action{
+		Type: "ensure_time_sync",
+		Summary: "Install and switch on a time service, set this machine's clock right " +
+			"now, and keep it correct from here.",
+		Reversibility: ReversePartial,
+		UndoWhy: "The time service is stopped and stopped from starting at boot. The " +
+			"package itself is left installed: removing software this machine may have " +
+			"come to depend on is a bigger change than the one that was approved. The " +
+			"clock is left correct — putting a clock back to being wrong is not a repair.",
+		Variants: []Variant{
+			{
+				// Debian and Ubuntu. `apt-get install --simulate` is a real dry run:
+				// it resolves the whole dependency tree and prints it, installing
+				// nothing, which is what the person approving needs to read.
+				Needs: "apt-get",
+				DryRun: []Step{
+					{
+						Why:     "show what installing the time service would pull in. Nothing is installed now",
+						Command: privexec.AptSimulateInstallNTP,
+					},
+				},
+				// Installing the daemon is not the same as having the right time,
+				// and only the second one is what was asked for. A freshly started
+				// ntpd needs several poll cycles before it will step a badly wrong
+				// clock: on an Ubuntu 14.04 host 31 hours out, the daemon was up and
+				// the clock was still 31 hours out ten minutes later. The job
+				// reported success and the finding stayed on the report, which is
+				// the worst of both. So the clock is set here, before this action
+				// claims to be done.
+				Run: []Step{
+					{
+						Why:     "install the time service",
+						Command: privexec.AptInstallNTP,
+					},
+					{
+						// The daemon holds port 123, and ntpd cannot set the clock
+						// while something else has it.
+						Why:     "stop the time service for a moment, so the clock can be set",
+						Command: privexec.NTPServiceStop,
+					},
+					{
+						Why:     "set the clock now, however far out it is",
+						Command: privexec.NTPStepClock,
+					},
+					{
+						Why:     "start the time service again, so it keeps the clock right from here",
+						Command: privexec.NTPServiceStart,
+					},
+					{
+						// On Debian and Ubuntu a package starts itself when it is
+						// installed, so on a machine with no systemd there is nothing
+						// left for this step to do and it is skipped, not failed.
+						Why:     "make it start at every boot",
+						Command: privexec.ServiceEnableNow("ntp"),
+					},
+				},
+				Verify: []Step{
+					{
+						// Asked of the process table, not of systemd. This action
+						// exists for machines like Ubuntu 14.04, which has no
+						// systemctl to ask — and a verify that cannot run is a
+						// success nobody checked.
+						Why:     "check the time service is really running now",
+						Command: privexec.NTPDaemonRunning,
+					},
+				},
+				Undo: []Step{
+					{
+						Why:     "stop the time service and stop it starting at boot",
+						Command: privexec.ServiceDisableNow("ntp"),
+					},
+				},
+			},
+			{
+				// The RHEL family ships chrony rather than ntp.
+				Needs: "dnf",
+				DryRun: []Step{
+					{
+						Why:     "show what installing the time service would pull in. Nothing is installed now",
+						Command: privexec.DnfSimulateInstallChrony,
+					},
+				},
+				Run: []Step{
+					{
+						Why:     "install the time service",
+						Command: privexec.DnfInstallChrony,
+					},
+					{
+						Why:     "make it start now and at every boot",
+						Command: privexec.ServiceEnableNow("chronyd"),
+					},
+					{
+						// No stop and start here: makestep tells the daemon that is
+						// already running to correct the clock in one jump.
+						Why:     "set the clock now, however far out it is",
+						Command: privexec.ChronyStepClock,
+					},
+				},
+				Verify: []Step{
+					{
+						Why:     "check the time service is really running now",
+						Command: privexec.ChronyDaemonRunning,
+					},
+				},
+				Undo: []Step{
+					{
+						Why:     "stop the time service and stop it starting at boot",
+						Command: privexec.ServiceDisableNow("chronyd"),
+					},
+				},
+			},
+		},
+	}
+}
 
 // restartFailedService starts a service that should be running and is not.
 func restartFailedService() Action {

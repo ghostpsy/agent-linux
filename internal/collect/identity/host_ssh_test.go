@@ -124,3 +124,4 @@ func TestBuildHostSSHNormalizesAndCapsFields(t *testing.T) {
 		t.Fatalf("expected x11_forwarding no, got %q", out.X11Forwarding)
 	}
 }
+

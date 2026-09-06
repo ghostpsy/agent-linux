@@ -4,7 +4,6 @@ package action
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -26,6 +25,7 @@ func HostDeps() Deps {
 	return Deps{
 		Exec:         privexec.RunWith,
 		Installed:    privexec.Installed,
+		Applies:      privexec.Applies,
 		FreeBytes:    FreeBytes,
 		SwitchedOff:  SwitchedOff,
 		InboundPorts: inboundPorts,
@@ -37,20 +37,24 @@ func HostDeps() Deps {
 	}
 }
 
-// sshAccess counts the ways into this machine, through the delegated read.
+// sshAccess counts the ways into this machine.
 //
-// It goes through privexec like everything else, so the one privilege it needs is
-// declared in the same file that writes the sudo grant.
+// Two steps, and only the second one is privileged. /etc/passwd is world-readable,
+// so the accounts, their homes and their shells are read here as an ordinary
+// user. The single thing that needs root is looking inside a home directory for a
+// key file, and that is one `find` a reviewer can read in the grant.
+//
+// It used to be `ghostpsy read-ssh-access`, which did all of it as root.
 func sshAccess(ctx context.Context) (confedit.Access, error) {
-	res, err := privexec.RunWith(ctx, privexec.ReadSSHAccess, nil)
+	passwdContent, err := confedit.ReadPasswd()
+	if err != nil {
+		return confedit.Access{}, fmt.Errorf("could not read the list of accounts: %w", err)
+	}
+	res, err := privexec.RunWith(ctx, privexec.AuthorizedKeysFiles, nil)
 	if err != nil {
 		return confedit.Access{}, fmt.Errorf("could not ask this machine who can log in: %w", err)
 	}
-	var access confedit.Access
-	if err := json.Unmarshal(res.Stdout, &access); err != nil {
-		return confedit.Access{}, fmt.Errorf("could not read the answer about who can log in: %w", err)
-	}
-	return access, nil
+	return confedit.AccessFromKeyFiles(passwdContent, strings.Split(string(res.Stdout), "\n")), nil
 }
 
 func sleep(ctx context.Context, d time.Duration) error {

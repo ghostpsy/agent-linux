@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func setStatePath(t *testing.T) string {
@@ -80,5 +81,51 @@ func TestSave_WritesMode0600(t *testing.T) {
 	}
 	if mode := info.Mode().Perm(); mode != 0o600 {
 		t.Fatalf("mode %#o want %#o", mode, 0o600)
+	}
+}
+
+// A scan runs as a child process and writes this file itself. The daemon must
+// not put back the copy it read when it started.
+//
+// This is the bug it was written for: the API had scans 1 and 2, the machine's
+// own file said 0, and every scan after that was refused as a duplicate. The
+// daemon had saved its start-up copy to record the time of the last scan, and
+// the scan sequence went back with it.
+func TestRecordLastScanKeepsWhatTheScanWrote(t *testing.T) {
+	setStatePath(t)
+	if err := Save(&AgentState{MachineUUID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", ScanSeq: 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	// What the daemon holds: the file as it was when it started.
+	stale, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// What the scan wrote while the daemon was busy.
+	fresh := *stale
+	fresh.ScanSeq = 2
+	if err := Save(&fresh); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordLastScan(time.Unix(1788268597, 0)); err != nil {
+		t.Fatalf("RecordLastScan: %v", err)
+	}
+
+	after, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.ScanSeq != 2 {
+		t.Fatalf("the scan sequence went backwards to %d; the scan had written 2", after.ScanSeq)
+	}
+	if after.LastScanAt != 1788268597 {
+		t.Fatalf("LastScanAt: got %d, want 1788268597", after.LastScanAt)
+	}
+	// The daemon's own copy is untouched, which is the whole reason it must not be saved.
+	if stale.ScanSeq != 0 {
+		t.Fatalf("the test is not reproducing the bug: the stale copy says %d", stale.ScanSeq)
 	}
 }

@@ -49,20 +49,40 @@ type serveDeps struct {
 	sleep     func(context.Context, time.Duration) error
 
 	// pollSolve asks the service whether a person has approved any work for this
-	// machine, and reports whether there was any. It runs on every pass, which is
-	// why the loop sleeps in minutes.
-	//
-	// The answer is what tells the loop somebody is at the other end: work arriving
-	// means more is almost certainly coming, so the next questions come quickly.
-	pollSolve func(context.Context) (bool, error)
+	// machine, and reports what came of it. It runs on every pass, which is why
+	// the loop sleeps in minutes.
+	pollSolve func(context.Context) (workOutcome, error)
 
 	// Until when to keep asking quickly. Zero, or in the past, means nobody is
 	// working with this machine.
 	solveBusyUntil time.Time
 
+	// Set when a job has changed this machine, so the next pass scans whatever the
+	// schedule thinks. See workOutcome.
+	rescanNow bool
+
 	// When a failed scan or heartbeat may be tried again. Zero means now.
 	scanRetryAfter      time.Time
 	heartbeatRetryAfter time.Time
+}
+
+// workOutcome is what one poll for solve work came to.
+type workOutcome struct {
+	// HadWork tells the loop somebody is at the other end: work arriving means
+	// more is almost certainly coming, so the next questions come quickly.
+	HadWork bool
+
+	// Changed says a real run altered this machine, which makes its last scan a
+	// description of a server that no longer exists.
+	//
+	// That matters more than it sounds. The report is what the plan is built
+	// from, so until a new one arrives the machine keeps being offered a fix it
+	// has already had — measured: a time service was installed, it worked, and
+	// the report still said no time daemon was configured.
+	//
+	// A dry run changes nothing and never sets this. Otherwise every preview
+	// would cost a scan.
+	Changed bool
 }
 
 // servePass runs one pass of the service loop.
@@ -78,12 +98,15 @@ func servePass(ctx context.Context, d *serveDeps) error {
 	// least essential: a machine whose channel is broken must go on scanning and
 	// go on saying it is alive, or a new feature could take out an old one.
 	if d.pollSolve != nil {
-		hadWork, err := d.pollSolve(ctx)
+		outcome, err := d.pollSolve(ctx)
 		if err != nil {
 			slog.Warn("could not ask the service for work", "error", err)
 		}
-		if hadWork {
+		if outcome.HadWork {
 			d.solveBusyUntil = now.Add(schedule.SolveBusyWindow)
+		}
+		if outcome.Changed {
+			d.rescanNow = true
 		}
 	}
 
@@ -104,7 +127,7 @@ func servePass(ctx context.Context, d *serveDeps) error {
 		}
 	}
 
-	if act.Scan && !now.Before(d.scanRetryAfter) {
+	if (act.Scan || d.rescanNow) && !now.Before(d.scanRetryAfter) {
 		if err := d.scan(ctx); err != nil {
 			// Deliberately not recorded as a scan: recording it would make the
 			// machine wait a full day before trying again. The retry time holds
@@ -176,10 +199,15 @@ func runServe(ctx context.Context) error {
 			return err
 		}
 		if d.lastScan.After(time.Unix(st.LastScanAt, 0).UTC()) {
-			st.LastScanAt = d.lastScan.Unix()
-			if err := state.Save(st); err != nil {
+			// Never state.Save(st) here: st is the copy read at start-up, and the
+			// scan that just ran is a child process which has written a newer scan
+			// sequence to the same file. RecordLastScan reads it again and touches
+			// only the time.
+			if err := state.RecordLastScan(d.lastScan); err != nil {
 				slog.Warn("could not record the last scan time", "error", err)
+				continue
 			}
+			st.LastScanAt = d.lastScan.Unix()
 		}
 	}
 	return nil
@@ -257,22 +285,22 @@ func heartbeatSender(machineUUID string) func(context.Context) error {
 // internal/action decides what is allowed and what is possible on this machine,
 // and the whole of what it found goes back untouched. Choosing what the customer
 // gets to see is not this function's job.
-func solvePoller(machineUUID string) func(context.Context) (bool, error) {
-	return func(ctx context.Context) (bool, error) {
+func solvePoller(machineUUID string) func(context.Context) (workOutcome, error) {
+	return func(ctx context.Context) (workOutcome, error) {
 		token, err := agentconfig.Load()
 		if err != nil {
-			return false, fmt.Errorf("no agent token yet: %w", err)
+			return workOutcome{}, fmt.Errorf("no agent token yet: %w", err)
 		}
 		baseURL := envOr("GHOSTPSY_API_URL", defaultAPIBaseURL)
 
 		work, err := solve.NextWork(ctx, baseURL, token, machineUUID)
 		if err != nil {
-			return false, err
+			return workOutcome{}, err
 		}
 		if !work.HasWork() {
 			// The usual answer, and not worth a line in anyone's log every minute.
 			slog.Debug("no solve work for this machine")
-			return false, nil
+			return workOutcome{}, nil
 		}
 
 		slog.Info("the service has work for this machine",
@@ -288,7 +316,7 @@ func solvePoller(machineUUID string) func(context.Context) (bool, error) {
 		}
 
 		if work.Mode == solve.ModeDryRun {
-			return true, solve.ReportDryRun(ctx, baseURL, token, solve.DryRunReport{
+			return workOutcome{HadWork: true}, solve.ReportDryRun(ctx, baseURL, token, solve.DryRunReport{
 				MachineUUID: machineUUID,
 				JobID:       work.JobID,
 				PreviewID:   report.PreviewID,
@@ -296,7 +324,9 @@ func solvePoller(machineUUID string) func(context.Context) (bool, error) {
 				Detail:      report,
 			})
 		}
-		return true, solve.ReportResult(ctx, baseURL, token, solve.ResultReport{
+		// Changed, whether or not it worked: a run that failed halfway has still
+		// touched the machine, and that is exactly when a fresh look matters.
+		return workOutcome{HadWork: true, Changed: true}, solve.ReportResult(ctx, baseURL, token, solve.ResultReport{
 			MachineUUID: machineUUID,
 			JobID:       work.JobID,
 			OK:          report.OK,

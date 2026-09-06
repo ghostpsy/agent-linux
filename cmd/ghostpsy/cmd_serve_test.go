@@ -167,7 +167,7 @@ func TestEveryPassAsksTheServiceForWork(t *testing.T) {
 		scan:      func(context.Context) error { return nil },
 		heartbeat: func(context.Context) error { return nil },
 		sleep:     func(context.Context, time.Duration) error { return nil },
-		pollSolve: func(context.Context) (bool, error) { asked++; return false, nil },
+		pollSolve: func(context.Context) (workOutcome, error) { asked++; return workOutcome{}, nil },
 	}
 
 	if err := servePass(context.Background(), d); err != nil {
@@ -194,7 +194,7 @@ func TestABrokenSolveChannelDoesNotStopTheAgent(t *testing.T) {
 		scan:      func(context.Context) error { scans++; return nil },
 		heartbeat: func(context.Context) error { beats++; return nil },
 		sleep:     func(context.Context, time.Duration) error { return nil },
-		pollSolve: func(context.Context) (bool, error) { return false, errors.New("connection refused") },
+		pollSolve: func(context.Context) (workOutcome, error) { return workOutcome{}, errors.New("connection refused") },
 	}
 
 	if err := servePass(context.Background(), d); err != nil {
@@ -220,7 +220,7 @@ func TestAFailedScanDoesNotDelayTheNextQuestionToTheService(t *testing.T) {
 		now:       func() time.Time { return now.Add(2 * time.Minute) },
 		scan:      func(context.Context) error { return errors.New("429 Too Many Requests") },
 		heartbeat: func(context.Context) error { return nil },
-		pollSolve: func(context.Context) (bool, error) { return false, nil },
+		pollSolve: func(context.Context) (workOutcome, error) { return workOutcome{}, nil },
 		sleep:     func(_ context.Context, d time.Duration) error { slept = d; return nil },
 	}
 
@@ -246,7 +246,7 @@ func TestAFailedScanIsNotRetriedImmediately(t *testing.T) {
 		now:       func() time.Time { return now.Add(2 * time.Minute) },
 		scan:      func(context.Context) error { attempts++; return errors.New("no network") },
 		heartbeat: func(context.Context) error { return nil },
-		pollSolve: func(context.Context) (bool, error) { return false, nil },
+		pollSolve: func(context.Context) (workOutcome, error) { return workOutcome{}, nil },
 		sleep:     func(context.Context, time.Duration) error { return nil },
 	}
 
@@ -272,7 +272,7 @@ func TestAFailedScanIsRetriedOnceTheDelayHasPassed(t *testing.T) {
 		now:       func() time.Time { return clock },
 		scan:      func(context.Context) error { attempts++; return errors.New("no network") },
 		heartbeat: func(context.Context) error { return nil },
-		pollSolve: func(context.Context) (bool, error) { return false, nil },
+		pollSolve: func(context.Context) (workOutcome, error) { return workOutcome{}, nil },
 		sleep:     func(context.Context, time.Duration) error { return nil },
 	}
 
@@ -303,7 +303,7 @@ func TestTheLoopAsksAgainQuicklyOnceTheMachineHasHadWork(t *testing.T) {
 		scan:      func(context.Context) error { return nil },
 		heartbeat: func(context.Context) error { return nil },
 		sleep:     func(_ context.Context, d time.Duration) error { slept = d; return nil },
-		pollSolve: func(context.Context) (bool, error) { return true, nil },
+		pollSolve: func(context.Context) (workOutcome, error) { return workOutcome{HadWork: true}, nil },
 	}
 
 	if err := servePass(context.Background(), d); err != nil {
@@ -332,7 +332,9 @@ func TestTheLoopKeepsAskingQuicklyWhileSomebodyIsDeciding(t *testing.T) {
 		heartbeat: func(context.Context) error { return nil },
 		sleep:     func(_ context.Context, d time.Duration) error { slept = d; return nil },
 		// Work once, then nothing: the person is reading the preview.
-		pollSolve: func(context.Context) (bool, error) { return clock.Equal(start), nil },
+		pollSolve: func(context.Context) (workOutcome, error) {
+			return workOutcome{HadWork: clock.Equal(start)}, nil
+		},
 	}
 
 	if err := servePass(context.Background(), d); err != nil {
@@ -364,7 +366,9 @@ func TestAnIdleMachineGoesBackToAskingOnceAMinute(t *testing.T) {
 		scan:      func(context.Context) error { return nil },
 		heartbeat: func(context.Context) error { return nil },
 		sleep:     func(_ context.Context, d time.Duration) error { slept = d; return nil },
-		pollSolve: func(context.Context) (bool, error) { return clock.Equal(start), nil },
+		pollSolve: func(context.Context) (workOutcome, error) {
+			return workOutcome{HadWork: clock.Equal(start)}, nil
+		},
 	}
 
 	if err := servePass(context.Background(), d); err != nil {
@@ -377,5 +381,49 @@ func TestAnIdleMachineGoesBackToAskingOnceAMinute(t *testing.T) {
 
 	if slept != schedule.SolvePollInterval {
 		t.Errorf("an idle machine asks every %v, slept %v", schedule.SolvePollInterval, slept)
+	}
+}
+
+// A machine that has just been changed scans again, without waiting for tomorrow.
+//
+// The bug this was written for. Solve installed a time service, the fix worked,
+// and the report still said "no time synchronization daemon" — because the last
+// scan predated the change and the next one was a day away. The report is what
+// drives the plan, so the machine went on being offered a fix it had already had.
+//
+// A dry run changes nothing and must not trigger this: it would mean a scan every
+// time somebody previewed something.
+func TestAMachineScansAgainAfterItHasBeenChanged(t *testing.T) {
+	d, scans, _ := fixedDeps()
+	// Scanned an hour ago, so nothing is due on the schedule.
+	d.lastScan = d.now().Add(-time.Hour)
+	d.lastHeartbeat = d.now()
+	d.pollSolve = func(context.Context) (workOutcome, error) {
+		return workOutcome{HadWork: true, Changed: true}, nil
+	}
+
+	if err := servePass(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	if *scans != 1 {
+		t.Errorf("a machine that was just changed has a stale report: got %d scans, want 1", *scans)
+	}
+}
+
+func TestAPreviewDoesNotTriggerAScan(t *testing.T) {
+	d, scans, _ := fixedDeps()
+	d.lastScan = d.now().Add(-time.Hour)
+	d.lastHeartbeat = d.now()
+	d.pollSolve = func(context.Context) (workOutcome, error) {
+		return workOutcome{HadWork: true, Changed: false}, nil
+	}
+
+	if err := servePass(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	if *scans != 0 {
+		t.Errorf("a dry run changes nothing, so it must not cost a scan: got %d", *scans)
 	}
 }

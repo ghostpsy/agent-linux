@@ -168,7 +168,18 @@ func installUpdate(ctx context.Context, info *updateCheckResponse) error {
 	if err := release.VerifyBinaryHash(sumsContent, filename, binaryContent); err != nil {
 		return fmt.Errorf("verify hash: %w", err)
 	}
-	return atomicSwap(binaryContent)
+	if err := atomicSwap(binaryContent); err != nil {
+		return err
+	}
+
+	// The new binary may allow commands the installed grant does not. Refused
+	// deliberately loudly: an agent whose grant is a version behind fails one
+	// action at a time, on a customer's server, with "a password is required" —
+	// which reads like a broken machine rather than a half-finished update.
+	if err := refreshSudoRule(installedGrantPath, runCommand); err != nil {
+		return fmt.Errorf("the agent was updated but its sudo rule was not: %w", err)
+	}
+	return nil
 }
 
 func downloadBytes(ctx context.Context, url string) ([]byte, error) {
@@ -234,4 +245,29 @@ func atomicSwap(newBinary []byte) error {
 		return fmt.Errorf("rename to %s: %w", binPath, err)
 	}
 	return nil
+}
+
+
+// refreshSudoRule rewrites the installed grant to match this binary.
+//
+// An update changes what the agent may run, and the sudo rule is what allows it.
+// Written once at setup and never again, the rule silently falls behind: every
+// command added after a machine was installed fails with "a password is
+// required", and the machine keeps whatever the agent could do on the day it
+// arrived. Measured on a test host, five times in one afternoon.
+//
+// So the grant travels with the binary. This is the right place for it and the
+// only safe one: `update` already runs as root and already replaces a root-owned
+// file, so nothing here is a privilege the caller did not have a moment ago. The
+// agent's own service user still cannot touch the grant — if it could, the file
+// would no longer be a contract anybody could rely on.
+//
+// A machine with no grant is left alone. Absent means somebody chose not to give
+// this agent any privileges, or it was never set up, and an update is not the
+// moment to decide otherwise on their behalf.
+func refreshSudoRule(path string, run runner) error {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return installSudoRule(path, sudoersFile(), run)
 }

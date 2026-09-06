@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // envPathOverride lets tests redirect the state file. Production code
@@ -78,4 +79,25 @@ func Save(s *AgentState) error {
 		return err
 	}
 	return os.WriteFile(p, data, fileMode)
+}
+
+// RecordLastScan writes the time of the last scan, and changes nothing else.
+//
+// The daemon reads this file once, when it starts, and keeps that copy for as
+// long as it runs. A scan is a child process, and it writes the file itself —
+// the scan sequence in particular. So by the time the daemon has a scan time to
+// record, its own copy is already out of date, and saving it would put the scan
+// sequence back to what it was at start-up.
+//
+// That is not a small thing. The server refuses a sequence number it has
+// already stored, so once the two disagree every later scan is rejected as a
+// duplicate and the machine stops reporting. The file is therefore read again
+// here, and only this one field is touched.
+func RecordLastScan(at time.Time) error {
+	s, err := Load()
+	if err != nil {
+		return err
+	}
+	s.LastScanAt = at.Unix()
+	return Save(s)
 }

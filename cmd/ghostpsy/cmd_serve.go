@@ -107,6 +107,22 @@ func servePass(ctx context.Context, d *serveDeps) error {
 		}
 		if outcome.Changed {
 			d.rescanNow = true
+			// And not behind whatever the last scan was waiting for.
+			//
+			// A scan refused with 429 sets scanRetryAfter fifteen minutes out. A
+			// run that has just changed the machine then sat behind that backoff,
+			// so the report went on describing the machine as it was before the
+			// fix — and Solve, which builds its plan from that report, went on
+			// offering the fix that had already worked.
+			//
+			// Measured: the scheduled scan was refused at 14:14:08, the job
+			// finished at 14:14:35, and no scan followed for the next fifteen
+			// minutes.
+			//
+			// Clearing it is safe rather than impatient: the service clears its
+			// own ingest cooldown when it accepts the result of a run, precisely
+			// so this scan is allowed through.
+			d.scanRetryAfter = time.Time{}
 		}
 	}
 

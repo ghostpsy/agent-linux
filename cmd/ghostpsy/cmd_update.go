@@ -257,7 +257,6 @@ func atomicSwap(newBinary []byte) error {
 	return nil
 }
 
-
 // refreshSudoRule rewrites the installed grant to match this binary.
 //
 // An update changes what the agent may run, and the sudo rule is what allows it.

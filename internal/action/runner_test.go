@@ -60,6 +60,12 @@ var stockServer = map[privexec.ID]privexec.Result{
 			"#MaxAuthTries 6\n" +
 			"#PermitRootLogin prohibit-password\n" +
 			"X11Forwarding yes\n")},
+
+	// No firewall running. That is the premise of enable_firewall — it is only
+	// offered on a machine without one — and the action now reads this before it
+	// plans anything, so a test that says nothing about the firewall means "a
+	// machine that has none", not "a machine that would not say".
+	privexec.FirewallUfwStatusVerbose: {Stdout: []byte("Status: inactive\n")},
 }
 
 func testDeps(f *fakeExec) Deps {

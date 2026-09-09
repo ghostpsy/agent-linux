@@ -204,6 +204,19 @@ type Step struct {
 	// Args gives the command's parameters their values. A value is either a
 	// literal or {name}, naming one of the action's own parameters.
 	Args map[string]string
+
+	// Reads marks a step that only looks at the machine and changes nothing.
+	//
+	// It decides whether a failed run gets put back. A run phase that read the
+	// machine and then stopped at a check has changed nothing, and undoing it
+	// makes the undo the thing that does the damage: a job that stopped at "the
+	// firewall is already on" switched off a firewall that was working, because
+	// the read before the check counted as something having happened.
+	//
+	// A step is a change unless it says otherwise. Forgetting to mark a read
+	// leaves the undo running exactly as it did before, which is the safe way to
+	// be wrong.
+	Reads bool
 }
 
 // Variant is one way of carrying out an action on one kind of machine.

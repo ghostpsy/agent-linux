@@ -360,6 +360,28 @@ func longestSettle(plans []plan) time.Duration {
 // Newest first because a later action may depend on an earlier one. Putting them
 // back in the order they were made would restore a state the next rollback then
 // undoes again.
+// anythingChanged reports whether a step that can change the machine ran.
+//
+// Commands are recorded one per attempted step, in order, so each one's step is
+// found by position. A check makes a judgement and a step marked Reads only
+// looks; everything else counts, including a step that ran and failed, because a
+// failure can leave a change half made.
+func anythingChanged(steps []Step, runs []CommandRun) bool {
+	for i, run := range runs {
+		if i >= len(steps) {
+			break
+		}
+		if steps[i].Check != "" || steps[i].Reads {
+			continue
+		}
+		if run.Skipped != "" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 func undo(ctx context.Context, deps Deps, plans []plan, reports []ActionReport) *UndoReport {
 	out := &UndoReport{Ran: true, Ledger: ledgerOf(plans)}
 	putBack := map[string]bool{}
@@ -371,7 +393,12 @@ func undo(ctx context.Context, deps Deps, plans []plan, reports []ActionReport) 
 		}
 		// Only put back something that actually happened. Rolling back an action
 		// that never ran would itself be a change nobody asked for.
-		if len(reports[i].Commands) == 0 {
+		//
+		// "Happened" used to mean "recorded any command at all", and that is not
+		// the same thing. A run that read the firewall's state and then stopped at
+		// a check had recorded two commands and changed nothing — and the undo
+		// switched off a firewall somebody had just correctly switched on.
+		if !anythingChanged(p.variant.Run, reports[i].Commands) {
 			continue
 		}
 		runs, ok := runPhase(ctx, deps, p, p.variant.Undo)

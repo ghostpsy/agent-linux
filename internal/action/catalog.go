@@ -75,6 +75,24 @@ func enableFirewall() Action {
 				Needs: "ufw",
 				DryRun: []Step{
 					{
+						// First, and its check straight after, so a machine that
+						// already has a firewall is refused before anybody is shown
+						// something to approve.
+						//
+						// Without this the preview happily described switching a
+						// firewall on that was already on — its own output said
+						// "Status: active" — the button was still there, and the run
+						// then stopped at the same check one step too late. The
+						// report it was planned from was stale; this is the guard
+						// for when that happens anyway.
+						Why:     "read what the firewall is doing before planning anything",
+						Command: privexec.FirewallUfwStatusVerbose,
+					},
+					{
+						Why:   "make sure there is a firewall to switch on at all",
+						Check: CheckFirewallIsStillOff,
+					},
+					{
 						// Before the dry runs, because the check below reads every
 						// step that came before it, and a port that is already
 						// allowed is one this change cannot close.
@@ -101,10 +119,6 @@ func enableFirewall() Action {
 						Why:   "make sure those rules do not cut off the way you are connected now",
 						Check: CheckPlanKeepsMeReachable,
 					},
-					{
-						Why:     "show the firewall as it is now",
-						Command: privexec.FirewallUfwStatusVerbose,
-					},
 				},
 				Run: []Step{
 					{
@@ -128,6 +142,7 @@ func enableFirewall() Action {
 						// rule.
 						Why:     "read what the firewall is really doing now",
 						Command: privexec.FirewallUfwStatusVerbose,
+						Reads:   true,
 					},
 					{
 						Why:   "make sure the firewall is still off, so switching it off changes nothing",

@@ -205,9 +205,13 @@ func firewallIsStillOff(why string, before []CommandRun) (CommandRun, bool) {
 		return run, false
 	}
 	if !strings.Contains(said, "status: inactive") {
-		run.Stderr = "this machine's firewall is on now, and it was off when this change was " +
-			"planned. ghostpsy stopped rather than switch a working firewall off. Look at the " +
-			"machine and plan the change again."
+		// One sentence for both phases. In the preview it means there is nothing
+		// to approve; in the run it means the machine changed after somebody
+		// approved. The reader needs the same two facts either way: it is already
+		// on, and ghostpsy did not touch it.
+		run.Stderr = "this machine's firewall is already on. ghostpsy stopped rather than " +
+			"switch a working firewall off, and there is nothing here left to switch on. " +
+			"Scan the machine again to see what it needs now."
 		run.ExitCode = 1
 		return run, false
 	}

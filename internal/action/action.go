@@ -156,6 +156,23 @@ const (
 	// `sshd -T` exiting zero only means sshd answered. Treating that as success is how
 	// a fix reports done and changed nothing.
 	CheckSettingTookEffect CheckID = "setting_took_effect"
+
+	// CheckFirewallIsStillOff reads a `ufw status` printed a moment earlier and
+	// refuses to carry on if the firewall is now enforcing.
+	//
+	// It exists so the step before the rules can safely put ufw's own record
+	// straight. ufw keeps two answers to "am I on": ENABLED in /etc/ufw/ufw.conf,
+	// and whether its chains are in the kernel. When those disagree — enabled on
+	// paper, enforcing nothing — `ufw allow` dies with a message that names no
+	// command at all:
+	//
+	//	$ sudo ufw allow 22/tcp
+	//	ERROR: problem running
+	//
+	// Switching it off first makes the record honest and takes no protection
+	// away, because there was none. That is only true while it really is off, and
+	// this is what makes sure of it.
+	CheckFirewallIsStillOff CheckID = "firewall_is_still_off"
 )
 
 // checks is every judgement the runner knows how to make. A step naming anything
@@ -168,6 +185,7 @@ var checks = map[CheckID]bool{
 	CheckServiceIsOneWeConfigure: true,
 	CheckDropInWillTakeEffect:    true,
 	CheckSettingTookEffect:       true,
+	CheckFirewallIsStillOff:      true,
 }
 
 // Step is one thing a phase does.

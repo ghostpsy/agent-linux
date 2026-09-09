@@ -70,6 +70,8 @@ func runCheck(ctx context.Context, deps Deps, p plan, step Step, before []Comman
 		return somebodyCanStillLogIn(ctx, deps, p, step)
 	case CheckPlanKeepsMeReachable:
 		return planKeepsMeReachable(deps, step.Why, before)
+	case CheckFirewallIsStillOff:
+		return firewallIsStillOff(step.Why, before)
 	case CheckKeepsMeReachable:
 		return keepsMeReachable(deps, step.Why)
 	case CheckUnitNotProtected:
@@ -174,6 +176,45 @@ func mentionsPort(rules string, port int) bool {
 
 func isNotDigit(r rune) bool {
 	return r < '0' || r > '9'
+}
+
+// firewallIsStillOff refuses to carry on if the firewall started enforcing
+// between the plan and now.
+//
+// The step before the rules switches ufw off to make its own record honest — see
+// CheckFirewallIsStillOff for why that is needed. Switching off a firewall that
+// is enforcing nothing takes nothing away. Switching off one that is working
+// would, so this reads what ufw said a moment ago and stops if it is on.
+//
+// A missing or unreadable status is a refusal, not a shrug. Carrying on would
+// mean turning a firewall off without knowing whether it was protecting
+// anything.
+func firewallIsStillOff(why string, before []CommandRun) (CommandRun, bool) {
+	run := CommandRun{Why: why, Display: "ghostpsy check firewall-is-still-off"}
+
+	said := ""
+	for _, earlier := range before {
+		if strings.Contains(strings.ToLower(earlier.Stdout), "status:") {
+			said = strings.ToLower(earlier.Stdout)
+		}
+	}
+	if said == "" {
+		run.Stderr = "ghostpsy could not read whether this machine's firewall is on, so it will " +
+			"not switch one off to change it"
+		run.ExitCode = -1
+		return run, false
+	}
+	if !strings.Contains(said, "status: inactive") {
+		run.Stderr = "this machine's firewall is on now, and it was off when this change was " +
+			"planned. ghostpsy stopped rather than switch a working firewall off. Look at the " +
+			"machine and plan the change again."
+		run.ExitCode = 1
+		return run, false
+	}
+
+	run.Stdout = "the firewall is still off, so putting its own record straight takes no " +
+		"protection away"
+	return run, true
 }
 
 // allowedByExistingRule reports whether the firewall already has a rule that

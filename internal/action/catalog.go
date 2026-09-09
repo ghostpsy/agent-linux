@@ -108,7 +108,40 @@ func enableFirewall() Action {
 				},
 				Run: []Step{
 					{
-						// First, always. The order is the safety.
+						// ufw keeps two answers to "am I on": ENABLED in
+						// /etc/ufw/ufw.conf, and whether its chains are in the
+						// kernel. `ufw status` reads the second, is_enabled() inside
+						// ufw reads the first, and when they disagree — enabled on
+						// paper, enforcing nothing — adding a rule dies with a
+						// message that names no command at all:
+						//
+						//	$ sudo ufw allow 22/tcp
+						//	ERROR: problem running
+						//
+						// ufw is trying to flush chains that are not there. Reproduced
+						// on Ubuntu 24.04 by setting ENABLED=yes with no chains
+						// loaded, which is the state a machine is left in when
+						// something installs the flag and never installs the rules.
+						//
+						// So: read what it is really doing, make sure that is still
+						// "off", then put its own record straight before touching any
+						// rule.
+						Why:     "read what the firewall is really doing now",
+						Command: privexec.FirewallUfwStatusVerbose,
+					},
+					{
+						Why:   "make sure the firewall is still off, so switching it off changes nothing",
+						Check: CheckFirewallIsStillOff,
+					},
+					{
+						// Takes no protection away: the check above has just proved
+						// nothing is being enforced. What it does is make ufw agree
+						// with itself, so the next step can add a rule.
+						Why:     "put the firewall's own record straight",
+						Command: privexec.UfwDisable,
+					},
+					{
+						// Before switching on, always. The order is the safety.
 						Why:     "allow your way in through the firewall",
 						Command: privexec.UfwAllowPort,
 						Args:    map[string]string{"port": "{ssh_port}"},

@@ -2,7 +2,10 @@
 
 package action
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // whatUfwSaysWhenTheRuleIsAlreadyThere is the real output, taken from an Ubuntu
 // 24.04 machine where port 22 was already allowed:
@@ -79,5 +82,68 @@ ufw allow from 10.0.0.0/8 to any port 22 proto tcp
 `
 	if !allowedByExistingRule(rules, 22) {
 		t.Fatal("an allow scoped to an address was not read as allowing the port")
+	}
+}
+
+// The state that produced "ERROR: problem running".
+//
+// ufw keeps two answers to "am I on": ENABLED in /etc/ufw/ufw.conf, and whether
+// its chains are in the kernel. Reproduced on Ubuntu 24.04 by setting
+// ENABLED=yes with no chains loaded:
+//
+//	$ sudo ufw allow 22/tcp
+//	ERROR: problem running
+//	exit=1
+//
+// ufw was trying to flush chains that were not there. The fix switches ufw off
+// first to make its record honest — which is only safe while it really is off,
+// and that is what this check is for.
+func TestSwitchingOffIsRefusedWhenTheFirewallIsWorking(t *testing.T) {
+	before := []CommandRun{{Stdout: "Status: active\nTo    Action   From\n22/tcp ALLOW Anywhere"}}
+
+	run, ok := firewallIsStillOff("make sure it is still off", before)
+	if ok {
+		t.Fatal("agreed to switch off a firewall that was enforcing")
+	}
+	if !strings.Contains(run.Stderr, "on now") {
+		t.Errorf("the reason does not say the firewall is on: %q", run.Stderr)
+	}
+}
+
+func TestSwitchingOffIsAllowedWhenNothingIsEnforced(t *testing.T) {
+	before := []CommandRun{{Stdout: "Status: inactive"}}
+
+	run, ok := firewallIsStillOff("make sure it is still off", before)
+	if !ok {
+		t.Fatalf("refused on an inactive firewall: %q", run.Stderr)
+	}
+	if !strings.Contains(run.Stdout, "takes no protection away") {
+		t.Errorf("the reason does not explain why it is safe: %q", run.Stdout)
+	}
+}
+
+// Not knowing is a refusal, not a shrug. Carrying on would mean switching a
+// firewall off without knowing whether it was protecting anything.
+func TestNotKnowingTheFirewallStateIsARefusal(t *testing.T) {
+	for _, before := range [][]CommandRun{
+		nil,
+		{{Stdout: ""}},
+		{{Stderr: "ufw: command not found"}},
+	} {
+		if _, ok := firewallIsStillOff("why", before); ok {
+			t.Errorf("carried on without knowing the firewall state: %+v", before)
+		}
+	}
+}
+
+// The last status wins, because the run phase reads its own fresh one rather
+// than a stale line from the preview.
+func TestTheMostRecentStatusIsTheOneRead(t *testing.T) {
+	before := []CommandRun{
+		{Stdout: "Status: inactive"},
+		{Stdout: "Status: active"},
+	}
+	if _, ok := firewallIsStillOff("why", before); ok {
+		t.Fatal("read an older status and missed that the firewall is now on")
 	}
 }

@@ -122,9 +122,15 @@ func planKeepsMeReachable(deps Deps, why string, before []CommandRun) (CommandRu
 
 	var unprotected []int
 	for _, port := range ports {
-		if !mentionsPort(plan, port) {
-			unprotected = append(unprotected, port)
+		// Two ways a port stays open: this change installs a rule for it, or the
+		// firewall already had one. Only the first was checked, and that refused a
+		// change on the machine that needed it least — one where the way in was
+		// already allowed, so `ufw --dry-run allow 22/tcp` printed "Skipping
+		// adding existing rule" and no rules at all.
+		if mentionsPort(plan, port) || allowedByExistingRule(plan, port) {
+			continue
 		}
+		unprotected = append(unprotected, port)
 	}
 
 	if len(unprotected) > 0 {
@@ -168,6 +174,35 @@ func mentionsPort(rules string, port int) bool {
 
 func isNotDigit(r rune) bool {
 	return r < '0' || r > '9'
+}
+
+// allowedByExistingRule reports whether the firewall already has a rule that
+// lets this port through.
+//
+// Read from `ufw show added`, which prints lines like "ufw allow 22/tcp".
+// `ufw status` cannot answer this: on a machine whose firewall is off — the only
+// machine this action runs on — it prints "Status: inactive" and lists nothing,
+// while the rules sit in the configuration waiting to be enforced.
+//
+// A line must actually allow. A "deny 22/tcp" mentions port 22 just as loudly,
+// and reading that as reassurance would lock somebody out of their own server
+// while telling them it was safe. The iptables text from the dry runs never
+// contains the word, so scanning line by line for it reads only the rules ufw
+// listed.
+func allowedByExistingRule(rules string, port int) bool {
+	for _, line := range strings.Split(rules, "\n") {
+		low := strings.ToLower(strings.TrimSpace(line))
+		if !strings.Contains(low, "allow") {
+			continue
+		}
+		if strings.Contains(low, "deny") || strings.Contains(low, "reject") {
+			continue
+		}
+		if mentionsPort(line, port) {
+			return true
+		}
+	}
+	return false
 }
 
 // keepsMeReachable runs after the change and fails if the machine stopped

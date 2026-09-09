@@ -229,7 +229,6 @@ func AnyDeclaredMatches(pattern *regexp.Regexp) bool {
 	return false
 }
 
-
 // Applies reports whether a declared command can do anything on this host, and
 // says why not when it cannot.
 //

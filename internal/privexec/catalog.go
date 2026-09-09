@@ -102,9 +102,12 @@ const (
 	// prints the exact rules it would install without installing them.
 	UfwDryRunEnable    ID = "firewall.ufw_dry_run_enable"
 	UfwDryRunAllowPort ID = "firewall.ufw_dry_run_allow_port"
-	UfwAllowPort       ID = "firewall.ufw_allow_port"
-	UfwEnable          ID = "firewall.ufw_enable"
-	UfwDisable         ID = "firewall.ufw_disable"
+	// The rules ufw has been given, which is not the same as the rules it is
+	// enforcing. `ufw status` shows nothing at all while the firewall is off.
+	UfwShowAdded ID = "firewall.ufw_show_added"
+	UfwAllowPort ID = "firewall.ufw_allow_port"
+	UfwEnable    ID = "firewall.ufw_enable"
+	UfwDisable   ID = "firewall.ufw_disable"
 
 	// Firewall, firewalld — the RHEL family. It has no dry run, so the preview
 	// shows what is configured now and the run adds the port to the permanent
@@ -419,6 +422,19 @@ func declareFirewallCommands() {
 			"--dry-run installs nothing",
 		Env: localeC,
 	})
+	// `ufw status` is not enough to answer "will my way in still work".
+	//
+	// On a machine whose firewall is off — the only machine this action runs on —
+	// status prints "Status: inactive" and lists no rules, while the rules are
+	// sitting in the configuration waiting to be enforced. `show added` is what
+	// prints those.
+	declare(UfwShowAdded, Command{
+		Binary: "ufw",
+		Args:   []string{"show", "added"},
+		Why:    "read the rules ufw already has, which it does not show while it is switched off",
+		Env:    localeC,
+	})
+
 	declare(UfwDryRunAllowPort, Command{
 		Binary: "ufw", Args: []string{"--dry-run", "allow", "{port}/tcp"},
 		Why:    "print the rule that allowing one port would add. --dry-run installs nothing",

@@ -75,6 +75,20 @@ func enableFirewall() Action {
 				Needs: "ufw",
 				DryRun: []Step{
 					{
+						// Before the dry runs, because the check below reads every
+						// step that came before it, and a port that is already
+						// allowed is one this change cannot close.
+						//
+						// Without this, `ufw --dry-run allow 22/tcp` answered
+						// "Skipping adding existing rule" and printed no rules at
+						// all — so the check saw no mention of port 22, decided the
+						// change would cut the operator off, and refused. On a
+						// machine where port 22 was already allowed: the safest
+						// state there is.
+						Why:     "show the rules the firewall already has",
+						Command: privexec.UfwShowAdded,
+					},
+					{
 						Why:     "show the rule that keeps your way in open",
 						Command: privexec.UfwDryRunAllowPort,
 						Args:    map[string]string{"port": "{ssh_port}"},

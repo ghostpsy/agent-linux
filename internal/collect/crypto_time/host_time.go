@@ -5,7 +5,6 @@ package crypto_time
 import (
 	"context"
 	"log/slog"
-	"os/exec"
 	"time"
 
 	"github.com/beevik/ntp"
@@ -82,9 +81,11 @@ func detectTimesyncDaemon(parent context.Context) string {
 	return timesyncDaemonFrom(func(name string) bool {
 		subCtx, cancel := context.WithTimeout(parent, daemonCheckTimeout)
 		defer cancel()
-		// pgrep -x matches the whole process name, so "ntpd" does not match
-		// "ntpdate", which is a one-shot and keeps no clock right.
-		return exec.CommandContext(subCtx, "pgrep", "-x", name).Run() == nil
+		// shared.ProcessIsRunning, not pgrep here, because the name has to be cut
+		// to the fifteen characters the kernel keeps before it can be compared.
+		// "systemd-timesyncd" is seventeen, so asking for it in full matched
+		// nothing on every machine that runs it — see shared.commMaxLen.
+		return shared.ProcessIsRunning(subCtx, name)
 	})
 }
 

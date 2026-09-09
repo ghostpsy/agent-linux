@@ -62,7 +62,7 @@ func ServiceStateFromList(services []payload.ServiceEntry, want []string) string
 // after systemd, because those two also say when something is stopped.
 func ProcessRunningState(ctx context.Context, processes []string) string {
 	return processRunningStateFrom(processes, func(name string) bool {
-		return processIsRunning(ctx, name)
+		return ProcessIsRunning(ctx, name)
 	})
 }
 
@@ -81,17 +81,45 @@ func processRunningStateFrom(processes []string, isRunning func(process string) 
 	return ""
 }
 
-// processIsRunning asks the process table for an exact name.
+// commMaxLen is how much of a process name Linux keeps.
+//
+// The kernel stores it in a 16-byte field: fifteen characters and a terminator.
+// `pgrep -x` matches that stored name, and a longer pattern cannot ever equal it
+// — pgrep says so itself and then matches nothing:
+//
+//	pgrep: pattern that searches for process name longer than 15 characters
+//	       will result in zero matches
+//
+// So a pattern has to be cut the same way the kernel cut the name.
+//
+// This was not hypothetical. "systemd-timesyncd" is seventeen characters, so the
+// check for it could never match anything. On a stock Ubuntu 24.04 — where
+// timesyncd is the time daemon, is running, and has the clock right — the scan
+// reported no time daemon at all, raised "no time synchronization daemon", and
+// offered the same fix again after every scan.
+const commMaxLen = 15
+
+// ProcessIsRunning reports whether a process of exactly this name is running.
 //
 // -x, so "mysqld" does not also match "mysqld_safe": the wrapper can be up while
 // the server it babysits is down, and reporting the wrapper as the service would
 // be a confident wrong answer.
-func processIsRunning(ctx context.Context, name string) bool {
+func ProcessIsRunning(ctx context.Context, name string) bool {
 	pgrep, err := exec.LookPath("pgrep")
 	if err != nil {
 		return false
 	}
 	subCtx, cancel := context.WithTimeout(ctx, processLookupTimeout)
 	defer cancel()
-	return exec.CommandContext(subCtx, pgrep, "-x", name).Run() == nil
+	return exec.CommandContext(subCtx, pgrep, "-x", CommName(name)).Run() == nil
+}
+
+// CommName is a process name cut to what the kernel stores, so it can be
+// compared with what the kernel reports.
+func CommName(name string) string {
+	name = strings.TrimSpace(name)
+	if len(name) <= commMaxLen {
+		return name
+	}
+	return name[:commMaxLen]
 }

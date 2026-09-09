@@ -92,3 +92,39 @@ func TestProcessStateWithNothingToLookFor(t *testing.T) {
 		t.Fatalf("a blank name must not be looked up: got %q, want empty", got)
 	}
 }
+
+// TestALongProcessNameIsCutTheWayTheKernelCutsIt is the false positive this
+// exists for.
+//
+// Linux keeps a process name in a 16-byte field: fifteen characters and a
+// terminator. `pgrep -x` compares against that stored name, so a longer pattern
+// matches nothing at all — pgrep even says so and then matches nothing anyway.
+//
+// "systemd-timesyncd" is seventeen characters. On a stock Ubuntu 24.04, where
+// timesyncd is the time daemon and had the clock correctly synchronised, the scan
+// reported no time daemon, raised "no time synchronization daemon", and Solve
+// offered the same fix again after every scan. The machine was never wrong.
+func TestALongProcessNameIsCutTheWayTheKernelCutsIt(t *testing.T) {
+	// Measured on the machine: /proc/477/comm held exactly this.
+	const whatTheKernelKept = "systemd-timesyn"
+
+	if got := CommName("systemd-timesyncd"); got != whatTheKernelKept {
+		t.Errorf("CommName(%q) = %q, want %q", "systemd-timesyncd", got, whatTheKernelKept)
+	}
+	if len(CommName("systemd-timesyncd")) != commMaxLen {
+		t.Errorf("a cut name is %d characters, want %d", len(CommName("systemd-timesyncd")), commMaxLen)
+	}
+}
+
+func TestAShortProcessNameIsLeftAlone(t *testing.T) {
+	for _, name := range []string{"ntpd", "chronyd", "mysqld", "apache2", "redis-server"} {
+		if got := CommName(name); got != name {
+			t.Errorf("CommName(%q) = %q, want it unchanged", name, got)
+		}
+	}
+	// Exactly at the limit is not too long.
+	fifteen := "123456789012345"
+	if got := CommName(fifteen); got != fifteen {
+		t.Errorf("CommName(%q) = %q, want it unchanged", fifteen, got)
+	}
+}

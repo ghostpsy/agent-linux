@@ -28,7 +28,7 @@ func TestARefusedActionReportsNoCommandsRatherThanNull(t *testing.T) {
 	deps.Installed = func(string) bool { return false }
 
 	report := Run(context.Background(), deps, Job{
-		Mode:    ModeDryRun,
+		Mode: ModeDryRun,
 		Actions: []Request{{Type: "harden_ssh_config", Params: map[string]string{
 			"setting": "ssh.permit_root_login", "value": "prohibit-password",
 		}}},

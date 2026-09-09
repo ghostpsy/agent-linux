@@ -487,6 +487,52 @@ func runStep(ctx context.Context, deps Deps, p plan, step Step, before []Command
 		}, true
 	}
 
+	return execWaitingOutTheLock(ctx, deps, command, values, step.Why)
+}
+
+// execWaitingOutTheLock runs a command, and tries again while the only thing
+// wrong is that something else is using the package manager.
+//
+// Retrying is safe here in a way it would not be for other failures. apt,
+// unattended-upgrade and dnf all take the lock before they do any work, so a
+// command that was refused the lock changed nothing — there is no half-done
+// state to be made worse by running it again.
+//
+// This is worth doing because the machines that most need a fix are the ones
+// most likely to be busy applying one. An `apt upgrade` started by hand made
+// enable_automatic_security_updates fail on its very first step, and the whole
+// job was thrown away over a machine that was merely occupied.
+func execWaitingOutTheLock(
+	ctx context.Context,
+	deps Deps,
+	command privexec.ID,
+	values privexec.Values,
+	why string,
+) (CommandRun, bool) {
+	for attempt := 1; ; attempt++ {
+		run, ok := execOnce(ctx, deps, command, values, why)
+		if ok || !packageManagerBusy(run) {
+			return run, ok
+		}
+		if attempt >= busyMaxAttempts {
+			run.Stderr = busyGaveUp(run.Stderr)
+			return run, false
+		}
+		slog.Info("the package manager is busy, waiting to try again",
+			"command", command, "attempt", attempt, "of", busyMaxAttempts)
+		if !waitBeforeRetry(ctx, deps, busyWait) {
+			return run, false
+		}
+	}
+}
+
+func execOnce(
+	ctx context.Context,
+	deps Deps,
+	command privexec.ID,
+	values privexec.Values,
+	why string,
+) (CommandRun, bool) {
 	stepCtx, cancel := context.WithTimeout(ctx, stepTimeout)
 	defer cancel()
 
@@ -495,7 +541,7 @@ func runStep(ctx context.Context, deps Deps, p plan, step Step, before []Command
 	elapsed := time.Since(started)
 
 	run := CommandRun{
-		Why:      step.Why,
+		Why:      why,
 		id:       command,
 		Display:  privexec.Display(command, values),
 		Stdout:   strings.TrimRight(string(res.Stdout), "\n"),
@@ -604,7 +650,6 @@ func previewID(reports []ActionReport) string {
 	return hex.EncodeToString(h.Sum(nil))[:32]
 }
 
-
 // stepApplies asks whether this command has anything to do on this machine.
 //
 // A nil Applies means yes. The check is about the real filesystem, so a test that
@@ -616,7 +661,6 @@ func stepApplies(deps Deps, command privexec.ID) (bool, string) {
 	}
 	return deps.Applies(command)
 }
-
 
 // emptyCommands is a command list with nothing in it, and not a nil one.
 //

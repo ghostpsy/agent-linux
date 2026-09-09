@@ -5,6 +5,7 @@ package firewall
 import (
 	"context"
 	"github.com/ghostpsy/agent-linux/internal/payload"
+	"strings"
 )
 
 const collectionNoInfoPrefix = "No information extracted."
@@ -85,17 +86,77 @@ func CollectFirewall(ctx context.Context) *payload.Firewall {
 	return fw
 }
 
-// applyFirewallActive sets active true only for ufw or firewalld (host-level managers), not raw iptables/nftables alone.
+// applyFirewallActive says whether this machine is really filtering traffic.
+//
+// Only ufw or firewalld count — raw iptables or nftables rules alone are not a
+// host firewall.
+//
+// For ufw the answer comes from `ufw status`, read with privilege a moment
+// earlier, and not from the family. The family is set when `ufw status` says
+// active *or* /etc/ufw/ufw.conf says ENABLED=yes, and that "or" was reporting a
+// firewall as active on a machine filtering nothing.
+//
+// It has to be that "or", though. Unprivileged `ufw status` answers "ERROR: You
+// need to be root", so without the config there would be no answer at all on a
+// machine where the privileged read fails. Hence: believe the status when we
+// have it, fall back to the config when we do not, and record which.
 func applyFirewallActive(fw *payload.Firewall) {
+	applyFirewallActiveFrom(fw, ufwPersistedEnabled())
+}
+
+// applyFirewallActiveFrom is the decision on its own, so a test can say what the
+// configuration holds instead of depending on the /etc/ufw/ufw.conf of whichever
+// machine happens to be running the tests.
+func applyFirewallActiveFrom(fw *payload.Firewall, persisted bool) {
 	if fw == nil {
 		return
 	}
+	if fw.Family == fwUfw {
+		fw.ConfiguredOn = &persisted
+		switch ufwStatusFromVerbose(fw.UfwStatusVerboseSample) {
+		case ufwStatusActiveText:
+			fw.Active = true
+		case ufwStatusInactiveText:
+			fw.Active = false
+		default:
+			// Nothing readable said so. The configuration is all there is.
+			fw.Active = persisted
+		}
+		return
+	}
 	switch fw.Family {
-	case fwUfw, fwFirewalld:
+	case fwFirewalld:
 		fw.Active = true
 	default:
 		fw.Active = false
 	}
+}
+
+const (
+	ufwStatusActiveText   = "active"
+	ufwStatusInactiveText = "inactive"
+	ufwStatusUnknownText  = "unknown"
+)
+
+// ufwStatusFromVerbose reads the answer out of `ufw status verbose` output.
+//
+// "Status: inactive" has to be looked for before "active", because it contains
+// it. Matching "active" first would call every switched-off firewall active,
+// which is the mistake this whole function exists to stop making.
+func ufwStatusFromVerbose(lines []string) string {
+	for _, line := range lines {
+		low := strings.ToLower(line)
+		if !strings.Contains(low, "status:") {
+			continue
+		}
+		if strings.Contains(low, ufwStatusInactiveText) {
+			return ufwStatusInactiveText
+		}
+		if strings.Contains(low, ufwStatusActiveText) {
+			return ufwStatusActiveText
+		}
+	}
+	return ufwStatusUnknownText
 }
 
 func applyMetrics(fw *payload.Firewall, m firewallMetrics) {

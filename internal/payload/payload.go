@@ -11,12 +11,12 @@ import "time"
 // gate behavior on agent age — issue #137 backward-compatibility hook
 // for schema quirks that appear between releases.
 type V1 struct {
-	SchemaVersion int        `json:"schema_version"`
-	MachineUUID   string     `json:"machine_uuid"`
-	ScanSeq       int        `json:"scan_seq"`
-	Hostname      string     `json:"hostname,omitempty"`
-	Fqdn          string     `json:"fqdn,omitempty"`
-	AgentVersion  string     `json:"agent_version,omitempty"`
+	SchemaVersion int    `json:"schema_version"`
+	MachineUUID   string `json:"machine_uuid"`
+	ScanSeq       int    `json:"scan_seq"`
+	Hostname      string `json:"hostname,omitempty"`
+	Fqdn          string `json:"fqdn,omitempty"`
+	AgentVersion  string `json:"agent_version,omitempty"`
 
 	// ActionsPossible is which fixes this machine could actually carry out.
 	//
@@ -429,8 +429,19 @@ type HostBackup struct {
 }
 
 type Firewall struct {
-	Family                  string   `json:"firewall_family"`
-	Active                  bool     `json:"active"`
+	Family string `json:"firewall_family"`
+
+	// Active is whether this machine is actually filtering traffic right now.
+	Active bool `json:"active"`
+
+	// ConfiguredOn is whether the firewall's own configuration says it should be
+	// on. Nil when there is nothing to read it from.
+	//
+	// Kept apart from Active because they can disagree, and the disagreement is
+	// the interesting part: ufw writes ENABLED=yes into /etc/ufw/ufw.conf and
+	// installs its chains as two separate acts, so a machine can carry the flag
+	// and filter nothing. Its owner believes they have a firewall.
+	ConfiguredOn            *bool    `json:"configured_on,omitempty"`
 	DefaultPolicyIn         string   `json:"default_policy_in,omitempty"`
 	DefaultPolicyOut        string   `json:"default_policy_out,omitempty"`
 	RuleCount               *int     `json:"rule_count,omitempty"`
